@@ -16,6 +16,24 @@ def list_lines(db: Session, invoice_id: str):
     return db.query(InvoiceLine).filter(InvoiceLine.invoice_id == invoice_id).all()
 
 
+_EDITABLE = ("description", "qty", "unit_id", "unit_price", "line_total")
+
+
+def update_line(db: Session, tenant_id: str, line_id: str, **fields) -> InvoiceLine:
+    """Update editable fields of a line (tenant-scoped). Only provided
+    (non-None) fields among description/qty/unit_id/unit_price/line_total."""
+    line = get_line(db, tenant_id, line_id)
+    if line is None:
+        return None
+    for key in _EDITABLE:
+        if key in fields and fields[key] is not None:
+            setattr(line, key, fields[key])
+    db.add(line)
+    db.commit()
+    db.refresh(line)
+    return line
+
+
 def get_line(db: Session, tenant_id: str, line_id: str) -> InvoiceLine:
     """Fetch a line, scoped to tenant via its parent invoice."""
     return (

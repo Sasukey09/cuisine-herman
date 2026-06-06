@@ -120,6 +120,16 @@ def process_invoice(
     }
 
 
+def reprice_line(db: Session, tenant_id: str, line: InvoiceLine) -> Optional[str]:
+    """Re-derive the price for an (edited) line: drop the line's previous price
+    row(s) then recreate from current values + recompute affected recipes."""
+    invoice = db.query(Invoice).filter(Invoice.id == line.invoice_id).first()
+    if invoice is None:
+        return None
+    crud_price.delete_prices_for_line(db, tenant_id, str(line.id))
+    return _price_and_recompute(db, tenant_id, line, invoice)
+
+
 def map_line_product(
     db: Session, tenant_id: str, line: InvoiceLine, product_id: str
 ) -> Dict[str, Any]:

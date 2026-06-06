@@ -10,6 +10,7 @@ import {
   ingestInvoice,
   processInvoice,
   mapLineProduct,
+  updateInvoiceLine,
 } from "@/services/invoices-service";
 import { getApiErrorMessage } from "@/lib/api-error";
 
@@ -56,6 +57,27 @@ export function useMapLineProduct(invoiceId: string) {
       mapLineProduct(invoiceId, vars.lineId, vars.productId),
     onSuccess: () => {
       toast.success("Ligne associée au produit");
+      qc.invalidateQueries({ queryKey: [...KEY, invoiceId] });
+    },
+    onError: (e) => toast.error(getApiErrorMessage(e)),
+  });
+}
+
+export function useUpdateInvoiceLine(invoiceId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: {
+      lineId: string;
+      fields: {
+        description?: string;
+        qty?: number | null;
+        unit?: string | null;
+        unit_price?: number | null;
+        line_total?: number | null;
+      };
+    }) => updateInvoiceLine(invoiceId, vars.lineId, vars.fields),
+    onSuccess: () => {
+      toast.success("Ligne corrigée");
       qc.invalidateQueries({ queryKey: [...KEY, invoiceId] });
     },
     onError: (e) => toast.error(getApiErrorMessage(e)),
