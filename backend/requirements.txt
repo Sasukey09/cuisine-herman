@@ -1,0 +1,26 @@
+fastapi==0.100.0
+uvicorn[standard]==0.22.0
+gunicorn==21.2.0
+SQLAlchemy==2.0.22
+psycopg2-binary==2.9.7
+alembic==1.11.1
+pydantic==1.10.9
+python-jose==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+python-multipart==0.0.6
+celery==5.3.1
+redis==4.6.0
+boto3==1.26.160
+python-dotenv==1.0.0
+pgvector==0.3.6
+
+# OCR providers & observability
+httpx==0.24.0
+prometheus-client==0.20.0
+# Optional: install only when using the Google Document AI provider
+# google-cloud-documentai==2.29.2
+
+# testing
+pytest==7.4.0
+pytest-asyncio==0.22.0

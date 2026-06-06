@@ -1,0 +1,166 @@
+from typing import List
+from fastapi import APIRouter, Depends, File, UploadFile, HTTPException
+from sqlalchemy.orm import Session
+
+from app.db.session import get_db
+from app.api.deps import get_current_tenant_id, require_writer
+from app.schemas.schemas import (
+    InvoiceCreateResp,
+    InvoiceRead,
+    InvoiceLineRead,
+    InvoiceProcessSummary,
+    InvoiceIngestResult,
+    MapProductRequest,
+    MapProductResult,
+)
+from app.crud.crud_invoice import (
+    create_invoice_from_upload,
+    get_invoice,
+    list_invoices,
+    set_invoice_file_url,
+)
+from app.crud import crud_invoice_line
+from app.schemas.schemas import InvoiceFileUrl
+from app.services.ocr.service import extract_invoice
+from app.services.ocr.schemas import InvoiceExtractionResult
+from app.services.ocr.errors import OcrError
+from app.services.invoicing import invoice_pricing
+from app.services.storage import s3_storage
+
+router = APIRouter()
+
+_OCR_UNAVAILABLE = "Service OCR indisponible : impossible d'analyser la facture pour le moment."
+
+
+@router.post("/upload", response_model=InvoiceCreateResp)
+async def api_upload_invoice(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+    _: list = Depends(require_writer),
+):
+    invoice = create_invoice_from_upload(db, file, tenant_id)
+    content = await file.read()
+    key = s3_storage.upload_invoice(tenant_id, invoice["id"], file.filename, content, file.content_type)
+    if key:
+        set_invoice_file_url(db, invoice["id"], tenant_id, key)
+    return invoice
+
+
+@router.post("/ingest", response_model=InvoiceIngestResult)
+async def api_ingest_invoice(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+    _: list = Depends(require_writer),
+):
+    """Full pipeline: upload -> OCR extract -> persist lines -> auto-match ->
+    create price history -> recompute affected recipe costs."""
+    invoice = create_invoice_from_upload(db, file, tenant_id)
+    invoice_id = invoice["id"]
+    content = await file.read()
+    # persist the original file (non-blocking if storage is unavailable)
+    key = s3_storage.upload_invoice(tenant_id, invoice_id, file.filename, content, file.content_type)
+    if key:
+        set_invoice_file_url(db, invoice_id, tenant_id, key)
+    try:
+        extraction = extract_invoice(content, file.content_type)
+    except OcrError:
+        raise HTTPException(status_code=502, detail=_OCR_UNAVAILABLE)
+    invoice_pricing.persist_extraction(db, tenant_id, invoice_id, extraction)
+    summary = invoice_pricing.process_invoice(db, tenant_id, invoice_id)
+    return {"invoice_id": invoice_id, "summary": summary}
+
+
+@router.get("/", response_model=List[InvoiceRead])
+def api_list_invoices(
+    skip: int = 0,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    return list_invoices(db, tenant_id, skip=skip, limit=limit)
+
+
+@router.get("/{invoice_id}", response_model=InvoiceRead)
+def api_get_invoice(
+    invoice_id: str,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    invoice = get_invoice(db, invoice_id, tenant_id)
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    return invoice
+
+
+@router.get("/{invoice_id}/file", response_model=InvoiceFileUrl)
+def api_get_invoice_file(
+    invoice_id: str,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    invoice = get_invoice(db, invoice_id, tenant_id)
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if not invoice.file_url:
+        raise HTTPException(status_code=404, detail="Aucun fichier stocké pour cette facture")
+    url = s3_storage.presigned_url(invoice.file_url)
+    if not url:
+        raise HTTPException(status_code=404, detail="Stockage de fichiers indisponible")
+    return {"url": url}
+
+
+@router.get("/{invoice_id}/lines", response_model=List[InvoiceLineRead])
+def api_list_invoice_lines(
+    invoice_id: str,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    invoice = get_invoice(db, invoice_id, tenant_id)
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    return crud_invoice_line.list_lines(db, invoice_id)
+
+
+@router.post("/{invoice_id}/process", response_model=InvoiceProcessSummary)
+def api_process_invoice(
+    invoice_id: str,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+    _: list = Depends(require_writer),
+):
+    """(Re)run auto-match + pricing + recompute on an already-parsed invoice."""
+    try:
+        return invoice_pricing.process_invoice(db, tenant_id, invoice_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.post(
+    "/{invoice_id}/lines/{line_id}/map-product", response_model=MapProductResult
+)
+def api_map_line_product(
+    invoice_id: str,
+    line_id: str,
+    payload: MapProductRequest,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+    _: list = Depends(require_writer),
+):
+    line = crud_invoice_line.get_line(db, tenant_id, line_id)
+    if not line or str(line.invoice_id) != invoice_id:
+        raise HTTPException(status_code=404, detail="Invoice line not found")
+    return invoice_pricing.map_line_product(db, tenant_id, line, payload.product_id)
+
+
+@router.post("/extract", response_model=InvoiceExtractionResult)
+async def api_extract_invoice(
+    file: UploadFile = File(...),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    content = await file.read()
+    try:
+        return extract_invoice(content, file.content_type)
+    except OcrError:
+        raise HTTPException(status_code=502, detail=_OCR_UNAVAILABLE)

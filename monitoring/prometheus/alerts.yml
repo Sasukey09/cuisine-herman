@@ -1,0 +1,56 @@
+groups:
+  - name: api
+    rules:
+      - alert: HighApiErrorRate
+        expr: |
+          sum(rate(request_errors_total[5m]))
+            / clamp_min(sum(rate(request_count_total[5m])), 1) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Taux d'erreurs API > 5% (5m)"
+          description: "Plus de 5% des requêtes renvoient une 5xx sur les 5 dernières minutes."
+
+      - alert: ApiLatencyP95High
+        expr: |
+          histogram_quantile(0.95, sum(rate(request_duration_seconds_bucket[5m])) by (le)) > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Latence API p95 > 2s"
+          description: "La latence p95 dépasse 2s depuis 10 minutes."
+
+  - name: ocr
+    rules:
+      - alert: OcrFailuresHigh
+        expr: |
+          sum(rate(ocr_failure_total[10m]))
+            / clamp_min(sum(rate(ocr_requests_total[10m])), 1) > 0.3
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Échecs OCR élevés (> 30%)"
+          description: "Plus de 30% des tentatives OCR échouent (toutes providers)."
+
+      - alert: OcrCircuitOpen
+        expr: increase(ocr_circuit_open_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Circuit breaker OCR ouvert ({{ $labels.provider }})"
+          description: "Le provider OCR {{ $labels.provider }} est en court-circuit."
+
+  - name: dependencies
+    rules:
+      - alert: DependencyDown
+        expr: dependency_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Dépendance indisponible ({{ $labels.dependency }})"
+          description: "La dépendance {{ $labels.dependency }} est DOWN depuis 2 minutes."

@@ -1,0 +1,137 @@
+{
+  "uid": "cuisine-herman",
+  "title": "Cuisine Herman — Observabilité",
+  "tags": ["cuisine-herman"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    { "type": "row", "title": "OCR", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "id": 1, "collapsed": false },
+    {
+      "type": "timeseries", "title": "OCR — débit par provider (req/s)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 }, "id": 2,
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum by (provider) (rate(ocr_requests_total[5m]))", "legendFormat": "{{provider}}" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "OCR — succès vs échecs (req/s)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 }, "id": 3,
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(ocr_success_total[5m]))", "legendFormat": "succès" },
+        { "refId": "B", "expr": "sum(rate(ocr_failure_total[5m]))", "legendFormat": "échecs" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "OCR — durée p95 (s)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 }, "id": 4,
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.95, sum by (le, provider) (rate(ocr_processing_duration_seconds_bucket[5m])))", "legendFormat": "{{provider}}" }
+      ]
+    },
+    {
+      "type": "stat", "title": "OCR — fallback / timeout / circuit (5m)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 }, "id": 5,
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(increase(ocr_fallback_total[5m]))", "legendFormat": "fallback" },
+        { "refId": "B", "expr": "sum(increase(ocr_timeout_total[5m]))", "legendFormat": "timeout" },
+        { "refId": "C", "expr": "sum(increase(ocr_circuit_open_total[5m]))", "legendFormat": "circuit" }
+      ]
+    },
+
+    { "type": "row", "title": "Factures", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 }, "id": 10, "collapsed": false },
+    {
+      "type": "stat", "title": "Factures traitées (total)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 18 }, "id": 11,
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum(invoices_processed_total)", "legendFormat": "factures" } ]
+    },
+    {
+      "type": "timeseries", "title": "Lignes de facture traitées (lignes/s)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 18 }, "id": 12,
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum(rate(invoice_lines_processed_total[5m]))", "legendFormat": "lignes/s" } ]
+    },
+    {
+      "type": "timeseries", "title": "Changements de prix détectés (/s)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 18 }, "id": 13,
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum(rate(price_changes_detected_total[5m]))", "legendFormat": "prix/s" } ]
+    },
+
+    { "type": "row", "title": "Produits", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 }, "id": 20, "collapsed": false },
+    {
+      "type": "timeseries", "title": "Produits — auto-match vs revue manuelle (/s)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 27 }, "id": 21,
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(products_matched_total[5m]))", "legendFormat": "auto-match" },
+        { "refId": "B", "expr": "sum(rate(products_manual_review_total[5m]))", "legendFormat": "revue manuelle" }
+      ]
+    },
+    {
+      "type": "stat", "title": "Taux d'auto-match (%)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 27 }, "id": 22,
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(products_matched_total) / clamp_min(sum(products_matched_total) + sum(products_manual_review_total), 1)", "legendFormat": "auto-match" }
+      ]
+    },
+
+    { "type": "row", "title": "Recettes", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 35 }, "id": 30, "collapsed": false },
+    {
+      "type": "timeseries", "title": "Recettes recalculées (/s)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 36 }, "id": 31,
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum(rate(recipes_recalculated_total[5m]))", "legendFormat": "recalculs/s" } ]
+    },
+    {
+      "type": "stat", "title": "Dépendances (1 = up)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 36 }, "id": 32,
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "max": 1 }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "dependency_up", "legendFormat": "{{dependency}}" } ]
+    },
+
+    { "type": "row", "title": "API", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 44 }, "id": 40, "collapsed": false },
+    {
+      "type": "timeseries", "title": "API — débit par endpoint (req/s)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 45 }, "id": 41,
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum by (endpoint) (rate(request_count_total[5m]))", "legendFormat": "{{endpoint}}" } ]
+    },
+    {
+      "type": "stat", "title": "API — taux d'erreur 5xx (%)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 45 }, "id": 42,
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum(rate(request_errors_total[5m])) / clamp_min(sum(rate(request_count_total[5m])), 1)", "legendFormat": "erreurs" } ]
+    },
+    {
+      "type": "timeseries", "title": "API — latence p95 (s)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 45 }, "id": 43,
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "histogram_quantile(0.95, sum by (le) (rate(request_duration_seconds_bucket[5m])))", "legendFormat": "p95" } ]
+    }
+  ]
+}
