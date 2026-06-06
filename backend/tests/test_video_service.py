@@ -1,0 +1,76 @@
+import pytest
+
+from app.services.video import transcript as transcript_mod
+from app.services.video import audio as audio_mod
+from app.services.video import service as video_service
+from app.services.ai import tools as ai_tools
+from app.services.video.errors import STTNotConfiguredError, TranscriptUnavailableError
+
+
+class FakeSTT:
+    def __init__(self, configured=True, text="texte transcrit"):
+        self._configured = configured
+        self._text = text
+        self.calls = []
+
+    def is_configured(self):
+        return self._configured
+
+    def transcribe(self, audio_path, language=None):
+        self.calls.append(audio_path)
+        return self._text
+
+
+def test_youtube_captions_path(monkeypatch):
+    monkeypatch.setattr(transcript_mod, "_youtube_captions", lambda vid: "sous-titres youtube")
+    text, source = transcript_mod.get_transcript("https://youtu.be/dQw4w9WgXcQ")
+    assert source == "youtube_captions"
+    assert text == "sous-titres youtube"
+
+
+def test_stt_fallback_for_non_youtube(monkeypatch):
+    # no captions involved; audio download is stubbed, STT provider injected
+    monkeypatch.setattr(audio_mod, "download_audio", lambda url: "/tmp/does-not-exist.mp3")
+    stt = FakeSTT(configured=True, text="recette tiktok transcrite")
+    text, source = transcript_mod.get_transcript(
+        "https://www.tiktok.com/@chef/video/123", stt_provider=stt
+    )
+    assert source == "stt"
+    assert text == "recette tiktok transcrite"
+    assert stt.calls == ["/tmp/does-not-exist.mp3"]
+
+
+def test_stt_not_configured_raises(monkeypatch):
+    monkeypatch.setattr(audio_mod, "download_audio", lambda url: "/tmp/x.mp3")
+    stt = FakeSTT(configured=False)
+    with pytest.raises(STTNotConfiguredError):
+        transcript_mod.get_transcript("https://www.tiktok.com/@x/video/1", stt_provider=stt)
+
+
+def test_audio_disabled_raises(monkeypatch):
+    monkeypatch.setenv("VIDEO_ALLOW_AUDIO_STT", "false")
+    # youtube url but no captions -> falls through to disabled STT
+    monkeypatch.setattr(transcript_mod, "_youtube_captions", lambda vid: None)
+    with pytest.raises(TranscriptUnavailableError):
+        transcript_mod.get_transcript("https://youtu.be/dQw4w9WgXcQ")
+
+
+def test_save_draft_delegates_to_create_recipe_draft(monkeypatch):
+    captured = {}
+
+    def fake_execute(db, tenant_id, name, tool_input):
+        captured["args"] = (tenant_id, name, tool_input)
+        return {"recipe_id": "r1", "cost": {"cost_per_portion": 1.0}}
+
+    monkeypatch.setattr(ai_tools, "execute_tool", fake_execute)
+    out = video_service.save_draft(
+        db="DB", tenant_id="t1", name="Gâteau", yield_qty=8,
+        ingredients=[{"name": "fraises", "qty": 500, "unit": "g"}],
+    )
+    assert out["recipe_id"] == "r1"
+    tenant_id, tool_name, payload = captured["args"]
+    assert tenant_id == "t1"
+    assert tool_name == "create_recipe_draft"
+    assert payload["name"] == "Gâteau"
+    assert payload["yield_qty"] == 8
+    assert payload["ingredients"][0]["name"] == "fraises"

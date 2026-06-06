@@ -7,6 +7,11 @@ from app.api.api_v1.endpoints import (
     recipes,
     auth,
     dashboard,
+    ai,
+    video,
+    metrics,
+    custom_fields,
+    reports,
 )
 
 api_router = APIRouter()
@@ -17,9 +22,8 @@ api_router.include_router(products.router, prefix="/products", tags=["products"]
 api_router.include_router(invoices.router, prefix="/invoices", tags=["invoices"])
 api_router.include_router(recipes.router, prefix="/recipes", tags=["recipes"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
-
-# NOTE: la couche `domain/` (tables `dh_*`) est volontairement debranchee.
-# Elle definit un second modele de donnees concurrent (dh_product, dh_invoice...)
-# qui n'existe ni dans sql/schema.sql ni dans la migration -> tout appel plantait
-# avec "relation dh_product does not exist". Le modele canonique est app/models/models.py.
-# Pour reactiver le product_matcher, il faudra le porter sur les modeles canoniques.
+api_router.include_router(ai.router, prefix="/ai", tags=["ai"])
+api_router.include_router(video.router, prefix="/video", tags=["video"])
+api_router.include_router(metrics.router, prefix="/metrics", tags=["metrics"])
+api_router.include_router(custom_fields.router, prefix="/custom-fields", tags=["custom-fields"])
+api_router.include_router(reports.router, prefix="/reports", tags=["reports"])
