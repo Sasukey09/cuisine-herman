@@ -4,6 +4,11 @@ import {
   Truck,
   FileText,
   ChefHat,
+  Bot,
+  Video,
+  Calculator,
+  SlidersHorizontal,
+  FileSpreadsheet,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -22,5 +27,10 @@ export const navItems: NavItem[] = [
   { title: "Fournisseurs", href: "/fournisseurs", icon: Truck },
   { title: "Factures", href: "/factures", icon: FileText },
   { title: "Recettes", href: "/recettes", icon: ChefHat },
+  { title: "Import vidéo", href: "/import-video", icon: Video },
+  { title: "Assistant IA", href: "/assistant", icon: Bot },
+  { title: "Indicateurs", href: "/indicateurs", icon: Calculator },
+  { title: "Champs perso", href: "/champs", icon: SlidersHorizontal },
+  { title: "Rapports", href: "/rapports", icon: FileSpreadsheet },
   { title: "Administration", href: "/administration", icon: Settings, roles: ["admin"] },
 ];

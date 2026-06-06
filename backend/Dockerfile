@@ -6,9 +6,10 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# System deps (psycopg2 runtime needs libpq)
+# System deps: psycopg2 runtime needs libpq; ffmpeg is needed by yt-dlp to
+# extract audio for the video-import speech-to-text path.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libpq5 \
+    && apt-get install -y --no-install-recommends libpq5 ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /app/requirements.txt

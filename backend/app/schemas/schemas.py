@@ -297,3 +297,196 @@ class MeRead(BaseModel):
     name: Optional[str]
     tenant_id: str
     roles: List[str] = []
+
+
+# --------------------------------------------------------------------------- #
+# AI assistant
+# --------------------------------------------------------------------------- #
+class AIChatMessage(BaseModel):
+    role: str  # "user" | "assistant"
+    content: str
+
+
+class AIChatRequest(BaseModel):
+    message: str
+    history: List[AIChatMessage] = []
+
+
+class AIToolCall(BaseModel):
+    name: str
+    input: dict = {}
+
+
+class AIChatResponse(BaseModel):
+    reply: str
+    tool_calls: List[AIToolCall] = []
+    usage: Optional[dict] = None
+
+
+# --------------------------------------------------------------------------- #
+# Video import
+# --------------------------------------------------------------------------- #
+class VideoExtractRequest(BaseModel):
+    url: str
+
+
+class VideoIngredientDraft(BaseModel):
+    name: str
+    qty: Optional[float] = None
+    unit: Optional[str] = None
+
+
+class VideoRecipeDraft(BaseModel):
+    name: str = ""
+    yield_qty: Optional[float] = None
+    ingredients: List[VideoIngredientDraft] = []
+    steps: List[str] = []
+    summary: Optional[str] = None
+
+
+class VideoExtractResult(BaseModel):
+    source_id: str
+    platform: str
+    transcript_source: str
+    transcript_excerpt: str
+    draft: VideoRecipeDraft
+    note: str
+
+
+class VideoSaveRequest(BaseModel):
+    name: str
+    yield_qty: Optional[float] = None
+    ingredients: List[VideoIngredientDraft] = []
+
+
+# --------------------------------------------------------------------------- #
+# Custom metrics (no-code indicators)
+# --------------------------------------------------------------------------- #
+class CustomMetricCreate(BaseModel):
+    name: str
+    formula: str
+    target: str = "recipe"
+    format: str = "number"  # number | currency | percent
+    description: Optional[str] = None
+
+
+class CustomMetricUpdate(BaseModel):
+    name: Optional[str] = None
+    formula: Optional[str] = None
+    format: Optional[str] = None
+    description: Optional[str] = None
+
+
+class CustomMetricRead(BaseModel):
+    id: str
+    name: str
+    formula: str
+    target: str = "recipe"
+    format: str = "number"
+    description: Optional[str] = None
+
+
+class MetricVariable(BaseModel):
+    name: str
+    description: str
+
+
+class MetricEvaluation(BaseModel):
+    id: str
+    name: str
+    format: str
+    value: Optional[float] = None
+    error: Optional[str] = None
+
+
+class MetricEvaluationResult(BaseModel):
+    recipe_id: str
+    context: dict
+    metrics: List[MetricEvaluation] = []
+
+
+# --------------------------------------------------------------------------- #
+# Custom fields (no-code fields on products / recipes)
+# --------------------------------------------------------------------------- #
+class CustomFieldCreate(BaseModel):
+    label: str
+    target: str  # product | recipe
+    type: str  # text | number | boolean | select
+    key: Optional[str] = None
+    options: List[str] = []
+    required: bool = False
+    description: Optional[str] = None
+
+
+class CustomFieldRead(BaseModel):
+    id: str
+    label: str
+    target: str
+    key: Optional[str] = None
+    type: str = "text"
+    options: List[str] = []
+    required: bool = False
+    description: Optional[str] = None
+
+
+class CustomFieldValues(BaseModel):
+    target: str
+    entity_id: str
+    definitions: List[CustomFieldRead] = []
+    values: dict = {}
+
+
+class CustomFieldValuesUpdate(BaseModel):
+    values: dict = {}
+
+
+# --------------------------------------------------------------------------- #
+# Custom reports (no-code report builder)
+# --------------------------------------------------------------------------- #
+class ReportColumn(BaseModel):
+    key: str
+    label: str
+    type: str
+
+
+class ReportSource(BaseModel):
+    key: str
+    label: str
+    columns: List[ReportColumn] = []
+
+
+class ReportFilter(BaseModel):
+    field: str
+    op: str
+    value: Optional[object] = None
+
+
+class ReportDefinition(BaseModel):
+    source: str
+    columns: List[str] = []
+    filters: List[ReportFilter] = []
+    sort: Optional[dict] = None
+    limit: Optional[int] = None
+
+
+class CustomReportCreate(BaseModel):
+    name: str
+    definition: ReportDefinition
+
+
+class CustomReportUpdate(BaseModel):
+    name: Optional[str] = None
+    definition: Optional[ReportDefinition] = None
+
+
+class CustomReportRead(BaseModel):
+    id: str
+    name: str
+    definition: dict
+
+
+class ReportRunResult(BaseModel):
+    source: str
+    columns: List[ReportColumn] = []
+    rows: List[dict] = []
+    count: int

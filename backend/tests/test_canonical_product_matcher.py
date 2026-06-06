@@ -34,7 +34,9 @@ def test_exact_name_match(monkeypatch):
 
 
 def test_alias_match(monkeypatch):
-    monkeypatch.setattr(READ_PRODUCTS, lambda db, t: [make_product("p1", name="Tomate ronde")])
+    # Product name differs from the query so exact-name doesn't fire; the alias
+    # is what matches (exact-name takes precedence over alias by design).
+    monkeypatch.setattr(READ_PRODUCTS, lambda db, t: [make_product("p1", name="Tomate ronde bio 5kg")])
     monkeypatch.setattr(READ_ALIASES, lambda db, t: [make_alias("p1", "Tomate ronde")])
     res = match_product(None, "t1", "TOMATE RONDE")
     assert res["confidence_score"] == 95.0

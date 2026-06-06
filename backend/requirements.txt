@@ -1,8 +1,8 @@
 fastapi==0.100.0
 uvicorn[standard]==0.22.0
 gunicorn==21.2.0
-SQLAlchemy==2.0.22
-psycopg2-binary==2.9.7
+SQLAlchemy==2.0.36
+psycopg2-binary==2.9.10
 alembic==1.11.1
 pydantic==1.10.9
 python-jose==3.3.0
@@ -15,8 +15,17 @@ boto3==1.26.160
 python-dotenv==1.0.0
 pgvector==0.3.6
 
+# AI assistant (Claude / Anthropic)
+anthropic>=0.69.0
+
+# Video import: transcript (YouTube captions / audio download) + STT (OpenAI Whisper)
+youtube-transcript-api>=0.6.2
+yt-dlp>=2024.8.6
+openai>=1.40.0
+
 # OCR providers & observability
-httpx==0.24.0
+# httpx >=0.25 required by anthropic 0.69+; 0.27 keeps the OCR httpx usage working.
+httpx==0.27.2
 prometheus-client==0.20.0
 # Optional: install only when using the Google Document AI provider
 # google-cloud-documentai==2.29.2

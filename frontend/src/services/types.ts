@@ -248,3 +248,142 @@ export interface DashboardFilters {
   from?: string;
   to?: string;
 }
+
+export interface AIChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface AIToolCall {
+  name: string;
+  input: Record<string, unknown>;
+}
+
+export interface AIChatResponse {
+  reply: string;
+  tool_calls: AIToolCall[];
+  usage: { input_tokens: number; output_tokens: number } | null;
+}
+
+export interface VideoIngredientDraft {
+  name: string;
+  qty: number | null;
+  unit: string | null;
+}
+
+export interface VideoRecipeDraft {
+  name: string;
+  yield_qty: number | null;
+  ingredients: VideoIngredientDraft[];
+  steps: string[];
+  summary: string | null;
+}
+
+export interface VideoExtractResult {
+  source_id: string;
+  platform: string;
+  transcript_source: string;
+  transcript_excerpt: string;
+  draft: VideoRecipeDraft;
+  note: string;
+}
+
+export interface VideoSaveResult {
+  recipe_id: string;
+  version_id: string;
+  name: string;
+  yield_qty: number;
+  unmatched_ingredients: string[];
+  cost: {
+    computed_cost_total: number | null;
+    cost_per_portion: number | null;
+    food_cost_pct: number | null;
+    has_missing_prices: boolean;
+  };
+  note: string;
+}
+
+export interface CustomMetric {
+  id: string;
+  name: string;
+  formula: string;
+  target: string;
+  format: string; // number | currency | percent
+  description: string | null;
+}
+
+export interface MetricVariable {
+  name: string;
+  description: string;
+}
+
+export interface MetricEvaluation {
+  id: string;
+  name: string;
+  format: string;
+  value: number | null;
+  error: string | null;
+}
+
+export interface MetricEvaluationResult {
+  recipe_id: string;
+  context: Record<string, number | null>;
+  metrics: MetricEvaluation[];
+}
+
+export interface CustomFieldDef {
+  id: string;
+  label: string;
+  target: string; // product | recipe
+  key: string | null;
+  type: string; // text | number | boolean | select
+  options: string[];
+  required: boolean;
+  description: string | null;
+}
+
+export interface CustomFieldValues {
+  target: string;
+  entity_id: string;
+  definitions: CustomFieldDef[];
+  values: Record<string, unknown>;
+}
+
+export interface ReportColumn {
+  key: string;
+  label: string;
+  type: string;
+}
+
+export interface ReportSource {
+  key: string;
+  label: string;
+  columns: ReportColumn[];
+}
+
+export interface ReportFilter {
+  field: string;
+  op: string;
+  value: string | number | null;
+}
+
+export interface ReportDefinition {
+  source: string;
+  columns: string[];
+  filters: ReportFilter[];
+  sort?: { field: string; dir: string } | null;
+  limit?: number | null;
+}
+
+export interface CustomReport {
+  id: string;
+  name: string;
+  definition: ReportDefinition;
+}
+
+export interface ReportRunResult {
+  source: string;
+  columns: ReportColumn[];
+  rows: Record<string, unknown>[];
+  count: number;
+}

@@ -222,6 +222,7 @@ class RecipeIngredient(Base):
     id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
     recipe_version_id = Column(UUID(as_uuid=False), ForeignKey("recipe_versions.id", ondelete="CASCADE"))
     product_id = Column(UUID(as_uuid=False), ForeignKey("products.id"))
+    ingredient_name = Column(Text)
     qty = Column(Numeric)
     unit_id = Column(Integer, ForeignKey("units.id"))
     qty_normalized = Column(Numeric)
