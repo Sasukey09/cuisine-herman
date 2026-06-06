@@ -495,3 +495,11 @@ class ReportRunResult(BaseModel):
 class InvoiceQueuedResp(BaseModel):
     invoice_id: str
     status: str  # queued | done | error
+
+
+class InvoiceLineUpdate(BaseModel):
+    description: Optional[str] = None
+    qty: Optional[float] = None
+    unit: Optional[str] = None  # unit code (g, kg, l, ml, piece...)
+    unit_price: Optional[float] = None
+    line_total: Optional[float] = None

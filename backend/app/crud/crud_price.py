@@ -18,6 +18,20 @@ def get_latest_price(
     return q.order_by(ProductPrice.effective_date.desc(), ProductPrice.created_at.desc()).first()
 
 
+def delete_prices_for_line(db: Session, tenant_id: str, line_id: str) -> int:
+    """Remove price rows derived from a given invoice line (for clean re-pricing)."""
+    deleted = (
+        db.query(ProductPrice)
+        .filter(
+            ProductPrice.tenant_id == tenant_id,
+            ProductPrice.source_invoice_line_id == line_id,
+        )
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return deleted
+
+
 def get_units_map(db: Session) -> dict:
     """unit_id -> ratio_to_base, for converting quantities/prices to base units."""
     return {u.id: float(u.ratio_to_base or 1) for u in db.query(Unit).all()}

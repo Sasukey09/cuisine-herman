@@ -43,6 +43,24 @@ export async function processInvoice(id: string): Promise<InvoiceProcessSummary>
   return data;
 }
 
+export async function updateInvoiceLine(
+  invoiceId: string,
+  lineId: string,
+  fields: {
+    description?: string;
+    qty?: number | null;
+    unit?: string | null;
+    unit_price?: number | null;
+    line_total?: number | null;
+  },
+): Promise<InvoiceLine> {
+  const { data } = await api.patch<InvoiceLine>(
+    `/invoices/${invoiceId}/lines/${lineId}`,
+    fields,
+  );
+  return data;
+}
+
 export async function mapLineProduct(
   invoiceId: string,
   lineId: string,

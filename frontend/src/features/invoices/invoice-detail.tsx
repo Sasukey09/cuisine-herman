@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, RefreshCw, Link2, AlertCircle, FileText } from "lucide-react";
+import { ArrowLeft, RefreshCw, Link2, AlertCircle, FileText, Pencil } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/table";
 import { InvoiceStatusBadge } from "./invoice-status-badge";
 import { MapProductDialog } from "./map-product-dialog";
+import { EditLineDialog } from "./edit-line-dialog";
 import { useInvoice, useInvoiceLines, useProcessInvoice } from "@/hooks/use-invoices";
 import { getInvoiceFileUrl } from "@/services/invoices-service";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -64,6 +65,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
   const canWrite = useAuthStore((s) => s.hasRole("admin", "manager"));
 
   const [mapLine, setMapLine] = useState<InvoiceLine | null>(null);
+  const [editLine, setEditLine] = useState<InvoiceLine | null>(null);
 
   const openFile = async () => {
     try {
@@ -202,9 +204,13 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
                     </TableCell>
                     {canWrite && (
                       <TableCell className="pr-6 text-right">
+                        <Button variant="ghost" size="sm" onClick={() => setEditLine(line)}>
+                          <Pencil className="h-4 w-4" />
+                          Corriger
+                        </Button>
                         <Button variant="ghost" size="sm" onClick={() => setMapLine(line)}>
                           <Link2 className="h-4 w-4" />
-                          {line.product_id ? "Modifier" : "Associer"}
+                          {line.product_id ? "Produit" : "Associer"}
                         </Button>
                       </TableCell>
                     )}
@@ -221,6 +227,13 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
         onOpenChange={(o) => !o && setMapLine(null)}
         invoiceId={invoiceId}
         line={mapLine}
+      />
+
+      <EditLineDialog
+        open={Boolean(editLine)}
+        onOpenChange={(o) => !o && setEditLine(null)}
+        invoiceId={invoiceId}
+        line={editLine}
       />
     </div>
   );

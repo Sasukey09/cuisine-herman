@@ -20,8 +20,8 @@ from app.crud.crud_invoice import (
     set_invoice_file_url,
     set_invoice_ocr_status,
 )
-from app.crud import crud_invoice_line
-from app.schemas.schemas import InvoiceFileUrl, InvoiceQueuedResp
+from app.crud import crud_invoice_line, crud_price
+from app.schemas.schemas import InvoiceFileUrl, InvoiceQueuedResp, InvoiceLineUpdate
 from app.services.ocr.service import extract_invoice
 from app.services.ocr.schemas import InvoiceExtractionResult
 from app.services.ocr.errors import OcrError
@@ -198,6 +198,43 @@ def api_map_line_product(
     if not line or str(line.invoice_id) != invoice_id:
         raise HTTPException(status_code=404, detail="Invoice line not found")
     return invoice_pricing.map_line_product(db, tenant_id, line, payload.product_id)
+
+
+@router.patch("/{invoice_id}/lines/{line_id}", response_model=InvoiceLineRead)
+def api_update_line(
+    invoice_id: str,
+    line_id: str,
+    payload: InvoiceLineUpdate,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+    _: list = Depends(require_writer),
+):
+    """Correct an extracted line (description / qty / unit / unit_price / total).
+
+    If the line is mapped to a product, its price row is re-derived from the
+    corrected values and the affected recipe costs are recomputed — so a fix in
+    the OCR output propagates to the real cost.
+    """
+    line = crud_invoice_line.get_line(db, tenant_id, line_id)
+    if not line or str(line.invoice_id) != invoice_id:
+        raise HTTPException(status_code=404, detail="Invoice line not found")
+
+    fields = {
+        "description": payload.description,
+        "qty": payload.qty,
+        "unit_price": payload.unit_price,
+        "line_total": payload.line_total,
+    }
+    if payload.unit is not None:
+        unit_id = crud_price.get_units_by_code(db).get(payload.unit.strip().lower())
+        if unit_id is not None:
+            fields["unit_id"] = unit_id
+
+    updated = crud_invoice_line.update_line(db, tenant_id, line_id, **fields)
+    if updated.product_id is not None and updated.unit_price is not None:
+        invoice_pricing.reprice_line(db, tenant_id, updated)
+        db.refresh(updated)
+    return updated
 
 
 @router.post("/extract", response_model=InvoiceExtractionResult)
