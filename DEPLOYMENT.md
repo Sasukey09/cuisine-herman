@@ -43,7 +43,8 @@ git push -u origin main
      provisoire puis reviens la corriger).
    - (Stockage) `S3_ENDPOINT`, `S3_PUBLIC_ENDPOINT`, `S3_BUCKET`, `MINIO_ACCESS_KEY`,
      `MINIO_SECRET_KEY` → voir étape 3.
-   - (OCR réel) `MISTRAL_API_KEY` → voir étape 6.
+   - (IA & vidéo) `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` → voir étape 7.
+   - (OCR réel) `MISTRAL_API_KEY` → voir étape 7.
 4. Au démarrage, le conteneur exécute **automatiquement les migrations** (`alembic upgrade head`,
    crée les tables + seed des unités). Vérifie les logs : « Running database migrations ».
 5. Note l'URL du backend, ex. `https://cuisine-backend.onrender.com`.
@@ -82,10 +83,18 @@ Retourne dans Render (backend) → variable `CORS_ORIGINS` = l'URL Vercel **exac
 3. Crée un produit, importe une facture, calcule un coût de recette.
 4. Si erreur réseau/CORS : vérifie `CORS_ORIGINS` (backend) et `NEXT_PUBLIC_API_URL` (front).
 
-## 7. (Optionnel) OCR réel
-Par défaut, l'OCR renvoie des données d'exemple (stub). Pour lire de vraies factures :
-- Mets `MISTRAL_API_KEY` (Render) et passe `OCR_ALLOW_STUB_FALLBACK=false`.
-- Redéploie. L'app lira alors les vrais PDF/images.
+## 7. Clés API (IA, vidéo, OCR)
+Renseigne ces variables sur le service **backend** Render (toutes en `sync: false`) :
+
+| Variable | Sert à | Obligatoire ? |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | Assistant IA (`/ai/chat`) **et** extraction de recette depuis une vidéo | Oui pour l'IA + la vidéo |
+| `OPENAI_API_KEY` | Transcription Whisper des vidéos **sans sous-titres** (TikTok/Insta/FB) | Oui pour ces plateformes (YouTube avec sous-titres fonctionne sans) |
+| `MISTRAL_API_KEY` | OCR réel des factures | Optionnel (sinon mode démo) |
+
+**OCR réel :** mets `MISTRAL_API_KEY` puis passe `OCR_ALLOW_STUB_FALLBACK=false` et redéploie — l'app lira alors les vrais PDF/images (sinon elle renvoie des données d'exemple).
+
+> Ces clés sont déjà déclarées dans [`render.yaml`](render.yaml) ; il suffit de coller les valeurs dans le dashboard Render. Ne les commit jamais.
 
 ---
 

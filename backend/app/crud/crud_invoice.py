@@ -28,6 +28,16 @@ def set_invoice_file_url(db: Session, invoice_id: str, tenant_id: str, file_url)
     return inv
 
 
+def set_invoice_ocr_status(db: Session, invoice_id: str, tenant_id: str, status: str):
+    inv = get_invoice(db, invoice_id, tenant_id)
+    if inv is None:
+        return None
+    inv.ocr_status = status
+    db.commit()
+    db.refresh(inv)
+    return inv
+
+
 def get_invoice(db: Session, invoice_id: str, tenant_id: str):
     return (
         db.query(Invoice)
