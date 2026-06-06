@@ -64,6 +64,20 @@ services:
       # Real OCR (optional):
       - key: MISTRAL_API_KEY
         sync: false
+      # --- AI assistant + video recipe extraction (Claude) ---
+      - key: ANTHROPIC_API_KEY
+        sync: false                  # required for /ai/chat and video extraction
+      - key: AI_MODEL
+        value: claude-opus-4-8
+      - key: AI_EFFORT
+        value: medium
+      # --- Video import: Whisper STT for non-YouTube (TikTok/Insta/FB) ---
+      - key: OPENAI_API_KEY
+        sync: false                  # required only for audio transcription (non-YouTube)
+      - key: VIDEO_STT_MODEL
+        value: whisper-1
+      - key: VIDEO_MAX_DURATION_SECONDS
+        value: "1800"
 
   # --- Celery worker (shares the backend image) ---
   - type: worker

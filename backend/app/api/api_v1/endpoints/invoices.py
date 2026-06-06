@@ -18,9 +18,10 @@ from app.crud.crud_invoice import (
     get_invoice,
     list_invoices,
     set_invoice_file_url,
+    set_invoice_ocr_status,
 )
 from app.crud import crud_invoice_line
-from app.schemas.schemas import InvoiceFileUrl
+from app.schemas.schemas import InvoiceFileUrl, InvoiceQueuedResp
 from app.services.ocr.service import extract_invoice
 from app.services.ocr.schemas import InvoiceExtractionResult
 from app.services.ocr.errors import OcrError
@@ -70,6 +71,51 @@ async def api_ingest_invoice(
     invoice_pricing.persist_extraction(db, tenant_id, invoice_id, extraction)
     summary = invoice_pricing.process_invoice(db, tenant_id, invoice_id)
     return {"invoice_id": invoice_id, "summary": summary}
+
+
+@router.post("/ingest-async", response_model=InvoiceQueuedResp)
+async def api_ingest_invoice_async(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+    _: list = Depends(require_writer),
+):
+    """Upload -> store file -> enqueue OCR as a Celery task and return immediately.
+
+    The heavy OCR/parse/recompute runs in the worker; poll GET /invoices/{id}
+    (field ``ocr_status``: queued/processing/done/error). Falls back to inline
+    processing if storage or the task broker is unavailable.
+    """
+    invoice = create_invoice_from_upload(db, file, tenant_id)
+    invoice_id = invoice["id"]
+    content = await file.read()
+    key = s3_storage.upload_invoice(tenant_id, invoice_id, file.filename, content, file.content_type)
+
+    def _process_inline() -> str:
+        try:
+            extraction = extract_invoice(content, file.content_type)
+        except OcrError:
+            set_invoice_ocr_status(db, invoice_id, tenant_id, "error")
+            raise HTTPException(status_code=502, detail=_OCR_UNAVAILABLE)
+        invoice_pricing.persist_extraction(db, tenant_id, invoice_id, extraction)
+        invoice_pricing.process_invoice(db, tenant_id, invoice_id)
+        set_invoice_ocr_status(db, invoice_id, tenant_id, "done")
+        return "done"
+
+    # No object storage -> the worker can't fetch the file, so process inline.
+    if not key:
+        return {"invoice_id": invoice_id, "status": _process_inline()}
+
+    set_invoice_file_url(db, invoice_id, tenant_id, key)
+    try:
+        from app.tasks import process_invoice_ocr
+
+        process_invoice_ocr.delay(invoice_id, tenant_id, key, file.content_type)
+        set_invoice_ocr_status(db, invoice_id, tenant_id, "queued")
+        return {"invoice_id": invoice_id, "status": "queued"}
+    except Exception:
+        # broker unavailable -> degrade gracefully to inline processing
+        return {"invoice_id": invoice_id, "status": _process_inline()}
 
 
 @router.get("/", response_model=List[InvoiceRead])

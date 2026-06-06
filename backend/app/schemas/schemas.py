@@ -490,3 +490,8 @@ class ReportRunResult(BaseModel):
     columns: List[ReportColumn] = []
     rows: List[dict] = []
     count: int
+
+
+class InvoiceQueuedResp(BaseModel):
+    invoice_id: str
+    status: str  # queued | done | error

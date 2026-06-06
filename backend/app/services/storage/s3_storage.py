@@ -95,6 +95,20 @@ def upload_invoice(
         return None
 
 
+def download_invoice(key: Optional[str]) -> Optional[bytes]:
+    """Fetch the stored invoice file bytes by key (used by the async OCR worker)."""
+    if not is_enabled() or not key:
+        return None
+    from botocore.exceptions import ClientError
+
+    try:
+        obj = _client().get_object(Bucket=_bucket(), Key=key)
+        return obj["Body"].read()
+    except ClientError as exc:  # pragma: no cover
+        log_event(logger, logging.ERROR, "storage.download.error", key=key, error=str(exc))
+        return None
+
+
 def presigned_url(key: Optional[str], expires: int = 3600) -> Optional[str]:
     """Return a time-limited download URL reachable from the browser."""
     if not is_enabled() or not key:
