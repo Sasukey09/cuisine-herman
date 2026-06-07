@@ -11,6 +11,10 @@ import {
   processInvoice,
   mapLineProduct,
   updateInvoiceLine,
+  updateInvoice,
+  deleteInvoice,
+  addInvoiceLine,
+  deleteInvoiceLine,
 } from "@/services/invoices-service";
 import { getApiErrorMessage } from "@/lib/api-error";
 
@@ -78,6 +82,67 @@ export function useUpdateInvoiceLine(invoiceId: string) {
     }) => updateInvoiceLine(invoiceId, vars.lineId, vars.fields),
     onSuccess: () => {
       toast.success("Ligne corrigée");
+      qc.invalidateQueries({ queryKey: [...KEY, invoiceId] });
+    },
+    onError: (e) => toast.error(getApiErrorMessage(e)),
+  });
+}
+
+export function useUpdateInvoice(invoiceId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (fields: {
+      invoice_number?: string | null;
+      date?: string | null;
+      total_amount?: number | null;
+      currency?: string | null;
+    }) => updateInvoice(invoiceId, fields),
+    onSuccess: () => {
+      toast.success("Facture modifiée");
+      qc.invalidateQueries({ queryKey: [...KEY, invoiceId] });
+      qc.invalidateQueries({ queryKey: KEY });
+    },
+    onError: (e) => toast.error(getApiErrorMessage(e)),
+  });
+}
+
+export function useDeleteInvoice() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteInvoice(id),
+    onSuccess: () => {
+      toast.success("Facture supprimée");
+      qc.invalidateQueries({ queryKey: KEY });
+    },
+    onError: (e) => toast.error(getApiErrorMessage(e)),
+  });
+}
+
+export function useAddInvoiceLine(invoiceId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (fields: {
+      description?: string | null;
+      qty?: number | null;
+      unit?: string | null;
+      unit_price?: number | null;
+      line_total?: number | null;
+      product_id?: string | null;
+    }) => addInvoiceLine(invoiceId, fields),
+    onSuccess: () => {
+      toast.success("Ligne ajoutée");
+      qc.invalidateQueries({ queryKey: [...KEY, invoiceId] });
+    },
+    onError: (e) => toast.error(getApiErrorMessage(e)),
+  });
+}
+
+export function useDeleteInvoiceLine(invoiceId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (lineId: string) => deleteInvoiceLine(invoiceId, lineId),
+    onSuccess: () => {
+      toast.success("Ligne supprimée");
       qc.invalidateQueries({ queryKey: [...KEY, invoiceId] });
     },
     onError: (e) => toast.error(getApiErrorMessage(e)),

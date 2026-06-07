@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, RefreshCw, Link2, AlertCircle, FileText, Pencil } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, RefreshCw, Link2, AlertCircle, FileText, Pencil, Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -23,10 +24,27 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { InvoiceStatusBadge } from "./invoice-status-badge";
 import { MapProductDialog } from "./map-product-dialog";
 import { EditLineDialog } from "./edit-line-dialog";
-import { useInvoice, useInvoiceLines, useProcessInvoice } from "@/hooks/use-invoices";
+import { EditInvoiceDialog } from "./edit-invoice-dialog";
+import {
+  useInvoice,
+  useInvoiceLines,
+  useProcessInvoice,
+  useDeleteInvoice,
+  useDeleteInvoiceLine,
+} from "@/hooks/use-invoices";
 import { getInvoiceFileUrl } from "@/services/invoices-service";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useProducts } from "@/hooks/use-products";
@@ -62,10 +80,18 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
   const { data: lines, isLoading: linesLoading } = useInvoiceLines(invoiceId);
   const { data: products } = useProducts();
   const process = useProcessInvoice(invoiceId);
+  const deleteInvoice = useDeleteInvoice();
+  const deleteLine = useDeleteInvoiceLine(invoiceId);
   const canWrite = useAuthStore((s) => s.hasRole("admin", "manager"));
+  const router = useRouter();
 
   const [mapLine, setMapLine] = useState<InvoiceLine | null>(null);
-  const [editLine, setEditLine] = useState<InvoiceLine | null>(null);
+  const [lineDialog, setLineDialog] = useState<{ open: boolean; line: InvoiceLine | null }>({
+    open: false,
+    line: null,
+  });
+  const [editInvoiceOpen, setEditInvoiceOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const openFile = async () => {
     try {
@@ -131,15 +157,30 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
               Voir le fichier
             </Button>
             {canWrite && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => process.mutate()}
-                disabled={process.isPending}
-              >
-                <RefreshCw className={`h-4 w-4 ${process.isPending ? "animate-spin" : ""}`} />
-                Re-traiter
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => process.mutate()}
+                  disabled={process.isPending}
+                >
+                  <RefreshCw className={`h-4 w-4 ${process.isPending ? "animate-spin" : ""}`} />
+                  Re-traiter
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setEditInvoiceOpen(true)}>
+                  <Pencil className="h-4 w-4" />
+                  Modifier
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Supprimer
+                </Button>
+              </>
             )}
           </div>
         </CardHeader>
@@ -154,9 +195,17 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Lignes de la facture</CardTitle>
-          <CardDescription>Vérifiez et corrigez les associations produit.</CardDescription>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <div>
+            <CardTitle className="text-base">Lignes de la facture</CardTitle>
+            <CardDescription>Vérifiez, corrigez ou ajoutez des lignes.</CardDescription>
+          </div>
+          {canWrite && (
+            <Button variant="outline" size="sm" onClick={() => setLineDialog({ open: true, line: null })}>
+              <Plus className="h-4 w-4" />
+              Ajouter une ligne
+            </Button>
+          )}
         </CardHeader>
         <CardContent className="px-0">
           <Table>
@@ -204,13 +253,21 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
                     </TableCell>
                     {canWrite && (
                       <TableCell className="pr-6 text-right">
-                        <Button variant="ghost" size="sm" onClick={() => setEditLine(line)}>
+                        <Button variant="ghost" size="sm" onClick={() => setLineDialog({ open: true, line })}>
                           <Pencil className="h-4 w-4" />
                           Corriger
                         </Button>
                         <Button variant="ghost" size="sm" onClick={() => setMapLine(line)}>
                           <Link2 className="h-4 w-4" />
                           {line.product_id ? "Produit" : "Associer"}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Supprimer la ligne"
+                          onClick={() => deleteLine.mutate(line.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </TableCell>
                     )}
@@ -230,11 +287,42 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
       />
 
       <EditLineDialog
-        open={Boolean(editLine)}
-        onOpenChange={(o) => !o && setEditLine(null)}
+        open={lineDialog.open}
+        onOpenChange={(o) => setLineDialog((s) => ({ ...s, open: o }))}
         invoiceId={invoiceId}
-        line={editLine}
+        line={lineDialog.line}
       />
+
+      <EditInvoiceDialog
+        open={editInvoiceOpen}
+        onOpenChange={setEditInvoiceOpen}
+        invoice={invoice ?? null}
+      />
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer cette facture ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              La facture, ses lignes et les prix qui en découlent seront supprimés, et les
+              coûts des recettes recalculés. Cette action est irréversible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() =>
+                deleteInvoice.mutate(invoiceId, {
+                  onSuccess: () => router.push("/factures"),
+                })
+              }
+            >
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

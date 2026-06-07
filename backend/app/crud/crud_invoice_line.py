@@ -16,6 +16,15 @@ def list_lines(db: Session, invoice_id: str):
     return db.query(InvoiceLine).filter(InvoiceLine.invoice_id == invoice_id).all()
 
 
+def delete_line(db: Session, tenant_id: str, line_id: str) -> bool:
+    line = get_line(db, tenant_id, line_id)
+    if line is None:
+        return False
+    db.delete(line)
+    db.commit()
+    return True
+
+
 _EDITABLE = ("description", "qty", "unit_id", "unit_price", "line_total")
 
 

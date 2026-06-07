@@ -43,6 +43,42 @@ export async function processInvoice(id: string): Promise<InvoiceProcessSummary>
   return data;
 }
 
+export async function updateInvoice(
+  id: string,
+  fields: {
+    invoice_number?: string | null;
+    date?: string | null;
+    total_amount?: number | null;
+    currency?: string | null;
+  },
+): Promise<Invoice> {
+  const { data } = await api.patch<Invoice>(`/invoices/${id}`, fields);
+  return data;
+}
+
+export async function deleteInvoice(id: string): Promise<void> {
+  await api.delete(`/invoices/${id}`);
+}
+
+export async function addInvoiceLine(
+  invoiceId: string,
+  fields: {
+    description?: string | null;
+    qty?: number | null;
+    unit?: string | null;
+    unit_price?: number | null;
+    line_total?: number | null;
+    product_id?: string | null;
+  },
+): Promise<InvoiceLine> {
+  const { data } = await api.post<InvoiceLine>(`/invoices/${invoiceId}/lines`, fields);
+  return data;
+}
+
+export async function deleteInvoiceLine(invoiceId: string, lineId: string): Promise<void> {
+  await api.delete(`/invoices/${invoiceId}/lines/${lineId}`);
+}
+
 export async function updateInvoiceLine(
   invoiceId: string,
   lineId: string,

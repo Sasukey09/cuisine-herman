@@ -19,9 +19,16 @@ from app.crud.crud_invoice import (
     list_invoices,
     set_invoice_file_url,
     set_invoice_ocr_status,
+    update_invoice,
 )
 from app.crud import crud_invoice_line, crud_price
-from app.schemas.schemas import InvoiceFileUrl, InvoiceQueuedResp, InvoiceLineUpdate
+from app.schemas.schemas import (
+    InvoiceFileUrl,
+    InvoiceQueuedResp,
+    InvoiceLineUpdate,
+    InvoiceUpdate,
+    InvoiceLineCreate,
+)
 from app.services.ocr.service import extract_invoice
 from app.services.ocr.schemas import InvoiceExtractionResult
 from app.services.ocr.errors import OcrError
@@ -126,6 +133,79 @@ def api_list_invoices(
     tenant_id: str = Depends(get_current_tenant_id),
 ):
     return list_invoices(db, tenant_id, skip=skip, limit=limit)
+
+
+@router.patch("/{invoice_id}", response_model=InvoiceRead)
+def api_update_invoice(
+    invoice_id: str,
+    payload: InvoiceUpdate,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+    _: list = Depends(require_writer),
+):
+    """Edit the invoice header manually (number / date / total / currency)."""
+    inv = update_invoice(db, invoice_id, tenant_id, **payload.dict(exclude_unset=True))
+    if inv is None:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    return inv
+
+
+@router.delete("/{invoice_id}", status_code=204)
+def api_delete_invoice(
+    invoice_id: str,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+    _: list = Depends(require_writer),
+):
+    """Delete an invoice (and its lines + derived prices), recompute recipes."""
+    if not invoice_pricing.delete_invoice(db, tenant_id, invoice_id):
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+
+@router.post("/{invoice_id}/lines", response_model=InvoiceLineRead, status_code=201)
+def api_add_line(
+    invoice_id: str,
+    payload: InvoiceLineCreate,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+    _: list = Depends(require_writer),
+):
+    """Add a line manually (fallback when OCR missed items)."""
+    invoice = get_invoice(db, invoice_id, tenant_id)
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    unit_id = None
+    if payload.unit:
+        unit_id = crud_price.get_units_by_code(db).get(payload.unit.strip().lower())
+    line = crud_invoice_line.create_invoice_line(
+        db,
+        invoice_id,
+        description=payload.description,
+        qty=payload.qty,
+        unit_id=unit_id,
+        unit_price=payload.unit_price,
+        line_total=payload.line_total,
+        product_id=payload.product_id,
+    )
+    if line.product_id is not None and line.unit_price is not None:
+        invoice_pricing.reprice_line(db, tenant_id, line)
+        db.refresh(line)
+    return line
+
+
+@router.delete("/{invoice_id}/lines/{line_id}", status_code=204)
+def api_delete_line(
+    invoice_id: str,
+    line_id: str,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+    _: list = Depends(require_writer),
+):
+    """Delete a line (and its derived price), recompute affected recipes."""
+    line = crud_invoice_line.get_line(db, tenant_id, line_id)
+    if not line or str(line.invoice_id) != invoice_id:
+        raise HTTPException(status_code=404, detail="Invoice line not found")
+    invoice_pricing.delete_line(db, tenant_id, line)
 
 
 @router.get("/{invoice_id}", response_model=InvoiceRead)

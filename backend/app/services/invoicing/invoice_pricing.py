@@ -120,6 +120,36 @@ def process_invoice(
     }
 
 
+def delete_line(db: Session, tenant_id: str, line: InvoiceLine) -> None:
+    """Delete a line, drop its derived price(s) and recompute affected recipes."""
+    product_id = str(line.product_id) if line.product_id else None
+    crud_price.delete_prices_for_line(db, tenant_id, str(line.id))
+    db.delete(line)
+    db.commit()
+    if product_id:
+        cost_engine.recompute_for_product(db, product_id)
+
+
+def delete_invoice(db: Session, tenant_id: str, invoice_id: str) -> bool:
+    """Delete an invoice (lines cascade), clean derived prices, recompute recipes."""
+    invoice = (
+        db.query(Invoice)
+        .filter(Invoice.id == invoice_id, Invoice.tenant_id == tenant_id)
+        .first()
+    )
+    if invoice is None:
+        return False
+    lines = crud_invoice_line.list_lines(db, invoice_id)
+    product_ids = {str(l.product_id) for l in lines if l.product_id}
+    for line in lines:
+        crud_price.delete_prices_for_line(db, tenant_id, str(line.id))
+    db.delete(invoice)
+    db.commit()
+    for pid in product_ids:
+        cost_engine.recompute_for_product(db, pid)
+    return True
+
+
 def reprice_line(db: Session, tenant_id: str, line: InvoiceLine) -> Optional[str]:
     """Re-derive the price for an (edited) line: drop the line's previous price
     row(s) then recreate from current values + recompute affected recipes."""
