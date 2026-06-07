@@ -503,3 +503,19 @@ class InvoiceLineUpdate(BaseModel):
     unit: Optional[str] = None  # unit code (g, kg, l, ml, piece...)
     unit_price: Optional[float] = None
     line_total: Optional[float] = None
+
+
+class InvoiceUpdate(BaseModel):
+    invoice_number: Optional[str] = None
+    date: Optional[date] = None
+    total_amount: Optional[float] = None
+    currency: Optional[str] = None
+
+
+class InvoiceLineCreate(BaseModel):
+    description: Optional[str] = None
+    qty: Optional[float] = None
+    unit: Optional[str] = None
+    unit_price: Optional[float] = None
+    line_total: Optional[float] = None
+    product_id: Optional[str] = None

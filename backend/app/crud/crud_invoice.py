@@ -38,6 +38,18 @@ def set_invoice_ocr_status(db: Session, invoice_id: str, tenant_id: str, status:
     return inv
 
 
+def update_invoice(db: Session, invoice_id: str, tenant_id: str, **fields):
+    inv = get_invoice(db, invoice_id, tenant_id)
+    if inv is None:
+        return None
+    for key in ("invoice_number", "date", "total_amount", "currency", "supplier_id"):
+        if key in fields and fields[key] is not None:
+            setattr(inv, key, fields[key])
+    db.commit()
+    db.refresh(inv)
+    return inv
+
+
 def get_invoice(db: Session, invoice_id: str, tenant_id: str):
     return (
         db.query(Invoice)
