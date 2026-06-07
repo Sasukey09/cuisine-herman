@@ -134,6 +134,11 @@ class RecipeCreate(RecipeBase):
     pass
 
 
+class RecipeUpdate(BaseModel):
+    name: Optional[str] = None
+    yield_qty: Optional[float] = None
+
+
 class RecipeRead(RecipeBase):
     id: str
     current_version_id: Optional[str]

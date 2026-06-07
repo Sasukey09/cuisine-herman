@@ -23,6 +23,15 @@ export async function createRecipe(payload: RecipePayload) {
   return data;
 }
 
+export async function updateRecipe(id: string, payload: RecipePayload) {
+  const { data } = await api.put<Recipe>(`/recipes/${id}`, payload);
+  return data;
+}
+
+export async function deleteRecipe(id: string) {
+  await api.delete(`/recipes/${id}`);
+}
+
 export async function getVersion(recipeId: string, versionId: string) {
   const { data } = await api.get<RecipeVersion>(`/recipes/${recipeId}/versions/${versionId}`);
   return data;
