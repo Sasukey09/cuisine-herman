@@ -1,9 +1,9 @@
 import re
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from .orchestrator import run_ocr
-from .schemas import InvoiceExtractionResult, InvoiceLineExtraction, OcrResult
+from .schemas import InvoiceExtractionResult, InvoiceLineExtraction, OcrResult, OcrTable
 
 
 def extract_text(file_bytes: bytes, content_type: Optional[str] = None) -> str:
@@ -11,41 +11,155 @@ def extract_text(file_bytes: bytes, content_type: Optional[str] = None) -> str:
     return run_ocr(file_bytes, content_type).text
 
 
+def to_number(value) -> Optional[float]:
+    """Parse a money/quantity token tolerantly: '6,00' '1 234,56' '€6.00' '5'."""
+    if value is None:
+        return None
+    s = re.sub(r"[^\d,.\-]", "", str(value))
+    if not s or s in ("-", ".", ","):
+        return None
+    if "," in s and "." in s:
+        # the rightmost separator is the decimal one
+        if s.rfind(",") > s.rfind("."):
+            s = s.replace(".", "").replace(",", ".")
+        else:
+            s = s.replace(",", "")
+    elif "," in s:
+        s = s.replace(",", ".")
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+# header keyword -> canonical column field
+_HEADER_KEYWORDS: Dict[str, List[str]] = {
+    "description": ["désignation", "designation", "description", "produit", "libellé",
+                    "libelle", "article", "intitulé", "intitule", "item"],
+    "qty": ["qté", "qte", "quantité", "quantite", "qty", "nb", "nombre"],
+    "unit": ["unité", "unite", "unit", "u.", "cond"],
+    "unit_price": ["prix unitaire", "p.u", "pu ", "px unit", "prix u", "unit price", "p/u"],
+    "total": ["montant", "total", "prix total", "amount", "prix ht", "prix ttc", "prix"],
+}
+
+_SKIP_DESC = {"total", "sous-total", "sous total", "tva", "total ht", "total ttc",
+              "net à payer", "net a payer", "remise", "montant total"}
+
+
+def _match_header_field(cell: str) -> Optional[str]:
+    c = (cell or "").strip().lower()
+    if not c:
+        return None
+    for field, kws in _HEADER_KEYWORDS.items():
+        if any(kw in c for kw in kws):
+            return field
+    return None
+
+
+def lines_from_tables(tables: List[OcrTable]) -> List[InvoiceLineExtraction]:
+    """Build invoice lines from OCR-extracted tables (e.g. Mistral markdown).
+
+    Detects a header row to map columns; otherwise falls back to positional
+    heuristics (first text cell = description, trailing numbers = price/total).
+    """
+    out: List[InvoiceLineExtraction] = []
+    for table in tables:
+        rows = [r for r in table.rows if any((c or "").strip() for c in r)]
+        if not rows:
+            continue
+
+        colmap: Dict[int, str] = {}
+        for i, cell in enumerate(rows[0]):
+            field = _match_header_field(cell)
+            if field is not None and field not in colmap.values():
+                colmap[i] = field
+        has_header = bool(colmap)
+        data_rows = rows[1:] if has_header else rows
+
+        for row in data_rows:
+            desc = unit = None
+            qty = pu = total = None
+
+            if has_header:
+                for i, val in enumerate(row):
+                    field = colmap.get(i)
+                    if field == "description":
+                        desc = (val or "").strip()
+                    elif field == "qty":
+                        qty = to_number(val)
+                    elif field == "unit":
+                        unit = (val or "").strip() or None
+                    elif field == "unit_price":
+                        pu = to_number(val)
+                    elif field == "total":
+                        total = to_number(val)
+            else:
+                for cell in row:
+                    if (cell or "").strip() and to_number(cell) is None:
+                        desc = cell.strip()
+                        break
+                nums = [to_number(c) for c in row if to_number(c) is not None]
+                if nums:
+                    total = nums[-1]
+                    if len(nums) >= 2:
+                        pu = nums[-2]
+                    if len(nums) >= 3:
+                        qty = nums[-3]
+
+            if not desc or desc.strip().lower() in _SKIP_DESC:
+                continue
+            if pu is None and total is None and qty is None:
+                continue
+            # derive the unit price when only the line total is present
+            if pu is None and total is not None and qty:
+                pu = round(total / qty, 4)
+            unit_norm, _ = normalize_units(unit, qty)
+            out.append(InvoiceLineExtraction(
+                description=desc, qty=qty, unit=unit,
+                unit_normalized=unit_norm, unit_price=pu, line_total=total,
+            ))
+    return out
+
+
 def extract_products(text: str) -> List[InvoiceLineExtraction]:
-    """Parse product lines from OCR text using regex heuristics."""
-    lines = []
+    """Parse product lines from raw OCR text (fallback when no tables).
+
+    Comma- and dot-decimals are both accepted; the unit price is derived from
+    total/qty when missing. Markdown table rows are skipped (handled upstream).
+    """
+    num = r"[0-9][0-9 .,]*"
+    lines: List[InvoiceLineExtraction] = []
     for raw in text.splitlines():
         raw = raw.strip()
-        if not raw:
+        if not raw or raw.startswith("|"):
             continue
+
         m = re.search(
-            r"^(?P<desc>[A-Za-z0-9 \-]+)\s+(?P<qty>[0-9]+(?:\.[0-9]+)?)\s*(?P<unit>[a-zA-Z]+)\s+(?P<unit_price>[0-9]+(?:\.[0-9]+)?)\s*[A-Za-z€$]*\s*(?P<total>[0-9]+(?:\.[0-9]+)?)$",
+            rf"^(?P<desc>.+?)\s+(?P<qty>{num})\s*(?P<unit>[a-zA-Zµ]+)\s+"
+            rf"(?P<unit_price>{num})\s*[€$A-Za-z]*\s+(?P<total>{num})$",
             raw,
         )
+        if not m:
+            m = re.search(
+                rf"^(?P<desc>.+?)\s+(?P<qty>{num})\s*(?P<unit>[a-zA-Zµ]+)\s+(?P<unit_price>{num})$",
+                raw,
+            )
         if m:
-            desc = m.group('desc').strip()
-            qty = float(m.group('qty'))
-            unit = m.group('unit')
-            unit_price = float(m.group('unit_price'))
-            total = float(m.group('total'))
+            desc = m.group("desc").strip()
+            qty = to_number(m.group("qty"))
+            unit = m.group("unit")
+            pu = to_number(m.group("unit_price"))
+            total = to_number(m.groupdict().get("total")) if m.groupdict().get("total") else None
+            if pu is None and total is not None and qty:
+                pu = round(total / qty, 4)
             unit_norm, _ = normalize_units(unit, qty)
-            lines.append(InvoiceLineExtraction(description=desc, qty=qty, unit=unit, unit_normalized=unit_norm, unit_price=unit_price, line_total=total))
+            lines.append(InvoiceLineExtraction(
+                description=desc, qty=qty, unit=unit,
+                unit_normalized=unit_norm, unit_price=pu, line_total=total,
+            ))
             continue
 
-        m2 = re.search(
-            r"^(?P<desc>.+?)\s+(?P<qty>[0-9]+(?:\.[0-9]+)?)\s*(?P<unit>[a-zA-Z]+)\s+(?P<unit_price>[0-9]+(?:\.[0-9]+)?)$",
-            raw,
-        )
-        if m2:
-            desc = m2.group('desc').strip()
-            qty = float(m2.group('qty'))
-            unit = m2.group('unit')
-            unit_price = float(m2.group('unit_price'))
-            unit_norm, _ = normalize_units(unit, qty)
-            lines.append(InvoiceLineExtraction(description=desc, qty=qty, unit=unit, unit_normalized=unit_norm, unit_price=unit_price, line_total=None))
-            continue
-
-        if any(k.lower() in raw.lower() for k in ("fournisseur", "supplier", "date", "facture", "invoice")):
+        if any(k in raw.lower() for k in ("fournisseur", "supplier", "date", "facture", "invoice")):
             continue
 
     return lines
@@ -97,7 +211,7 @@ def _parse_header(text: str):
             except ValueError:
                 invoice_date = None
 
-    m_inv = re.search(r"(?:Facture|Invoice)[:\s]*([A-Z0-9\-]+)", text, re.IGNORECASE)
+    m_inv = re.search(r"(?:Facture|Invoice)[:\s#]*([A-Z0-9\-]+)", text, re.IGNORECASE)
     if m_inv:
         invoice_number = m_inv.group(1).strip()
 
@@ -105,24 +219,23 @@ def _parse_header(text: str):
 
 
 def _result_from_ocr(ocr: OcrResult) -> InvoiceExtractionResult:
-    # Prefer the provider's structured line items (e.g. Document AI invoice parser).
-    if ocr.lines:
-        return InvoiceExtractionResult(
-            supplier=ocr.supplier,
-            date=ocr.date,
-            invoice_number=ocr.invoice_number,
-            lines=ocr.lines,
-            raw_text=ocr.text,
-        )
-
-    # Otherwise fall back to regex heuristics over the raw text.
     text = ocr.text or ""
     supplier, invoice_date, invoice_number = _parse_header(text)
+
+    # 1) provider-structured lines (e.g. Document AI invoice parser)
+    if ocr.lines:
+        lines = ocr.lines
+    else:
+        # 2) tables (Mistral markdown) -> lines ; 3) raw-text regex fallback
+        lines = lines_from_tables(ocr.tables) if ocr.tables else []
+        if not lines:
+            lines = extract_products(text)
+
     return InvoiceExtractionResult(
         supplier=ocr.supplier or supplier,
         date=ocr.date or invoice_date,
         invoice_number=ocr.invoice_number or invoice_number,
-        lines=extract_products(text),
+        lines=lines,
         raw_text=text,
     )
 
