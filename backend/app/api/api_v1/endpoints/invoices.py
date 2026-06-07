@@ -21,13 +21,16 @@ from app.crud.crud_invoice import (
     set_invoice_ocr_status,
     update_invoice,
 )
-from app.crud import crud_invoice_line, crud_price
+from app.crud import crud_invoice_line, crud_price, crud_product
 from app.schemas.schemas import (
     InvoiceFileUrl,
     InvoiceQueuedResp,
     InvoiceLineUpdate,
     InvoiceUpdate,
     InvoiceLineCreate,
+    CreateProductFromLine,
+    ProductCreate,
+    ProductRead,
 )
 from app.services.ocr.service import extract_invoice
 from app.services.ocr.schemas import InvoiceExtractionResult
@@ -261,6 +264,37 @@ def api_process_invoice(
         return invoice_pricing.process_invoice(db, tenant_id, invoice_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.post(
+    "/{invoice_id}/lines/{line_id}/create-product", response_model=ProductRead, status_code=201
+)
+def api_create_product_from_line(
+    invoice_id: str,
+    line_id: str,
+    payload: CreateProductFromLine,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+    _: list = Depends(require_writer),
+):
+    """Create a new catalog product from an unrecognised invoice line, then map
+    the line to it and derive its price (so the cost updates automatically)."""
+    line = crud_invoice_line.get_line(db, tenant_id, line_id)
+    if not line or str(line.invoice_id) != invoice_id:
+        raise HTTPException(status_code=404, detail="Invoice line not found")
+
+    name = (payload.name or line.description or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Un nom de produit est requis")
+
+    product = crud_product.create_product(
+        db,
+        ProductCreate(name=name, sku=payload.sku, base_unit_id=line.unit_id),
+        tenant_id,
+    )
+    # map the line to the new product + create its price + recompute recipes
+    invoice_pricing.map_line_product(db, tenant_id, line, str(product.id))
+    return product
 
 
 @router.post(

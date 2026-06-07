@@ -10,6 +10,7 @@ import {
   ingestInvoice,
   processInvoice,
   mapLineProduct,
+  createProductFromLine,
   updateInvoiceLine,
   updateInvoice,
   deleteInvoice,
@@ -64,6 +65,20 @@ export function useMapLineProduct(invoiceId: string) {
       qc.invalidateQueries({ queryKey: [...KEY, invoiceId] });
     },
     onError: (e) => toast.error(getApiErrorMessage(e)),
+  });
+}
+
+export function useCreateProductFromLine(invoiceId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { lineId: string; name?: string | null; sku?: string | null }) =>
+      createProductFromLine(invoiceId, vars.lineId, { name: vars.name, sku: vars.sku }),
+    onSuccess: (product) => {
+      toast.success(`Produit « ${product.name} » créé et associé`);
+      qc.invalidateQueries({ queryKey: [...KEY, invoiceId] });
+      qc.invalidateQueries({ queryKey: ["products"] });
+    },
+    onError: (e) => toast.error(getApiErrorMessage(e, "Échec de la création du produit")),
   });
 }
 
