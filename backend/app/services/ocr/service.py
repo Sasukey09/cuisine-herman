@@ -56,11 +56,44 @@ def _match_header_field(cell: str) -> Optional[str]:
     return None
 
 
+# A cell that is essentially a monetary/numeric amount (optionally a currency
+# symbol/word), e.g. "48,98 €", "-10,04 EUR", "3.00". Used to tell amounts apart
+# from description cells that merely contain a number (e.g. "Remise proche -15%").
+_AMOUNT_RE = re.compile(
+    r"^[-+]?[\d][\d ., ]*\s*(?:€|eur(?:os?)?|\$|ht|ttc)?\s*$", re.IGNORECASE
+)
+
+
+def _is_amount_cell(cell: str) -> bool:
+    c = (cell or "").strip()
+    return bool(c) and to_number(c) is not None and _AMOUNT_RE.match(c) is not None
+
+
+def _header_columns(row: List[str]) -> Dict[int, str]:
+    """Map column index -> field if ``row`` is a genuine column-header row.
+
+    A real header has no monetary amount in it (those are data rows) and must
+    expose at least a description column or two recognised columns.
+    """
+    if any(_is_amount_cell(c) for c in row):
+        return {}
+    colmap: Dict[int, str] = {}
+    for i, cell in enumerate(row):
+        field = _match_header_field(cell)
+        if field is not None and field not in colmap.values():
+            colmap[i] = field
+    if "description" in colmap.values() or len(colmap) >= 2:
+        return colmap
+    return {}
+
+
 def lines_from_tables(tables: List[OcrTable]) -> List[InvoiceLineExtraction]:
     """Build invoice lines from OCR-extracted tables (e.g. Mistral markdown).
 
-    Detects a header row to map columns; otherwise falls back to positional
-    heuristics (first text cell = description, trailing numbers = price/total).
+    Uses the column header when there is a real one; otherwise falls back to
+    positional heuristics (first text cell = description, monetary cells =
+    price/total) — which handles two-column layouts like telecom invoices where
+    labels are on the left and amounts aligned far right.
     """
     out: List[InvoiceLineExtraction] = []
     for table in tables:
@@ -68,11 +101,7 @@ def lines_from_tables(tables: List[OcrTable]) -> List[InvoiceLineExtraction]:
         if not rows:
             continue
 
-        colmap: Dict[int, str] = {}
-        for i, cell in enumerate(rows[0]):
-            field = _match_header_field(cell)
-            if field is not None and field not in colmap.values():
-                colmap[i] = field
+        colmap = _header_columns(rows[0])
         has_header = bool(colmap)
         data_rows = rows[1:] if has_header else rows
 
@@ -94,11 +123,13 @@ def lines_from_tables(tables: List[OcrTable]) -> List[InvoiceLineExtraction]:
                     elif field == "total":
                         total = to_number(val)
             else:
+                # description = first cell with letters that isn't itself an amount
                 for cell in row:
-                    if (cell or "").strip() and to_number(cell) is None:
-                        desc = cell.strip()
+                    c = (cell or "").strip()
+                    if c and re.search(r"[A-Za-zÀ-ÿ]", c) and not _is_amount_cell(c):
+                        desc = c
                         break
-                nums = [to_number(c) for c in row if to_number(c) is not None]
+                nums = [to_number(c) for c in row if _is_amount_cell(c)]
                 if nums:
                     total = nums[-1]
                     if len(nums) >= 2:
@@ -110,9 +141,11 @@ def lines_from_tables(tables: List[OcrTable]) -> List[InvoiceLineExtraction]:
                 continue
             if pu is None and total is None and qty is None:
                 continue
-            # derive the unit price when only the line total is present
+            # a single amount on a line is its total (and unit price if no qty)
             if pu is None and total is not None and qty:
                 pu = round(total / qty, 4)
+            elif pu is None and total is not None and not qty:
+                pu = total
             unit_norm, _ = normalize_units(unit, qty)
             out.append(InvoiceLineExtraction(
                 description=desc, qty=qty, unit=unit,
