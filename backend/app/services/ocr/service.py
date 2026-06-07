@@ -159,6 +159,24 @@ def extract_products(text: str) -> List[InvoiceLineExtraction]:
             ))
             continue
 
+        # Fallback: a line ending with a monetary amount + currency symbol
+        # (service invoices like "Abonnement … 48,98 €" have no qty/unit columns).
+        m3 = re.search(rf"^(?P<desc>.+?)\s+(?P<amount>-?{num})\s*(?:€|eur(?:os?)?|\$)", raw, re.IGNORECASE)
+        if m3:
+            low = raw.lower()
+            if not any(k in low for k in (
+                "total", "tva", "dont ", "net à", "net a", "montant facturé",
+                "montant facture", "sous-total", "à prélever", "a prelever",
+            )):
+                desc = m3.group("desc").strip(" :\t-")
+                amount = to_number(m3.group("amount"))
+                if desc and amount is not None:
+                    lines.append(InvoiceLineExtraction(
+                        description=desc, qty=None, unit=None, unit_normalized=None,
+                        unit_price=amount, line_total=amount,
+                    ))
+            continue
+
         if any(k in raw.lower() for k in ("fournisseur", "supplier", "date", "facture", "invoice")):
             continue
 
