@@ -1,6 +1,9 @@
 from pydantic import BaseModel
 from typing import Optional, List
-from datetime import date
+# Import under an alias: a field named ``date`` shadows the ``date`` type in the
+# class namespace, which makes some pydantic versions resolve ``Optional[date]``
+# to ``Optional[None]`` and reject real dates (HTTP 500 on every dated invoice).
+from datetime import date as DateType
 
 
 class InvoiceLineExtraction(BaseModel):
@@ -14,7 +17,7 @@ class InvoiceLineExtraction(BaseModel):
 
 class InvoiceExtractionResult(BaseModel):
     supplier: Optional[str] = None
-    date: Optional[date] = None
+    date: Optional[DateType] = None
     invoice_number: Optional[str] = None
     lines: List[InvoiceLineExtraction] = []
     raw_text: Optional[str] = None
@@ -39,6 +42,6 @@ class OcrResult(BaseModel):
     pages: int = 1
     supplier: Optional[str] = None
     invoice_number: Optional[str] = None
-    date: Optional[date] = None
+    date: Optional[DateType] = None
     total_amount: Optional[float] = None
     lines: List[InvoiceLineExtraction] = []

@@ -1,6 +1,10 @@
 from typing import Optional, List
 from pydantic import BaseModel
 from datetime import date, datetime
+# Alias for fields literally named ``date``: the field name shadows the ``date``
+# type in the class namespace, which makes some pydantic versions resolve
+# ``Optional[date]`` to ``Optional[None]`` and 500 on any real date value.
+from datetime import date as DateType
 
 
 class SupplierBase(BaseModel):
@@ -68,7 +72,7 @@ class InvoiceCreateResp(BaseModel):
 class InvoiceRead(BaseModel):
     id: str
     invoice_number: Optional[str]
-    date: Optional[date]
+    date: Optional[DateType]
     total_amount: Optional[float]
     currency: Optional[str]
     parsed: Optional[bool]
@@ -507,7 +511,7 @@ class InvoiceLineUpdate(BaseModel):
 
 class InvoiceUpdate(BaseModel):
     invoice_number: Optional[str] = None
-    date: Optional[date] = None
+    date: Optional[DateType] = None
     total_amount: Optional[float] = None
     currency: Optional[str] = None
 
