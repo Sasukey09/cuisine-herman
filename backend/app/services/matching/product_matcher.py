@@ -22,10 +22,63 @@ def _normalize(s: str) -> str:
     return s
 
 
+# Frequent invoice words that carry no product meaning — ignored when comparing
+# token sets so they can't create (or block) a match on their own.
+_STOPWORDS = {
+    "de", "du", "des", "le", "la", "les", "l", "au", "aux", "en", "et", "a",
+    "kg", "g", "gr", "l", "ml", "cl", "pcs", "pc", "piece", "pieces", "unite",
+    "x", "lot", "carton", "colis", "bte", "boite", "sachet", "pack",
+}
+
+
+def _tokens(s: str) -> set:
+    """Significant tokens of a string, singularised (trailing 's' dropped)."""
+    out = set()
+    for t in _normalize(s).split():
+        if t in _STOPWORDS:
+            continue
+        if len(t) > 3 and t.endswith("s"):
+            t = t[:-1]
+        out.add(t)
+    return out
+
+
+def _partial_ratio(a: str, b: str) -> float:
+    """Best ratio of the shorter string against any same-length window of the
+    longer one (catches 'tomate' inside 'tomates rondes bio')."""
+    shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
+    n = len(shorter)
+    if n == 0:
+        return 0.0
+    if n == len(longer):
+        return SequenceMatcher(None, shorter, longer).ratio()
+    best = 0.0
+    for i in range(len(longer) - n + 1):
+        best = max(best, SequenceMatcher(None, shorter, longer[i:i + n]).ratio())
+        if best == 1.0:
+            break
+    return best
+
+
 def _fuzzy_score(a: str, b: str) -> float:
+    """Similarity in [0,100] combining whole-string ratio, substring ratio and
+    token containment, so multi-word invoice labels still match short product
+    names (and vice-versa)."""
     if not a or not b:
         return 0.0
-    return SequenceMatcher(None, a, b).ratio() * 100.0
+    ratio = SequenceMatcher(None, a, b).ratio()
+    partial = _partial_ratio(a, b)
+    ta, tb = _tokens(a), _tokens(b)
+    shared = len(ta & tb) if (ta and tb) else 0
+    containment = shared / min(len(ta), len(tb)) if (ta and tb) else 0.0
+    score = max(ratio, partial, containment)
+    # A match resting on a single shared word between multi-word labels (e.g.
+    # "Lait" vs "Tablette chocolat au lait") is only a hint: keep it just below
+    # the auto-accept threshold so it surfaces for manual review instead of
+    # silently binding a wrong product. Near-identical strings are exempt.
+    if shared <= 1 and ta and tb and max(len(ta), len(tb)) > 1 and ratio < 0.8:
+        score = min(score, 0.78)
+    return score * 100.0
 
 
 def match_product(
