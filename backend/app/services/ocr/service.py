@@ -229,9 +229,18 @@ def _parse_header(text: str):
             except ValueError:
                 invoice_date = None
 
-    m_inv = re.search(r"(?:Facture|Invoice)[:\s#]*([A-Z0-9\-]+)", text, re.IGNORECASE)
-    if m_inv:
-        invoice_number = m_inv.group(1).strip()
+    # Invoice number: the captured token must contain a digit, so the bare title
+    # "FACTURE" (followed by e.g. "Fournisseur") no longer matches a label word.
+    inv_token = r"([A-Za-z0-9][A-Za-z0-9\-/_.]*\d[A-Za-z0-9\-/_.]*)"
+    for pat in (
+        rf"(?:facture|invoice)\s*(?:n[°ºo.]?)?\s*[:#]?\s*{inv_token}",
+        rf"n[°ºo]\s*(?:de\s+facture)?\s*[:#]?\s*{inv_token}",
+        rf"(?:réf|ref|réference|reference)\s*[:#]?\s*{inv_token}",
+    ):
+        m_inv = re.search(pat, text, re.IGNORECASE)
+        if m_inv:
+            invoice_number = m_inv.group(1).strip(" .:-")
+            break
 
     return supplier, invoice_date, invoice_number
 
