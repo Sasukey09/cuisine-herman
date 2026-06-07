@@ -5,19 +5,19 @@ from datetime import date
 
 class InvoiceLineExtraction(BaseModel):
     description: str
-    qty: Optional[float]
-    unit: Optional[str]
-    unit_normalized: Optional[str]
-    unit_price: Optional[float]
-    line_total: Optional[float]
+    qty: Optional[float] = None
+    unit: Optional[str] = None
+    unit_normalized: Optional[str] = None
+    unit_price: Optional[float] = None
+    line_total: Optional[float] = None
 
 
 class InvoiceExtractionResult(BaseModel):
-    supplier: Optional[str]
-    date: Optional[date]
-    invoice_number: Optional[str]
-    lines: List[InvoiceLineExtraction]
-    raw_text: Optional[str]
+    supplier: Optional[str] = None
+    date: Optional[date] = None
+    invoice_number: Optional[str] = None
+    lines: List[InvoiceLineExtraction] = []
+    raw_text: Optional[str] = None
 
 
 class OcrTable(BaseModel):
