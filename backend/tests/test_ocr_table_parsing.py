@@ -1,4 +1,4 @@
-from app.services.ocr.service import to_number, lines_from_tables
+from app.services.ocr.service import to_number, lines_from_tables, extract_products
 from app.services.ocr.schemas import OcrTable
 
 
@@ -38,6 +38,24 @@ def test_derives_unit_price_from_total_and_qty():
     assert len(lines) == 1
     assert lines[0].unit_price == 8.0
     assert lines[0].line_total == 32.0
+
+
+def test_service_invoice_trailing_euro_amounts():
+    text = "\n".join([
+        "OFFRE 48,98 €",
+        "beIN SPORTS 01/01/2026 - 31/01/2026 (1 mois) 14,99 €",
+        "Option Multi-TV THD 3,00 €",
+        "Remise proche -15% -10,04 €",
+        "Dont TVA à 20 % 7,36 €",          # skipped (TVA)
+        "Montant net à prélever 56,93 €",   # skipped (à prélever)
+        "Votre ligne : 09 61 61 39 77",     # skipped (no currency)
+    ])
+    lines = extract_products(text)
+    descs = {l.description: l.line_total for l in lines}
+    assert descs.get("OFFRE") == 48.98
+    assert descs.get("Option Multi-TV THD") == 3.0
+    assert any("Remise" in d for d in descs)
+    assert all("TVA" not in d and "prélever" not in d for d in descs)
 
 
 def test_table_without_header_positional():
