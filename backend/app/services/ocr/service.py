@@ -45,6 +45,24 @@ _HEADER_KEYWORDS: Dict[str, List[str]] = {
 _SKIP_DESC = {"total", "sous-total", "sous total", "tva", "total ht", "total ttc",
               "net à payer", "net a payer", "remise", "montant total"}
 
+# Substrings that mark a summary/tax/total line (not a real article). Kept
+# narrow so legitimate "Remise exceptionnelle …" discount lines are preserved.
+_SUMMARY_SUBSTRINGS = (
+    "sous-total", "sous total", "montant total", "total ht", "total ttc",
+    "total à payer", "total a payer", "net à payer", "net a payer",
+    "net à prélever", "net a prelever", "montant facturé", "montant facture",
+    "à prélever", "a prelever", "dont tva", "dont éco", "dont eco",
+    "montant net",
+)
+
+
+def _is_summary(desc: str) -> bool:
+    """True for total/tax/summary rows that must not become product lines."""
+    d = (desc or "").strip().lower()
+    if d in _SKIP_DESC:
+        return True
+    return any(k in d for k in _SUMMARY_SUBSTRINGS)
+
 
 def _match_header_field(cell: str) -> Optional[str]:
     c = (cell or "").strip().lower()
@@ -137,7 +155,7 @@ def lines_from_tables(tables: List[OcrTable]) -> List[InvoiceLineExtraction]:
                     if len(nums) >= 3:
                         qty = nums[-3]
 
-            if not desc or desc.strip().lower() in _SKIP_DESC:
+            if not desc or _is_summary(desc):
                 continue
             if pu is None and total is None and qty is None:
                 continue
@@ -196,11 +214,7 @@ def extract_products(text: str) -> List[InvoiceLineExtraction]:
         # (service invoices like "Abonnement … 48,98 €" have no qty/unit columns).
         m3 = re.search(rf"^(?P<desc>.+?)\s+(?P<amount>-?{num})\s*(?:€|eur(?:os?)?|\$)", raw, re.IGNORECASE)
         if m3:
-            low = raw.lower()
-            if not any(k in low for k in (
-                "total", "tva", "dont ", "net à", "net a", "montant facturé",
-                "montant facture", "sous-total", "à prélever", "a prelever",
-            )):
+            if not _is_summary(m3.group("desc")) and "total" not in raw.lower():
                 desc = m3.group("desc").strip(" :\t-")
                 amount = to_number(m3.group("amount"))
                 if desc and amount is not None:
@@ -251,6 +265,9 @@ def _parse_header(text: str):
         r"Date[:\s]+([0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{4}/[0-9]{2}/[0-9]{2}|[0-9]{2}/[0-9]{2}/[0-9]{4})",
         text,
     )
+    # Fallback for "FACTURE N° … du 25/01/2026" (no "Date:" label).
+    if m_date is None:
+        m_date = re.search(r"\bdu\s+([0-9]{2}/[0-9]{2}/[0-9]{4})", text, re.IGNORECASE)
     if m_date:
         for fmt in ("fromiso", "%d/%m/%Y", "%Y/%m/%d"):
             try:
@@ -278,6 +295,27 @@ def _parse_header(text: str):
     return supplier, invoice_date, invoice_number
 
 
+def _parse_total(text: str) -> Optional[float]:
+    """Extract the invoice grand total from a total/net-to-pay line."""
+    num = r"-?[0-9][0-9 .,]*"
+    keys = (
+        "montant net à prélever", "montant net a prelever", "net à payer",
+        "net a payer", "total ttc", "montant facturé", "montant facture",
+        "total à payer", "total a payer", "montant net",
+    )
+    for raw in text.splitlines():
+        if any(k in raw.lower() for k in keys):
+            # prefer the amount right before a currency mark; else the last number
+            amounts = re.findall(rf"({num})\s*(?:€|eur(?:os?)?|\$)", raw, re.IGNORECASE)
+            if not amounts:
+                amounts = re.findall(num, raw)
+            if amounts:
+                val = to_number(amounts[-1])
+                if val is not None:
+                    return val
+    return None
+
+
 def _result_from_ocr(ocr: OcrResult) -> InvoiceExtractionResult:
     text = ocr.text or ""
     supplier, invoice_date, invoice_number = _parse_header(text)
@@ -295,6 +333,7 @@ def _result_from_ocr(ocr: OcrResult) -> InvoiceExtractionResult:
         supplier=ocr.supplier or supplier,
         date=ocr.date or invoice_date,
         invoice_number=ocr.invoice_number or invoice_number,
+        total_amount=ocr.total_amount or _parse_total(text),
         lines=lines,
         raw_text=text,
     )

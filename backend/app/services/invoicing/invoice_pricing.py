@@ -28,6 +28,8 @@ def persist_extraction(db: Session, tenant_id: str, invoice_id: str, extraction)
         invoice.invoice_number = extraction.invoice_number
     if extraction.date:
         invoice.date = extraction.date
+    if getattr(extraction, "total_amount", None) is not None:
+        invoice.total_amount = extraction.total_amount
     invoice.ocr_status = "parsed"
     invoice.parsed = True
 
