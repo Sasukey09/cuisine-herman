@@ -296,19 +296,31 @@ def _parse_header(text: str):
 
 
 def _parse_total(text: str) -> Optional[float]:
-    """Extract the invoice grand total from a total/net-to-pay line."""
-    num = r"-?[0-9][0-9 .,]*"
+    """Extract the invoice grand total from a total/net-to-pay line.
+
+    Uses a strict money pattern (decimals required, optional 3-digit thousands
+    groups) so a date year on the same line — "… le 03/02/2026  56,93 €" — is
+    not glued onto the amount.
+    """
+    amt = r"-?\d{1,3}(?:[  .]\d{3})*[.,]\d{2}"
     keys = (
         "montant net à prélever", "montant net a prelever", "net à payer",
         "net a payer", "total ttc", "montant facturé", "montant facture",
         "total à payer", "total a payer", "montant net",
     )
+    cur = r"(?:€|eur(?:os?)?|\$)"
+    # whole-euro fallback: no space-thousands (would glue a date year on) and
+    # not directly preceded by another digit.
+    int_amt = r"(?<!\d)-?\d{1,3}(?:\.\d{3})*"
     for raw in text.splitlines():
         if any(k in raw.lower() for k in keys):
-            # prefer the amount right before a currency mark; else the last number
-            amounts = re.findall(rf"({num})\s*(?:€|eur(?:os?)?|\$)", raw, re.IGNORECASE)
-            if not amounts:
-                amounts = re.findall(num, raw)
+            # prefer a decimal amount before a currency mark; then a whole-euro
+            # amount before the currency mark; finally any decimal amount.
+            amounts = (
+                re.findall(rf"({amt})\s*{cur}", raw, re.IGNORECASE)
+                or re.findall(rf"({int_amt})\s*{cur}", raw, re.IGNORECASE)
+                or re.findall(amt, raw)
+            )
             if amounts:
                 val = to_number(amounts[-1])
                 if val is not None:
