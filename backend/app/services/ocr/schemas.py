@@ -19,6 +19,7 @@ class InvoiceExtractionResult(BaseModel):
     supplier: Optional[str] = None
     date: Optional[DateType] = None
     invoice_number: Optional[str] = None
+    total_amount: Optional[float] = None
     lines: List[InvoiceLineExtraction] = []
     raw_text: Optional[str] = None
 
