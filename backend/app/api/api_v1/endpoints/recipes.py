@@ -1,18 +1,26 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.api.deps import get_current_tenant_id, require_writer
 from app.schemas.schemas import (
     RecipeCreate,
+    RecipeUpdate,
     RecipeRead,
     RecipeVersionCreate,
     RecipeVersionRead,
     ComputeCostRequest,
     RecipeCostRead,
 )
-from app.crud.crud_recipe import create_recipe, get_recipe, list_recipes
+from app.crud.crud_recipe import (
+    create_recipe,
+    get_recipe,
+    list_recipes,
+    update_recipe,
+    delete_recipe,
+)
 from app.crud import crud_recipe_version
 from app.services.costing import cost_engine
 
@@ -49,6 +57,40 @@ def api_get_recipe(
     if not recipe:
         raise HTTPException(status_code=404, detail="Recipe not found")
     return recipe
+
+
+@router.put("/{recipe_id}", response_model=RecipeRead)
+def api_update_recipe(
+    recipe_id: str,
+    payload: RecipeUpdate,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+    _: list = Depends(require_writer),
+):
+    recipe = update_recipe(db, recipe_id, tenant_id, payload)
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    return recipe
+
+
+@router.delete("/{recipe_id}", status_code=204)
+def api_delete_recipe(
+    recipe_id: str,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+    _: list = Depends(require_writer),
+):
+    try:
+        deleted = delete_recipe(db, recipe_id, tenant_id)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Recette référencée — suppression impossible.",
+        )
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    return None
 
 
 @router.post("/{recipe_id}/versions", response_model=RecipeVersionRead, status_code=201)

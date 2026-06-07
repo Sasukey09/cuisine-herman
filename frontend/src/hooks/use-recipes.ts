@@ -7,6 +7,8 @@ import {
   listRecipes,
   getRecipe,
   createRecipe,
+  updateRecipe,
+  deleteRecipe,
   getVersion,
   createVersion,
   computeCost,
@@ -49,6 +51,31 @@ export function useCreateRecipe() {
       qc.invalidateQueries({ queryKey: KEY });
     },
     onError: (e) => toast.error(getApiErrorMessage(e)),
+  });
+}
+
+export function useUpdateRecipe() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { id: string; payload: RecipePayload }) =>
+      updateRecipe(vars.id, vars.payload),
+    onSuccess: () => {
+      toast.success("Recette modifiée");
+      qc.invalidateQueries({ queryKey: KEY });
+    },
+    onError: (e) => toast.error(getApiErrorMessage(e)),
+  });
+}
+
+export function useDeleteRecipe() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteRecipe(id),
+    onSuccess: () => {
+      toast.success("Recette supprimée");
+      qc.invalidateQueries({ queryKey: KEY });
+    },
+    onError: (e) => toast.error(getApiErrorMessage(e, "Suppression impossible")),
   });
 }
 

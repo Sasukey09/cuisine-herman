@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -16,7 +17,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useCreateRecipe } from "@/hooks/use-recipes";
+import { useCreateRecipe, useUpdateRecipe } from "@/hooks/use-recipes";
+import type { Recipe } from "@/services/types";
 
 const numberOptional = z.preprocess(
   (v) => (v === "" || v == null ? undefined : Number(v)),
@@ -33,11 +35,17 @@ type Values = z.infer<typeof schema>;
 export function RecipeFormDialog({
   open,
   onOpenChange,
+  recipe = null,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** null => create, otherwise edit the given recipe */
+  recipe?: Recipe | null;
 }) {
+  const isEdit = recipe !== null;
   const create = useCreateRecipe();
+  const update = useUpdateRecipe();
+  const pending = create.isPending || update.isPending;
   const {
     register,
     handleSubmit,
@@ -45,25 +53,31 @@ export function RecipeFormDialog({
     formState: { errors },
   } = useForm<Values>({ resolver: zodResolver(schema) });
 
+  useEffect(() => {
+    if (open) {
+      reset({ name: recipe?.name ?? "", yield_qty: recipe?.yield_qty ?? undefined });
+    }
+  }, [open, recipe, reset]);
+
   const onSubmit = (values: Values) => {
-    create.mutate(
-      { name: values.name, yield_qty: values.yield_qty ?? null },
-      {
-        onSuccess: () => {
-          reset({ name: "", yield_qty: undefined });
-          onOpenChange(false);
-        },
-      },
-    );
+    const payload = { name: values.name, yield_qty: values.yield_qty ?? null };
+    const onSuccess = () => onOpenChange(false);
+    if (isEdit) {
+      update.mutate({ id: recipe!.id, payload }, { onSuccess });
+    } else {
+      create.mutate(payload, { onSuccess });
+    }
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Nouvelle recette</DialogTitle>
+          <DialogTitle>{isEdit ? "Modifier la recette" : "Nouvelle recette"}</DialogTitle>
           <DialogDescription>
-            Créez la recette, puis ajoutez sa fiche technique (ingrédients).
+            {isEdit
+              ? "Modifiez le nom ou le nombre de portions."
+              : "Créez la recette, puis ajoutez sa fiche technique (ingrédients)."}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
@@ -83,9 +97,9 @@ export function RecipeFormDialog({
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Annuler
             </Button>
-            <Button type="submit" disabled={create.isPending}>
-              {create.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-              Créer
+            <Button type="submit" disabled={pending}>
+              {pending && <Loader2 className="h-4 w-4 animate-spin" />}
+              {isEdit ? "Enregistrer" : "Créer"}
             </Button>
           </DialogFooter>
         </form>
