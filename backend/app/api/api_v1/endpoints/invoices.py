@@ -287,12 +287,15 @@ def api_create_product_from_line(
     if not name:
         raise HTTPException(status_code=400, detail="Un nom de produit est requis")
 
+    unit_id = line.unit_id  # read before create_product's commit expires the row
     product = crud_product.create_product(
         db,
-        ProductCreate(name=name, sku=payload.sku, base_unit_id=line.unit_id),
+        ProductCreate(name=name, sku=payload.sku, base_unit_id=unit_id),
         tenant_id,
     )
-    # map the line to the new product + create its price + recompute recipes
+    # re-fetch the line (the commit above expired it), then map to the new
+    # product + create its price + recompute recipes.
+    line = crud_invoice_line.get_line(db, tenant_id, line_id)
     invoice_pricing.map_line_product(db, tenant_id, line, str(product.id))
     return product
 
