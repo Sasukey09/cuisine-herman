@@ -5,6 +5,7 @@ import type {
   InvoiceIngestResult,
   InvoiceProcessSummary,
   MapProductResult,
+  Product,
 } from "./types";
 
 export async function listInvoices(params: { limit?: number; skip?: number } = {}) {
@@ -92,6 +93,18 @@ export async function updateInvoiceLine(
 ): Promise<InvoiceLine> {
   const { data } = await api.patch<InvoiceLine>(
     `/invoices/${invoiceId}/lines/${lineId}`,
+    fields,
+  );
+  return data;
+}
+
+export async function createProductFromLine(
+  invoiceId: string,
+  lineId: string,
+  fields: { name?: string | null; sku?: string | null } = {},
+): Promise<Product> {
+  const { data } = await api.post<Product>(
+    `/invoices/${invoiceId}/lines/${lineId}/create-product`,
     fields,
   );
   return data;

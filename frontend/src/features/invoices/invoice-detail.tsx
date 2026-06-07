@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, RefreshCw, Link2, AlertCircle, FileText, Pencil, Trash2, Plus } from "lucide-react";
+import { ArrowLeft, RefreshCw, Link2, AlertCircle, FileText, Pencil, Trash2, Plus, PackagePlus } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -38,6 +38,7 @@ import { InvoiceStatusBadge } from "./invoice-status-badge";
 import { MapProductDialog } from "./map-product-dialog";
 import { EditLineDialog } from "./edit-line-dialog";
 import { EditInvoiceDialog } from "./edit-invoice-dialog";
+import { CreateProductDialog } from "./create-product-dialog";
 import {
   useInvoice,
   useInvoiceLines,
@@ -92,6 +93,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
   });
   const [editInvoiceOpen, setEditInvoiceOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [createProductLine, setCreateProductLine] = useState<InvoiceLine | null>(null);
 
   const openFile = async () => {
     try {
@@ -261,6 +263,16 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
                           <Link2 className="h-4 w-4" />
                           {line.product_id ? "Produit" : "Associer"}
                         </Button>
+                        {!line.product_id && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setCreateProductLine(line)}
+                          >
+                            <PackagePlus className="h-4 w-4" />
+                            Créer produit
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="icon"
@@ -297,6 +309,13 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
         open={editInvoiceOpen}
         onOpenChange={setEditInvoiceOpen}
         invoice={invoice ?? null}
+      />
+
+      <CreateProductDialog
+        open={Boolean(createProductLine)}
+        onOpenChange={(o) => !o && setCreateProductLine(null)}
+        invoiceId={invoiceId}
+        line={createProductLine}
       />
 
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>

@@ -523,3 +523,12 @@ class InvoiceLineCreate(BaseModel):
     unit_price: Optional[float] = None
     line_total: Optional[float] = None
     product_id: Optional[str] = None
+
+
+class CreateProductFromLine(BaseModel):
+    """Optional overrides when turning an invoice line into a new product.
+
+    Defaults: name = the line description, unit = the line's unit.
+    """
+    name: Optional[str] = None
+    sku: Optional[str] = None
