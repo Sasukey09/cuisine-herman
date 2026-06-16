@@ -303,6 +303,69 @@ export interface VideoSaveResult {
   note: string;
 }
 
+// --- Recipe import from PDF ------------------------------------------------
+export interface RecipeImportIngredient {
+  name: string;
+  quantity: number | null;
+  unit: string | null;
+  matched_product_id: string | null;
+  matched_product_name: string | null;
+  match_confidence: number | null;
+  unit_recognized: boolean;
+}
+
+export interface RecipeImportCost {
+  computed_cost_total: number | null;
+  cost_per_portion: number | null;
+  food_cost_pct: number | null;
+  margin_estimated: number | null;
+  has_missing_prices: boolean;
+}
+
+export interface RecipeImportPreview {
+  recipe_name: string;
+  servings: number | null;
+  ingredients: RecipeImportIngredient[];
+  instructions: string[];
+  cost: RecipeImportCost;
+  unmatched_ingredients: string[];
+  unknown_units: string[];
+  note: string | null;
+}
+
+export interface RecipeImportStatus {
+  job_id: string;
+  status: "queued" | "processing" | "done" | "error";
+  error: string | null;
+  recipe_id: string | null;
+  preview: RecipeImportPreview | null;
+}
+
+export interface RecipeImportSaveIngredient {
+  name: string;
+  quantity: number | null;
+  unit: string | null;
+  product_id: string | null;
+}
+
+export interface RecipeImportSaveRequest {
+  recipe_name: string;
+  servings: number | null;
+  instructions: string[];
+  ingredients: RecipeImportSaveIngredient[];
+  selling_price?: number | null;
+}
+
+export interface RecipeImportSaveResult {
+  recipe_id: string;
+  version_id: string;
+  name: string;
+  yield_qty: number;
+  unmatched_ingredients: string[];
+  unknown_units: string[];
+  cost: RecipeImportCost;
+}
+
 export interface CustomMetric {
   id: string;
   name: string;

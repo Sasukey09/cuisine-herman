@@ -369,6 +369,62 @@ class VideoSaveRequest(BaseModel):
 
 
 # --------------------------------------------------------------------------- #
+# Recipe import from PDF
+# --------------------------------------------------------------------------- #
+class RecipeImportIngredient(BaseModel):
+    """An extracted ingredient with its (auto) product match."""
+    name: str
+    quantity: Optional[float] = None
+    unit: Optional[str] = None
+    matched_product_id: Optional[str] = None
+    matched_product_name: Optional[str] = None
+    match_confidence: Optional[float] = None
+    unit_recognized: bool = True
+
+
+class RecipeImportCost(BaseModel):
+    computed_cost_total: Optional[float] = None
+    cost_per_portion: Optional[float] = None
+    food_cost_pct: Optional[float] = None
+    margin_estimated: Optional[float] = None
+    has_missing_prices: bool = False
+
+
+class RecipeImportPreview(BaseModel):
+    recipe_name: str = ""
+    servings: Optional[float] = None
+    ingredients: List[RecipeImportIngredient] = []
+    instructions: List[str] = []
+    cost: RecipeImportCost = RecipeImportCost()
+    unmatched_ingredients: List[str] = []
+    unknown_units: List[str] = []
+    note: Optional[str] = None
+
+
+class RecipeImportStatus(BaseModel):
+    job_id: str
+    status: str  # queued | processing | done | error
+    error: Optional[str] = None
+    recipe_id: Optional[str] = None  # set once the preview is validated/saved
+    preview: Optional[RecipeImportPreview] = None
+
+
+class RecipeImportSaveIngredient(BaseModel):
+    name: str
+    quantity: Optional[float] = None
+    unit: Optional[str] = None
+    product_id: Optional[str] = None  # user-confirmed/corrected mapping
+
+
+class RecipeImportSaveRequest(BaseModel):
+    recipe_name: str
+    servings: Optional[float] = None
+    instructions: List[str] = []
+    ingredients: List[RecipeImportSaveIngredient] = []
+    selling_price: Optional[float] = None
+
+
+# --------------------------------------------------------------------------- #
 # Custom metrics (no-code indicators)
 # --------------------------------------------------------------------------- #
 class CustomMetricCreate(BaseModel):
