@@ -6,10 +6,16 @@ import type {
   RecipeVersionPayload,
   ComputeCostRequest,
   RecipeCost,
+  RecipeInstruction,
   RecipeImportStatus,
   RecipeImportSaveRequest,
   RecipeImportSaveResult,
 } from "./types";
+
+export async function getRecipeInstructions(recipeId: string) {
+  const { data } = await api.get<RecipeInstruction[]>(`/recipes/${recipeId}/instructions`);
+  return data;
+}
 
 export async function listRecipes(params: { limit?: number; skip?: number } = {}) {
   const { data } = await api.get<Recipe[]>("/recipes/", { params });

@@ -15,7 +15,6 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from app.models.models import VideoSource, Transcription
-from app.services.ai import tools as ai_tools
 from .platforms import detect_platform
 from .transcript import get_transcript
 from .extractor import get_extractor
@@ -75,11 +74,29 @@ def save_draft(
     name: str,
     yield_qty: Optional[float],
     ingredients: List[Dict[str, Any]],
+    instructions: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
-    """Persist an (edited) draft as a recipe + compute cost (reuses create_recipe_draft)."""
-    payload = {
-        "name": name,
-        "yield_qty": yield_qty or 1,
-        "ingredients": ingredients,
-    }
-    return ai_tools.execute_tool(db, tenant_id, "create_recipe_draft", payload)
+    """Persist an (edited) draft as a FULL recipe (ingredients + procedure + cost).
+
+    Routes through the shared recipe-import builder so a video recipe is saved
+    exactly like a manual / PDF one — nothing extracted by the AI is dropped.
+    """
+    from app.services.recipe_import import service as recipe_import_service
+
+    mapped = [
+        {
+            "name": ing.get("name"),
+            "quantity": ing.get("qty"),
+            "unit": ing.get("unit"),
+            "product_id": ing.get("product_id"),
+        }
+        for ing in (ingredients or [])
+    ]
+    return recipe_import_service.save_import(
+        db,
+        tenant_id,
+        name=name,
+        servings=yield_qty,
+        instructions=instructions or [],
+        ingredients=mapped,
+    )

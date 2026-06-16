@@ -22,9 +22,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ListOrdered } from "lucide-react";
+
 import { VersionFormDialog } from "./version-form-dialog";
 import { CostPanel } from "./cost-panel";
-import { useRecipe, useRecipeVersion } from "@/hooks/use-recipes";
+import { useRecipe, useRecipeVersion, useRecipeInstructions } from "@/hooks/use-recipes";
 import { useProducts } from "@/hooks/use-products";
 import { useAuthStore } from "@/stores/auth-store";
 import { formatNumber, formatPercent } from "@/lib/utils";
@@ -32,6 +34,7 @@ import { formatNumber, formatPercent } from "@/lib/utils";
 export function RecipeDetail({ recipeId }: { recipeId: string }) {
   const { data: recipe, isLoading, isError } = useRecipe(recipeId);
   const version = useRecipeVersion(recipeId, recipe?.current_version_id ?? null);
+  const { data: instructions } = useRecipeInstructions(recipeId);
   const { data: products } = useProducts();
   const canWrite = useAuthStore((s) => s.hasRole("admin", "manager"));
   const [versionOpen, setVersionOpen] = useState(false);
@@ -124,9 +127,11 @@ export function RecipeDetail({ recipeId }: { recipeId: string }) {
               </TableHeader>
               <TableBody>
                 {version.data.ingredients.map((ing) => (
-                  <TableRow key={ing.id ?? ing.product_id}>
+                  <TableRow key={ing.id ?? ing.product_id ?? ing.ingredient_name}>
                     <TableCell className="pl-6 font-medium">
-                      {productNames.get(ing.product_id) ?? "Produit"}
+                      {(ing.product_id ? productNames.get(ing.product_id) : null) ??
+                        ing.ingredient_name ??
+                        "Produit"}
                     </TableCell>
                     <TableCell className="tabular-nums">{formatNumber(ing.qty)}</TableCell>
                     <TableCell className="text-muted-foreground">{formatPercent(ing.loss_pct)}</TableCell>
@@ -138,6 +143,26 @@ export function RecipeDetail({ recipeId }: { recipeId: string }) {
           )}
         </CardContent>
       </Card>
+
+      {/* Procédure */}
+      {instructions && instructions.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <ListOrdered className="h-4 w-4" />
+              Procédure
+            </CardTitle>
+            <CardDescription>Étapes de préparation.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ol className="list-decimal space-y-2 pl-5 text-sm">
+              {instructions.map((s) => (
+                <li key={s.step_number}>{s.content}</li>
+              ))}
+            </ol>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Coûts */}
       {hasVersion && recipe?.current_version_id && (

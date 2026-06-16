@@ -148,13 +148,20 @@ export interface RecipePayload {
 
 export interface RecipeIngredient {
   id?: string;
-  product_id: string;
+  product_id: string | null;
+  ingredient_name?: string | null;
   qty?: number | null;
   unit_id?: number | null;
   qty_normalized?: number | null;
   loss_pct?: number | null;
   yield_pct?: number | null;
   prep_notes?: string | null;
+}
+
+export interface RecipeInstruction {
+  id?: string;
+  step_number: number;
+  content: string;
 }
 
 export interface RecipeVersion {

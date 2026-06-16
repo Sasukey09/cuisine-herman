@@ -12,6 +12,7 @@ import {
   getVersion,
   createVersion,
   computeCost,
+  getRecipeInstructions,
   importRecipePdf,
   saveRecipeImport,
 } from "@/services/recipes-service";
@@ -34,6 +35,14 @@ export function useRecipe(id?: string) {
     queryKey: [...KEY, id],
     queryFn: () => getRecipe(id as string),
     enabled: Boolean(id),
+  });
+}
+
+export function useRecipeInstructions(recipeId?: string) {
+  return useQuery({
+    queryKey: [...KEY, recipeId, "instructions"],
+    queryFn: () => getRecipeInstructions(recipeId as string),
+    enabled: Boolean(recipeId),
   });
 }
 

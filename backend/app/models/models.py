@@ -426,6 +426,17 @@ class PurchaseHistory(Base):
     created_at = Column(TIMESTAMP, server_default=func.now())
 
 
+class RecipeInstruction(Base):
+    """An ordered preparation step of a recipe. Persisted so a recipe created
+    from a video/PDF keeps its full procedure, exactly like a manual one."""
+    __tablename__ = "recipe_instructions"
+    id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
+    recipe_id = Column(UUID(as_uuid=False), ForeignKey("recipes.id", ondelete="CASCADE"))
+    step_number = Column(Integer, nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+
 class PriceAlert(Base):
     """A persisted alert raised on import: a price moved, or a recipe's matter
     cost jumped (margin pressure)."""

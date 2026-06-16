@@ -64,5 +64,6 @@ def api_video_save(
         raise HTTPException(status_code=400, detail="Nom de recette requis")
     ingredients = [i.dict() for i in payload.ingredients]
     return video_service.save_draft(
-        db, tenant_id, payload.name.strip(), payload.yield_qty, ingredients
+        db, tenant_id, payload.name.strip(), payload.yield_qty, ingredients,
+        instructions=payload.steps,
     )

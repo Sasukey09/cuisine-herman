@@ -14,6 +14,7 @@ export async function saveVideoRecipe(payload: {
   name: string;
   yield_qty: number | null;
   ingredients: VideoIngredientDraft[];
+  steps: string[];
 }): Promise<VideoSaveResult> {
   const { data } = await api.post<VideoSaveResult>("/video/save", payload);
   return data;

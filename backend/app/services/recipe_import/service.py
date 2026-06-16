@@ -219,6 +219,11 @@ def save_import(db: Session, tenant_id: str, name: str, servings: Optional[float
     recipe.current_version_id = version.id
     db.commit()
 
+    # Persist the procedure as first-class RecipeInstruction rows (so it's read
+    # back like a manual recipe), in addition to version.notes/meta above.
+    from app.crud import crud_recipe
+    crud_recipe.replace_instructions(db, str(recipe.id), steps)
+
     cost = cost_engine.compute_recipe_version_cost(
         db, tenant_id, str(version.id), selling_price=selling_price, persist=True
     )

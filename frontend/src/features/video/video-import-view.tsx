@@ -29,7 +29,7 @@ export function VideoImportView() {
   const [name, setName] = useState("");
   const [portions, setPortions] = useState<string>("");
   const [rows, setRows] = useState<Row[]>([]);
-  const [steps, setSteps] = useState<string[]>([]);
+  const [stepsText, setStepsText] = useState("");
   const [hasDraft, setHasDraft] = useState(false);
   const [saved, setSaved] = useState<VideoSaveResult | null>(null);
 
@@ -46,7 +46,7 @@ export function VideoImportView() {
         setName(res.draft.name);
         setPortions(res.draft.yield_qty ? String(res.draft.yield_qty) : "");
         setRows(res.draft.ingredients ?? []);
-        setSteps(res.draft.steps ?? []);
+        setStepsText((res.draft.steps ?? []).join("\n"));
         setHasDraft(true);
         toast.success("Recette extraite — vérifiez les quantités estimées.");
       },
@@ -76,8 +76,12 @@ export function VideoImportView() {
         qty: r.qty === null || (r.qty as unknown) === "" ? null : Number(r.qty),
         unit: r.unit?.trim() || null,
       }));
+    const steps = stepsText
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
     save.mutate(
-      { name: name.trim(), yield_qty: portions ? Number(portions) : null, ingredients },
+      { name: name.trim(), yield_qty: portions ? Number(portions) : null, ingredients, steps },
       {
         onSuccess: (res) => {
           setSaved(res);
@@ -191,16 +195,16 @@ export function VideoImportView() {
               </Button>
             </div>
 
-            {steps.length > 0 && (
-              <div className="space-y-1">
-                <Label>Étapes</Label>
-                <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
-                  {steps.map((s, i) => (
-                    <li key={i}>{s}</li>
-                  ))}
-                </ol>
-              </div>
-            )}
+            <div className="space-y-2">
+              <Label htmlFor="vi-steps">Étapes (une par ligne)</Label>
+              <textarea
+                id="vi-steps"
+                value={stepsText}
+                onChange={(e) => setStepsText(e.target.value)}
+                rows={6}
+                className="w-full rounded-md border border-input bg-background p-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+            </div>
 
             <div className="flex items-center gap-3 pt-2">
               <Button onClick={onSave} disabled={save.isPending}>
