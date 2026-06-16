@@ -149,7 +149,9 @@ class RecipeRead(RecipeBase):
 
 
 class RecipeIngredientCreate(BaseModel):
-    product_id: str
+    # Optional: ingredients imported from a PDF / video / the assistant may not be
+    # matched to a catalog product yet (kept by free-text ingredient_name).
+    product_id: Optional[str] = None
     qty: Optional[float] = None
     unit_id: Optional[int] = None
     qty_normalized: Optional[float] = None
@@ -160,6 +162,7 @@ class RecipeIngredientCreate(BaseModel):
 
 class RecipeIngredientRead(RecipeIngredientCreate):
     id: str
+    ingredient_name: Optional[str] = None  # free-text label when unmatched
 
     class Config:
         orm_mode = True
