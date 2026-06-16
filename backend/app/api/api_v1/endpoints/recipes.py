@@ -15,6 +15,7 @@ from app.schemas.schemas import (
     RecipeCostRead,
     RecipeImportStatus,
     RecipeImportSaveRequest,
+    RecipeInstructionRead,
 )
 from app.crud.crud_recipe import (
     create_recipe,
@@ -22,6 +23,7 @@ from app.crud.crud_recipe import (
     list_recipes,
     update_recipe,
     delete_recipe,
+    get_instructions,
 )
 from app.crud import crud_recipe_version
 from app.services.costing import cost_engine
@@ -121,6 +123,56 @@ def api_get_recipe(
     if not recipe:
         raise HTTPException(status_code=404, detail="Recipe not found")
     return recipe
+
+
+@router.get("/{recipe_id}/instructions", response_model=List[RecipeInstructionRead])
+def api_recipe_instructions(
+    recipe_id: str,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """Ordered preparation steps (procedure) of a recipe."""
+    if not get_recipe(db, recipe_id, tenant_id):
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    return get_instructions(db, recipe_id)
+
+
+@router.get("/{recipe_id}/full")
+def api_recipe_full(
+    recipe_id: str,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """Complete recipe in one call: {recipe, ingredients, instructions}."""
+    recipe = get_recipe(db, recipe_id, tenant_id)
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    version_id = str(recipe.current_version_id) if recipe.current_version_id else None
+    ingredients = crud_recipe_version.get_ingredients(db, version_id) if version_id else []
+    return {
+        "recipe": {
+            "id": str(recipe.id),
+            "name": recipe.name,
+            "yield_qty": float(recipe.yield_qty) if recipe.yield_qty is not None else None,
+            "current_version_id": version_id,
+        },
+        "ingredients": [
+            {
+                "id": str(i.id),
+                "product_id": str(i.product_id) if i.product_id else None,
+                "ingredient_name": i.ingredient_name,
+                "qty": float(i.qty) if i.qty is not None else None,
+                "unit_id": i.unit_id,
+                "loss_pct": float(i.loss_pct) if i.loss_pct is not None else None,
+                "yield_pct": float(i.yield_pct) if i.yield_pct is not None else None,
+            }
+            for i in ingredients
+        ],
+        "instructions": [
+            {"step_number": s.step_number, "content": s.content}
+            for s in get_instructions(db, recipe_id)
+        ],
+    }
 
 
 @router.put("/{recipe_id}", response_model=RecipeRead)

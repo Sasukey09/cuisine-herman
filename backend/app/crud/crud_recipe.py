@@ -1,7 +1,40 @@
+from typing import List
 from sqlalchemy.orm import Session
-from app.models.models import Recipe, RecipeVersion
+from app.models.models import Recipe, RecipeVersion, RecipeInstruction
 from app.schemas.schemas import RecipeCreate, RecipeUpdate
 import uuid
+
+
+def get_instructions(db: Session, recipe_id: str) -> List[RecipeInstruction]:
+    return (
+        db.query(RecipeInstruction)
+        .filter(RecipeInstruction.recipe_id == recipe_id)
+        .order_by(RecipeInstruction.step_number.asc())
+        .all()
+    )
+
+
+def replace_instructions(db: Session, recipe_id: str, steps: List[str]) -> int:
+    """Replace a recipe's procedure with ``steps`` (1-based, blanks dropped)."""
+    db.query(RecipeInstruction).filter(
+        RecipeInstruction.recipe_id == recipe_id
+    ).delete(synchronize_session=False)
+    n = 0
+    for content in steps or []:
+        text = (content or "").strip()
+        if not text:
+            continue
+        n += 1
+        db.add(
+            RecipeInstruction(
+                id=str(uuid.uuid4()),
+                recipe_id=recipe_id,
+                step_number=n,
+                content=text,
+            )
+        )
+    db.commit()
+    return n
 
 
 def create_recipe(db: Session, payload: RecipeCreate, tenant_id: str) -> Recipe:

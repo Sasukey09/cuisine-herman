@@ -261,6 +261,11 @@ def test_save_import_persists_and_costs(monkeypatch):
     monkeypatch.setattr(svc.crud_price, "get_units_by_code", lambda db: {"g": 1, "kg": 2})
     # explicit product_id is honored; name-matching only fills the gaps
     monkeypatch.setattr(svc, "match_product", lambda db, t, name: {"product_id": "auto", "confidence_score": 70.0})
+    steps_seen = {}
+    monkeypatch.setattr(
+        "app.crud.crud_recipe.replace_instructions",
+        lambda db, rid, steps: steps_seen.update({"steps": steps}) or len(steps),
+    )
     captured = {}
 
     def fake_cost(db, tenant_id, version_id, selling_price=None, persist=True):
@@ -286,3 +291,5 @@ def test_save_import_persists_and_costs(monkeypatch):
     assert out["cost"]["food_cost_pct"] == 25.0
     assert out["cost"]["cost_per_portion"] == 1.25
     assert captured["selling_price"] == 5.0
+    # the procedure is persisted as instructions, not dropped
+    assert steps_seen["steps"] == ["Étaler", "Cuire"]

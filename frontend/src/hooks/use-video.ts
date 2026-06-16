@@ -15,6 +15,7 @@ export function useSaveVideoRecipe() {
       name: string;
       yield_qty: number | null;
       ingredients: VideoIngredientDraft[];
+      steps: string[];
     }) => saveVideoRecipe(payload),
   });
 }

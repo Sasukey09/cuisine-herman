@@ -139,6 +139,15 @@ class RecipeUpdate(BaseModel):
     yield_qty: Optional[float] = None
 
 
+class RecipeInstructionRead(BaseModel):
+    id: str
+    step_number: int
+    content: str
+
+    class Config:
+        orm_mode = True
+
+
 class RecipeRead(RecipeBase):
     id: str
     current_version_id: Optional[str]
@@ -369,6 +378,7 @@ class VideoSaveRequest(BaseModel):
     name: str
     yield_qty: Optional[float] = None
     ingredients: List[VideoIngredientDraft] = []
+    steps: List[str] = []
 
 
 # --------------------------------------------------------------------------- #
