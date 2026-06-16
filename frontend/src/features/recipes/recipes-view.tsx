@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Plus, ChefHat, Pencil, Trash2 } from "lucide-react";
+import { Plus, ChefHat, Pencil, Trash2, FileUp } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -43,17 +43,25 @@ export function RecipesView() {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
         {canWrite && (
-          <Button
-            onClick={() => {
-              setEditing(null);
-              setFormOpen(true);
-            }}
-          >
-            <Plus className="h-4 w-4" />
-            Nouvelle recette
-          </Button>
+          <>
+            <Button asChild variant="outline">
+              <Link href="/import-recette">
+                <FileUp className="h-4 w-4" />
+                Importer une recette PDF
+              </Link>
+            </Button>
+            <Button
+              onClick={() => {
+                setEditing(null);
+                setFormOpen(true);
+              }}
+            >
+              <Plus className="h-4 w-4" />
+              Nouvelle recette
+            </Button>
+          </>
         )}
       </div>
 

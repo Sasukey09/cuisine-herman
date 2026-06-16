@@ -12,12 +12,15 @@ import {
   getVersion,
   createVersion,
   computeCost,
+  importRecipePdf,
+  saveRecipeImport,
 } from "@/services/recipes-service";
 import { getApiErrorMessage } from "@/lib/api-error";
 import type {
   RecipePayload,
   RecipeVersionPayload,
   ComputeCostRequest,
+  RecipeImportSaveRequest,
 } from "@/services/types";
 
 const KEY = ["recipes"];
@@ -88,6 +91,26 @@ export function useCreateVersion(recipeId: string) {
       qc.invalidateQueries({ queryKey: [...KEY, recipeId] });
     },
     onError: (e) => toast.error(getApiErrorMessage(e)),
+  });
+}
+
+export function useImportRecipePdf() {
+  return useMutation({
+    mutationFn: (file: File) => importRecipePdf(file),
+    onError: (e) => toast.error(getApiErrorMessage(e, "Échec de l'import du PDF")),
+  });
+}
+
+export function useSaveRecipeImport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { payload: RecipeImportSaveRequest; jobId?: string }) =>
+      saveRecipeImport(vars.payload, vars.jobId),
+    onSuccess: () => {
+      toast.success("Fiche enregistrée et chiffrée");
+      qc.invalidateQueries({ queryKey: KEY });
+    },
+    onError: (e) => toast.error(getApiErrorMessage(e, "Échec de l'enregistrement")),
   });
 }
 

@@ -1,5 +1,5 @@
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -13,6 +13,8 @@ from app.schemas.schemas import (
     RecipeVersionRead,
     ComputeCostRequest,
     RecipeCostRead,
+    RecipeImportStatus,
+    RecipeImportSaveRequest,
 )
 from app.crud.crud_recipe import (
     create_recipe,
@@ -23,6 +25,7 @@ from app.crud.crud_recipe import (
 )
 from app.crud import crud_recipe_version
 from app.services.costing import cost_engine
+from app.services.recipe_import import service as recipe_import_service
 
 router = APIRouter()
 
@@ -45,6 +48,67 @@ def api_list_recipes(
     tenant_id: str = Depends(get_current_tenant_id),
 ):
     return list_recipes(db, tenant_id, skip=skip, limit=limit)
+
+
+@router.post("/import-pdf", response_model=RecipeImportStatus, status_code=201)
+async def api_import_recipe_pdf(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+    _: list = Depends(require_writer),
+):
+    """Upload a recipe PDF -> OCR -> AI extraction -> product matching -> cost
+    preview. Returns a job with status + an editable preview (nothing is saved as
+    a recipe yet — validate via POST /recipes/import-save)."""
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Fichier vide")
+    job = recipe_import_service.process_import(
+        db, tenant_id, content, file.content_type, file.filename
+    )
+    status = recipe_import_service.get_status(db, tenant_id, str(job.id))
+    return status
+
+
+@router.get("/import-status/{job_id}", response_model=RecipeImportStatus)
+def api_recipe_import_status(
+    job_id: str,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """Poll an import job: status (queued/processing/done/error) + preview."""
+    status = recipe_import_service.get_status(db, tenant_id, job_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="Import job not found")
+    return status
+
+
+@router.post("/import-save", status_code=201)
+def api_recipe_import_save(
+    payload: RecipeImportSaveRequest,
+    job_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+    _: list = Depends(require_writer),
+):
+    """Validate a preview: create the recipe + version + ingredients (honoring
+    user-corrected product mappings), store the steps, and compute the cost."""
+    name = (payload.recipe_name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Nom de recette requis")
+    if not payload.ingredients:
+        raise HTTPException(status_code=400, detail="Au moins un ingrédient est requis")
+    ingredients = [i.dict() for i in payload.ingredients]
+    return recipe_import_service.save_import(
+        db,
+        tenant_id,
+        name=name,
+        servings=payload.servings,
+        instructions=payload.instructions,
+        ingredients=ingredients,
+        selling_price=payload.selling_price,
+        job_id=job_id,
+    )
 
 
 @router.get("/{recipe_id}", response_model=RecipeRead)

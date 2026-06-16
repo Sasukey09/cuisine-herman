@@ -362,3 +362,38 @@ class CustomFormula(Base):
     expression = Column(Text, nullable=False)
     meta = Column("metadata", JSONB)
     created_at = Column(TIMESTAMP, server_default=func.now())
+
+
+class RecipeImportJob(Base):
+    """A "import a recipe from a PDF" run: OCR -> AI extraction -> preview.
+
+    Processed inline (status flips queued -> processing -> done/error) so it works
+    without a Celery worker, while still exposing a job/poll API.
+    """
+    __tablename__ = "recipe_import_jobs"
+    id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
+    tenant_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"))
+    filename = Column(Text)
+    content_type = Column(Text)
+    status = Column(Text, server_default=text("'queued'"))  # queued|processing|done|error
+    error = Column(Text)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    updated_at = Column(TIMESTAMP, server_default=func.now())
+
+
+class RecipeImportResult(Base):
+    """The structured extraction + product matches + cost preview of a job.
+
+    ``recipe_id`` is filled once the user validates the preview and the recipe is
+    actually created.
+    """
+    __tablename__ = "recipe_import_results"
+    id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
+    job_id = Column(UUID(as_uuid=False), ForeignKey("recipe_import_jobs.id", ondelete="CASCADE"))
+    tenant_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"))
+    raw_text = Column(Text)
+    recipe_name = Column(Text)
+    servings = Column(Numeric)
+    data = Column(JSONB)  # full RecipeImportPreview (ingredients+matches, steps, cost)
+    recipe_id = Column(UUID(as_uuid=False), ForeignKey("recipes.id", ondelete="SET NULL"))
+    created_at = Column(TIMESTAMP, server_default=func.now())
