@@ -20,8 +20,34 @@ from app.crud.crud_product import (
     delete_product,
 )
 from app.services.matching.product_matcher import match_product
+from app.services.purchasing import purchase_service
 
 router = APIRouter()
+
+
+@router.get("/{product_id}/price-history")
+def api_product_price_history(
+    product_id: str,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """Full purchase history of a product (date, supplier, qty, total, unit cost,
+    standardized cost/base unit, variation vs previous purchase)."""
+    if not get_product(db, product_id, tenant_id):
+        raise HTTPException(status_code=404, detail="Product not found")
+    return purchase_service.product_price_history(db, tenant_id, product_id)
+
+
+@router.get("/{product_id}/supplier-comparison")
+def api_product_supplier_comparison(
+    product_id: str,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """Latest standardized cost per supplier for a product; cheapest flagged."""
+    if not get_product(db, product_id, tenant_id):
+        raise HTTPException(status_code=404, detail="Product not found")
+    return purchase_service.supplier_comparison(db, tenant_id, product_id)
 
 
 @router.post("/match", response_model=ProductMatchResultRead)

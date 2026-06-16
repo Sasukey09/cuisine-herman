@@ -10,6 +10,7 @@ import {
   SlidersHorizontal,
   FileSpreadsheet,
   Settings,
+  TrendingUp,
   type LucideIcon,
 } from "lucide-react";
 
@@ -26,6 +27,7 @@ export const navItems: NavItem[] = [
   { title: "Produits", href: "/produits", icon: Package },
   { title: "Fournisseurs", href: "/fournisseurs", icon: Truck },
   { title: "Factures", href: "/factures", icon: FileText },
+  { title: "Variations prix", href: "/prix", icon: TrendingUp },
   { title: "Recettes", href: "/recettes", icon: ChefHat },
   { title: "Import vidéo", href: "/import-video", icon: Video },
   { title: "Assistant IA", href: "/assistant", icon: Bot },

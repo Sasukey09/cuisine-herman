@@ -22,11 +22,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useSupplier, useSupplierPrices } from "@/hooks/use-suppliers";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { useSupplierPurchaseHistory } from "@/hooks/use-purchasing";
+import { formatCurrency, formatDate, formatNumber } from "@/lib/utils";
 
 export function SupplierDetail({ supplierId }: { supplierId: string }) {
   const { data: supplier, isLoading, isError } = useSupplier(supplierId);
   const { data: prices, isLoading: pricesLoading } = useSupplierPrices(supplierId);
+  const { data: purchases } = useSupplierPurchaseHistory(supplierId);
 
   if (isError) {
     return (
@@ -85,6 +87,49 @@ export function SupplierDetail({ supplierId }: { supplierId: string }) {
               </span>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Historique des achats</CardTitle>
+          <CardDescription>Articles achetés chez ce fournisseur (qté, total, coût standardisé, variation).</CardDescription>
+        </CardHeader>
+        <CardContent className="px-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="pl-6">Date</TableHead>
+                <TableHead>Produit</TableHead>
+                <TableHead>Quantité</TableHead>
+                <TableHead>Total</TableHead>
+                <TableHead className="pr-6">Coût/unité std</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {!purchases || purchases.purchases.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5}>
+                    <p className="py-8 text-center text-sm text-muted-foreground">
+                      Aucun achat enregistré pour ce fournisseur.
+                    </p>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                purchases.purchases.map((p) => (
+                  <TableRow key={p.id}>
+                    <TableCell className="pl-6 text-muted-foreground">{formatDate(p.purchase_date)}</TableCell>
+                    <TableCell className="font-medium">{p.product_name ?? "—"}</TableCell>
+                    <TableCell className="tabular-nums">{formatNumber(p.qty)} {p.unit_code ?? ""}</TableCell>
+                    <TableCell className="tabular-nums">{formatCurrency(p.total_price, p.currency ?? "EUR")}</TableCell>
+                    <TableCell className="pr-6 tabular-nums">
+                      {formatCurrency(p.unit_cost_standard, p.currency ?? "EUR")}/{p.unit_code ?? "u"}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
 
