@@ -366,6 +366,100 @@ export interface RecipeImportSaveResult {
   cost: RecipeImportCost;
 }
 
+// --- Purchase & price tracking ---------------------------------------------
+export interface PurchaseRow {
+  id: string;
+  purchase_date: string | null;
+  supplier_id?: string | null;
+  supplier_name?: string | null;
+  product_id?: string | null;
+  product_name?: string | null;
+  qty: number | null;
+  unit_code: string | null;
+  unit_price: number | null;
+  total_price: number | null;
+  unit_cost_standard: number | null;
+  currency: string | null;
+  variation_pct: number | null;
+}
+
+export interface ProductPriceHistory {
+  product_id: string;
+  purchases: PurchaseRow[];
+  count: number;
+}
+
+export interface SupplierComparisonRow {
+  supplier_id: string | null;
+  supplier_name: string | null;
+  unit_cost_standard: number | null;
+  unit_code: string | null;
+  currency: string | null;
+  purchase_date: string | null;
+  is_cheapest: boolean;
+}
+
+export interface SupplierComparison {
+  product_id: string;
+  suppliers: SupplierComparisonRow[];
+  cheapest_supplier_id: string | null;
+}
+
+export interface SupplierPurchaseHistory {
+  supplier_id: string;
+  purchases: PurchaseRow[];
+  count: number;
+}
+
+export interface StoredPriceAlert {
+  id: string;
+  type: "price_increase" | "price_decrease" | "margin";
+  product_id: string | null;
+  product_name: string | null;
+  recipe_id: string | null;
+  old_value: number | null;
+  new_value: number | null;
+  change_pct: number | null;
+  message: string;
+  is_read: boolean;
+  created_at: string | null;
+}
+
+export interface PriceMovement {
+  product_id: string;
+  product_name: string | null;
+  old_cost: number;
+  new_cost: number;
+  change_pct: number;
+  unit_code: string | null;
+}
+
+export interface SavingOpportunity {
+  product_id: string;
+  product_name: string | null;
+  cheapest_supplier: string | null;
+  cheapest_cost: number;
+  current_max_cost: number;
+  saving_per_unit: number;
+  saving_pct: number | null;
+  unit_code: string | null;
+}
+
+export interface RecipeImpact {
+  recipe_id: string | null;
+  message: string;
+  change_pct: number | null;
+  created_at: string | null;
+}
+
+export interface PriceDashboard {
+  most_increased: PriceMovement[];
+  most_decreased: PriceMovement[];
+  savings_opportunities: SavingOpportunity[];
+  potential_savings_total: number;
+  recipe_impact: RecipeImpact[];
+}
+
 export interface CustomMetric {
   id: string;
   name: string;

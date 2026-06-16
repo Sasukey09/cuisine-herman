@@ -73,6 +73,10 @@ def _price_and_recompute(
     )
     metrics.PRICE_CHANGES_DETECTED.inc()
     cost_engine.recompute_for_product(db, str(line.product_id))
+    # Purchase ledger + price/margin alerts (best-effort; never breaks pricing).
+    from app.services.purchasing import purchase_service
+    purchase_service.record_purchase(db, tenant_id, line, invoice)
+    purchase_service.detect_margin_alerts(db, tenant_id, str(line.product_id))
     return str(price.id)
 
 

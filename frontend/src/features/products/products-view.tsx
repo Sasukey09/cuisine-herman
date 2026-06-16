@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Plus, Search, Pencil, Trash2, Package } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -101,7 +102,11 @@ export function ProductsView() {
             ) : (
               products.map((product) => (
                 <TableRow key={product.id}>
-                  <TableCell className="font-medium">{product.name}</TableCell>
+                  <TableCell className="font-medium">
+                    <Link href={`/produits/${product.id}`} className="hover:underline">
+                      {product.name}
+                    </Link>
+                  </TableCell>
                   <TableCell>
                     {product.sku ? (
                       <Badge variant="secondary">{product.sku}</Badge>

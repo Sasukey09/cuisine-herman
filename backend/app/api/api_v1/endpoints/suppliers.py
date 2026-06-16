@@ -19,8 +19,21 @@ from app.crud.crud_supplier import (
     delete_supplier,
     get_supplier_prices,
 )
+from app.services.purchasing import purchase_service
 
 router = APIRouter()
+
+
+@router.get("/{supplier_id}/purchase-history")
+def api_supplier_purchase_history(
+    supplier_id: str,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """All purchases recorded from this supplier (per product, with variations)."""
+    if not get_supplier(db, supplier_id, tenant_id):
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    return purchase_service.supplier_purchase_history(db, tenant_id, supplier_id)
 
 
 @router.post("/", response_model=SupplierRead, status_code=201)

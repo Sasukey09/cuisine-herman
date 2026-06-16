@@ -397,3 +397,48 @@ class RecipeImportResult(Base):
     data = Column(JSONB)  # full RecipeImportPreview (ingredients+matches, steps, cost)
     recipe_id = Column(UUID(as_uuid=False), ForeignKey("recipes.id", ondelete="SET NULL"))
     created_at = Column(TIMESTAMP, server_default=func.now())
+
+
+class PurchaseHistory(Base):
+    """One purchase line, recorded when an invoice line is matched + priced.
+
+    The richer analytics ledger alongside ``product_prices`` (which feeds the cost
+    engine): keeps qty/total, the standardized unit cost (per base unit), and the
+    variation vs the previous purchase of the same product from the same supplier.
+    """
+    __tablename__ = "purchase_history"
+    id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
+    tenant_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"))
+    product_id = Column(UUID(as_uuid=False), ForeignKey("products.id", ondelete="SET NULL"))
+    supplier_id = Column(UUID(as_uuid=False), ForeignKey("suppliers.id", ondelete="SET NULL"))
+    invoice_id = Column(UUID(as_uuid=False), ForeignKey("invoices.id", ondelete="SET NULL"))
+    invoice_line_id = Column(UUID(as_uuid=False), ForeignKey("invoice_lines.id", ondelete="SET NULL"))
+    invoice_number = Column(Text)
+    purchase_date = Column(Date)
+    qty = Column(Numeric)
+    unit_id = Column(Integer, ForeignKey("units.id"))
+    unit_code = Column(Text)
+    unit_price = Column(Numeric)        # price per `unit_code`
+    total_price = Column(Numeric)
+    unit_cost_standard = Column(Numeric)  # price per base unit (kg / l / piece)
+    currency = Column(Text)
+    variation_pct = Column(Numeric)     # vs previous purchase (same product+supplier)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+
+class PriceAlert(Base):
+    """A persisted alert raised on import: a price moved, or a recipe's matter
+    cost jumped (margin pressure)."""
+    __tablename__ = "price_alerts"
+    id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
+    tenant_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"))
+    type = Column(Text)  # price_increase | price_decrease | margin
+    product_id = Column(UUID(as_uuid=False), ForeignKey("products.id", ondelete="CASCADE"))
+    supplier_id = Column(UUID(as_uuid=False), ForeignKey("suppliers.id", ondelete="SET NULL"))
+    recipe_id = Column(UUID(as_uuid=False), ForeignKey("recipes.id", ondelete="CASCADE"))
+    old_value = Column(Numeric)
+    new_value = Column(Numeric)
+    change_pct = Column(Numeric)
+    message = Column(Text)
+    is_read = Column(Boolean, default=False)
+    created_at = Column(TIMESTAMP, server_default=func.now())

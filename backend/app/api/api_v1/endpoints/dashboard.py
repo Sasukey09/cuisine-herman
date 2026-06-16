@@ -13,8 +13,19 @@ from app.schemas.schemas import (
     PriceAlert,
 )
 from app.services.dashboard import dashboard_service
+from app.services.purchasing import purchase_service
 
 router = APIRouter()
+
+
+@router.get("/price-variations")
+def api_price_variations(
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """Price dashboard: most increased / decreased products, supplier-switch
+    savings opportunities, and recent recipe cost impacts."""
+    return purchase_service.price_dashboard(db, tenant_id)
 
 
 @router.get("/cost-trends", response_model=List[CostTrendPoint])
