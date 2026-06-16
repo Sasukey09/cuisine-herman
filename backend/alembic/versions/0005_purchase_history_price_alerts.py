@@ -5,14 +5,17 @@ standardized unit cost, variation vs previous purchase). PriceAlert persists the
 price-move / margin alerts. SupplierPriceHistory from the spec is intentionally a
 query over purchase_history (supplier_id is on it) — no redundant table.
 
-Revision ID: 0005_purchase_history_price_alerts
+Revision ID: 0005_purchase_tracking
 Revises: 0004_recipe_import_jobs
+
+Note: the revision id stays <= 32 chars (alembic_version.version_num is
+varchar(32)) — a longer id makes the version stamp fail and aborts the deploy.
 """
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID
 
-revision = "0005_purchase_history_price_alerts"
+revision = "0005_purchase_tracking"
 down_revision = "0004_recipe_import_jobs"
 branch_labels = None
 depends_on = None
