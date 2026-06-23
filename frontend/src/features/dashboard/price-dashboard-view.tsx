@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import {
   TrendingUp,
@@ -9,6 +10,7 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   ChefHat,
+  LineChart,
 } from "lucide-react";
 
 import {
@@ -20,9 +22,76 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { usePriceDashboard, useStoredPriceAlerts } from "@/hooks/use-purchasing";
+import {
+  usePriceDashboard,
+  useStoredPriceAlerts,
+  useProductPriceHistory,
+} from "@/hooks/use-purchasing";
+import { useProducts } from "@/hooks/use-products";
 import { formatCurrency } from "@/lib/utils";
 import type { PriceMovement } from "@/services/types";
+
+function PriceEvolutionChart() {
+  const { data: products } = useProducts();
+  const [picked, setPicked] = useState("");
+  const selected = picked || products?.[0]?.id || "";
+  const { data: history } = useProductPriceHistory(selected || undefined);
+
+  const bars = (history?.purchases ?? [])
+    .filter((p) => p.unit_cost_standard != null)
+    .slice(-8);
+  const max = Math.max(1, ...bars.map((b) => b.unit_cost_standard ?? 0));
+  const unit = bars[bars.length - 1]?.unit_code ?? "u";
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <LineChart className="h-4 w-4 text-primary" />
+            Évolution du coût
+          </CardTitle>
+          <select
+            value={selected}
+            onChange={(e) => setPicked(e.target.value)}
+            className="h-9 rounded-lg border border-input bg-card px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            {(products ?? []).map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <CardDescription>Coût standardisé par {unit} sur les derniers achats.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {bars.length === 0 ? (
+          <p className="py-10 text-center text-sm text-muted-foreground">
+            Pas assez d&apos;achats pour ce produit.
+          </p>
+        ) : (
+          <div className="flex h-[200px] items-end gap-3 px-1">
+            {bars.map((b) => (
+              <div key={b.id} className="flex h-full flex-1 flex-col items-center justify-end gap-2">
+                <span className="text-[11px] font-semibold text-foreground/80">
+                  {formatCurrency(b.unit_cost_standard)}
+                </span>
+                <div
+                  className="w-full max-w-[54px] rounded-t-md bg-primary"
+                  style={{ height: `${Math.max(4, ((b.unit_cost_standard ?? 0) / max) * 100)}%` }}
+                />
+                <span className="text-[11px] text-muted-foreground">
+                  {b.purchase_date ? b.purchase_date.slice(8, 10) + "/" + b.purchase_date.slice(5, 7) : "—"}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 function MovementRow({ m, up }: { m: PriceMovement; up: boolean }) {
   const Icon = up ? ArrowUpRight : ArrowDownRight;
@@ -57,6 +126,8 @@ export function PriceDashboardView() {
 
   return (
     <div className="space-y-4">
+      <PriceEvolutionChart />
+
       {empty && (
         <Card>
           <CardContent className="py-10 text-center text-sm text-muted-foreground">
