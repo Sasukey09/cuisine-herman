@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import {
   listProducts,
+  getEnrichedProducts,
   getProduct,
   createProduct,
   updateProduct,
@@ -19,6 +20,13 @@ export function useProducts(q?: string) {
   return useQuery({
     queryKey: [...KEY, { q: q ?? "" }],
     queryFn: () => listProducts({ q, limit: 200 }),
+  });
+}
+
+export function useEnrichedProducts(q?: string) {
+  return useQuery({
+    queryKey: [...KEY, "enriched", { q: q ?? "" }],
+    queryFn: () => getEnrichedProducts(q || undefined),
   });
 }
 

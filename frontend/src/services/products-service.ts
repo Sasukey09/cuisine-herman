@@ -1,8 +1,15 @@
 import { api } from "@/lib/api";
-import type { Product, ProductPayload, ProductUpdatePayload } from "./types";
+import type { Product, ProductRow, ProductPayload, ProductUpdatePayload } from "./types";
 
 export async function listProducts(params: { q?: string; limit?: number; skip?: number } = {}) {
   const { data } = await api.get<Product[]>("/products/", { params });
+  return data;
+}
+
+export async function getEnrichedProducts(q?: string) {
+  const { data } = await api.get<ProductRow[]>("/products/enriched", {
+    params: q ? { q } : undefined,
+  });
   return data;
 }
 
