@@ -40,6 +40,38 @@ def list_suppliers(
     return query.order_by(Supplier.created_at.desc()).offset(skip).limit(limit).all()
 
 
+def list_suppliers_enriched(
+    db: Session,
+    tenant_id: str,
+    skip: int = 0,
+    limit: int = 50,
+    q: Optional[str] = None,
+):
+    """Suppliers + how many distinct products have been priced from each."""
+    from sqlalchemy import func
+
+    suppliers = list_suppliers(db, tenant_id, skip=skip, limit=limit, q=q)
+    counts = dict(
+        db.query(
+            ProductPrice.supplier_id,
+            func.count(func.distinct(ProductPrice.product_id)),
+        )
+        .filter(ProductPrice.tenant_id == tenant_id, ProductPrice.supplier_id.isnot(None))
+        .group_by(ProductPrice.supplier_id)
+        .all()
+    )
+    return [
+        {
+            "id": str(s.id),
+            "name": s.name,
+            "code": s.code,
+            "contact": s.contact,
+            "product_count": int(counts.get(s.id, 0)),
+        }
+        for s in suppliers
+    ]
+
+
 def update_supplier(db: Session, supplier_id: str, tenant_id: str, payload: SupplierUpdate):
     obj = get_supplier(db, supplier_id, tenant_id)
     if obj is None:

@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import {
   listSuppliers,
+  getEnrichedSuppliers,
   getSupplier,
   getSupplierPrices,
   createSupplier,
@@ -20,6 +21,13 @@ export function useSuppliers(q?: string) {
   return useQuery({
     queryKey: [...KEY, { q: q ?? "" }],
     queryFn: () => listSuppliers({ q, limit: 200 }),
+  });
+}
+
+export function useEnrichedSuppliers(q?: string) {
+  return useQuery({
+    queryKey: [...KEY, "enriched", { q: q ?? "" }],
+    queryFn: () => getEnrichedSuppliers(q || undefined),
   });
 }
 
