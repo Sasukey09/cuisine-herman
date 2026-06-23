@@ -11,11 +11,36 @@ reliable, and a cookies file is the robust workaround.
 """
 import glob
 import os
+import subprocess
 import tempfile
 from typing import Any, Dict
 
 from .config import get_video_config
 from .errors import AudioDownloadError, VideoTooLongError
+
+
+def transcode_to_mp3(input_path: str) -> str:
+    """Transcode an uploaded media file to a small mono 16kHz mp3 with ffmpeg.
+
+    Strips video and keeps the result well under Whisper's 25MB cap (~0.5MB/min).
+    """
+    out_path = input_path + ".out.mp3"
+    try:
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", input_path, "-vn", "-ac", "1", "-ar", "16000",
+             "-b:a", "64k", out_path],
+            check=True, capture_output=True, timeout=900,
+        )
+    except FileNotFoundError as exc:  # pragma: no cover - ffmpeg ships in the image
+        raise AudioDownloadError("ffmpeg n'est pas disponible sur le serveur.") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise AudioDownloadError("Conversion audio trop longue (fichier trop volumineux ?).") from exc
+    except subprocess.CalledProcessError as exc:
+        raise AudioDownloadError(
+            "Impossible de lire ce fichier (format vidéo/audio non reconnu)."
+        ) from exc
+    return out_path
+
 
 # Try alternate clients first (often bypass the bot check), then the default web.
 _BASE_OPTS: Dict[str, Any] = {

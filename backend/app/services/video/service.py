@@ -8,6 +8,8 @@ save_draft: persist a (possibly edited) draft as a recipe + cost it, reusing the
 AI module's ``create_recipe_draft`` tool so product-matching and costing behave
 exactly like the chat assistant.
 """
+import os
+import tempfile
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -18,6 +20,80 @@ from app.models.models import VideoSource, Transcription
 from .platforms import detect_platform
 from .transcript import get_transcript
 from .extractor import get_extractor
+from .errors import STTNotConfiguredError, VideoTooLongError
+
+# Whisper rejects audio files larger than 25MB; our transcode stays well below.
+_MAX_AUDIO_BYTES = 24 * 1024 * 1024
+
+
+def extract_recipe_from_file(
+    db: Session,
+    tenant_id: str,
+    file_bytes: bytes,
+    filename: Optional[str],
+    content_type: Optional[str] = None,
+    stt_provider: Any = None,
+    extractor: Any = None,
+) -> Dict[str, Any]:
+    """Upload a video/audio FILE → ffmpeg audio → Whisper STT → editable draft.
+
+    Bypasses YouTube entirely (no datacenter-IP blocking). Needs OPENAI_API_KEY.
+    """
+    from .audio import transcode_to_mp3
+    from .stt.openai_stt import OpenAISTTProvider
+
+    provider = stt_provider or OpenAISTTProvider()
+    if not provider.is_configured():
+        raise STTNotConfiguredError(
+            "La transcription audio n'est pas configurée (OPENAI_API_KEY manquante)."
+        )
+
+    source = VideoSource(
+        id=str(uuid.uuid4()),
+        tenant_id=tenant_id,
+        url=filename or "upload",
+        platform="upload",
+        fetched_at=datetime.utcnow(),
+    )
+    db.add(source)
+    db.commit()
+
+    suffix = os.path.splitext(filename or "")[1] or ".bin"
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    audio_path = None
+    try:
+        tmp.write(file_bytes)
+        tmp.close()
+        audio_path = transcode_to_mp3(tmp.name)
+        if os.path.getsize(audio_path) > _MAX_AUDIO_BYTES:
+            raise VideoTooLongError(
+                "Vidéo trop longue pour la transcription (~50 min max). Découpez-la."
+            )
+        text = provider.transcribe(audio_path)
+    finally:
+        for p in (tmp.name, audio_path):
+            if p and os.path.exists(p):
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
+
+    db.add(Transcription(id=str(uuid.uuid4()), source_id=str(source.id), text=text, language=None))
+    db.commit()
+
+    draft = (extractor or get_extractor()).extract(text, hint_title=filename)
+    excerpt = text[:600] + ("…" if len(text) > 600 else "")
+    return {
+        "source_id": str(source.id),
+        "platform": "upload",
+        "transcript_source": "audio_upload",
+        "transcript_excerpt": excerpt,
+        "draft": draft,
+        "note": (
+            "Fiche générée depuis le fichier vidéo : vérifiez les quantités et la "
+            "procédure avant d'enregistrer."
+        ),
+    }
 
 
 def extract_recipe_from_url(
