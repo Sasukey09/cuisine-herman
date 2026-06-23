@@ -57,6 +57,7 @@ class Supplier(Base):
     code = Column(Text)
     contact = Column(JSONB)
     default_currency = Column(Text)
+    rating = Column(Numeric)  # 0–5 stars (supplier quality/relationship)
     meta = Column("metadata", JSONB)
     created_at = Column(TIMESTAMP, server_default=func.now())
 

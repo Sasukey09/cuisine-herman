@@ -11,6 +11,7 @@ class SupplierBase(BaseModel):
     name: str
     code: Optional[str]
     contact: Optional[dict]
+    rating: Optional[float] = None
 
 
 class SupplierCreate(SupplierBase):
@@ -21,6 +22,7 @@ class SupplierUpdate(BaseModel):
     name: Optional[str] = None
     code: Optional[str] = None
     contact: Optional[dict] = None
+    rating: Optional[float] = None
 
 
 class SupplierRead(SupplierBase):

@@ -12,6 +12,7 @@ def create_supplier(db: Session, payload: SupplierCreate, tenant_id: str) -> Sup
         name=payload.name,
         code=payload.code,
         contact=payload.contact,
+        rating=getattr(payload, "rating", None),
     )
     db.add(obj)
     db.commit()
@@ -66,6 +67,7 @@ def list_suppliers_enriched(
             "name": s.name,
             "code": s.code,
             "contact": s.contact,
+            "rating": float(s.rating) if s.rating is not None else None,
             "product_count": int(counts.get(s.id, 0)),
         }
         for s in suppliers
