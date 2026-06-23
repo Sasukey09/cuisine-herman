@@ -18,21 +18,21 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { SupplierFormDialog } from "./supplier-form-dialog";
-import { useSuppliers, useDeleteSupplier } from "@/hooks/use-suppliers";
+import { useEnrichedSuppliers, useDeleteSupplier } from "@/hooks/use-suppliers";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useAuthStore } from "@/stores/auth-store";
-import type { Supplier } from "@/services/types";
+import type { Supplier, SupplierRow } from "@/services/types";
 
 export function SuppliersView() {
   const [search, setSearch] = useState("");
   const debounced = useDebounce(search, 300);
-  const { data: suppliers, isLoading } = useSuppliers(debounced || undefined);
+  const { data: suppliers, isLoading } = useEnrichedSuppliers(debounced || undefined);
   const del = useDeleteSupplier();
   const canWrite = useAuthStore((s) => s.hasRole("admin", "manager"));
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<Supplier | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<SupplierRow | null>(null);
 
   return (
     <div className="space-y-4">
@@ -103,7 +103,10 @@ export function SuppliersView() {
                 {s.contact?.email || s.contact?.phone || "Aucun contact renseigné"}
               </div>
               <div className="flex items-center justify-between border-t pt-2.5">
-                <span className="text-[12.5px] text-muted-foreground">{s.code ? `Réf. ${s.code}` : "—"}</span>
+                <span className="text-[12.5px]">
+                  <b>{s.product_count}</b>{" "}
+                  <span className="text-muted-foreground">produit{s.product_count > 1 ? "s" : ""}</span>
+                </span>
                 <Link href={`/fournisseurs/${s.id}`} className="text-[12.5px] font-semibold text-primary hover:underline">
                   Voir le catalogue →
                 </Link>

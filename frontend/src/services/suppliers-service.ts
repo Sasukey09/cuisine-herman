@@ -1,6 +1,7 @@
 import { api } from "@/lib/api";
 import type {
   Supplier,
+  SupplierRow,
   SupplierPayload,
   SupplierUpdatePayload,
   SupplierPrice,
@@ -8,6 +9,13 @@ import type {
 
 export async function listSuppliers(params: { q?: string; limit?: number } = {}) {
   const { data } = await api.get<Supplier[]>("/suppliers/", { params });
+  return data;
+}
+
+export async function getEnrichedSuppliers(q?: string) {
+  const { data } = await api.get<SupplierRow[]>("/suppliers/enriched", {
+    params: q ? { q } : undefined,
+  });
   return data;
 }
 

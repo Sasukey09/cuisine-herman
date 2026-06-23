@@ -80,6 +80,14 @@ export interface Supplier {
   contact?: SupplierContact | null;
 }
 
+export interface SupplierRow {
+  id: string;
+  name: string;
+  code?: string | null;
+  contact?: SupplierContact | null;
+  product_count: number;
+}
+
 export interface SupplierPayload {
   name: string;
   code?: string | null;

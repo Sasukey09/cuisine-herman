@@ -15,6 +15,7 @@ from app.crud.crud_supplier import (
     create_supplier,
     get_supplier,
     list_suppliers,
+    list_suppliers_enriched,
     update_supplier,
     delete_supplier,
     get_supplier_prices,
@@ -55,6 +56,18 @@ def api_list_suppliers(
     tenant_id: str = Depends(get_current_tenant_id),
 ):
     return list_suppliers(db, tenant_id, skip=skip, limit=limit, q=q)
+
+
+@router.get("/enriched")
+def api_list_suppliers_enriched(
+    skip: int = 0,
+    limit: int = 50,
+    q: Optional[str] = None,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """Suppliers + product count (distinct products priced from each)."""
+    return list_suppliers_enriched(db, tenant_id, skip=skip, limit=limit, q=q)
 
 
 @router.get("/{supplier_id}", response_model=SupplierRead)
