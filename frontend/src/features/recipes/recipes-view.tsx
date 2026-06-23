@@ -5,15 +5,8 @@ import Link from "next/link";
 import { Plus, ChefHat, Pencil, Trash2, FileUp } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,105 +32,86 @@ export function RecipesView() {
   const [editing, setEditing] = useState<Recipe | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Recipe | null>(null);
 
-  const colCount = canWrite ? 4 : 3;
-
   return (
     <div className="space-y-4">
-      <div className="flex justify-end gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[13.5px] text-muted-foreground">
+          {recipes ? `${recipes.length} recette(s)` : " "}
+        </div>
         {canWrite && (
-          <>
+          <div className="flex gap-2">
             <Button asChild variant="outline">
               <Link href="/import-recette">
                 <FileUp className="h-4 w-4" />
                 Importer une recette PDF
               </Link>
             </Button>
-            <Button
-              onClick={() => {
-                setEditing(null);
-                setFormOpen(true);
-              }}
-            >
+            <Button onClick={() => { setEditing(null); setFormOpen(true); }}>
               <Plus className="h-4 w-4" />
               Nouvelle recette
             </Button>
-          </>
+          </div>
         )}
       </div>
 
-      <div className="rounded-lg border bg-card">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Nom</TableHead>
-              <TableHead>Portions</TableHead>
-              <TableHead>Fiche technique</TableHead>
-              {canWrite && <TableHead className="w-24 text-right">Actions</TableHead>}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <TableRow key={i}>
-                  <TableCell><Skeleton className="h-5 w-48" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-12" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-24" /></TableCell>
-                  {canWrite && <TableCell />}
-                </TableRow>
-              ))
-            ) : !recipes || recipes.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={colCount}>
-                  <div className="flex flex-col items-center gap-2 py-10 text-center text-sm text-muted-foreground">
-                    <ChefHat className="h-8 w-8" />
-                    Aucune recette pour le moment.
-                  </div>
-                </TableCell>
-              </TableRow>
-            ) : (
-              recipes.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell className="font-medium">
-                    <Link href={`/recettes/${r.id}`} className="hover:underline">
+      {isLoading ? (
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-[210px] rounded-xl" />
+          ))}
+        </div>
+      ) : !recipes || recipes.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 rounded-xl border bg-card py-14 text-center text-sm text-muted-foreground">
+          <ChefHat className="h-8 w-8" />
+          Aucune recette pour le moment.
+        </div>
+      ) : (
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4">
+          {recipes.map((r) => {
+            const defined = Boolean(r.current_version_id);
+            return (
+              <div key={r.id} className="overflow-hidden rounded-xl border bg-card">
+                <Link
+                  href={`/recettes/${r.id}`}
+                  className="flex h-24 items-center justify-center bg-secondary text-primary"
+                >
+                  <ChefHat className="h-9 w-9" />
+                </Link>
+                <div className="p-[15px_17px]">
+                  <div className="flex items-center justify-between gap-2">
+                    <Link href={`/recettes/${r.id}`} className="truncate font-serif text-[17px] font-semibold hover:underline">
                       {r.name}
                     </Link>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">{formatNumber(r.yield_qty)}</TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {r.current_version_id ? "Définie" : "À compléter"}
-                  </TableCell>
+                    <Badge variant={defined ? "success" : "secondary"} className="flex-none">
+                      {defined ? "Définie" : "À compléter"}
+                    </Badge>
+                  </div>
+                  <div className="mt-1 text-[12.5px] text-muted-foreground">
+                    {formatNumber(r.yield_qty)} portions
+                  </div>
                   {canWrite && (
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label="Modifier"
-                          onClick={() => {
-                            setEditing(r);
-                            setFormOpen(true);
-                          }}
-                        >
-                          <Pencil className="h-4 w-4" />
+                    <div className="mt-3 flex items-center justify-between border-t pt-3">
+                      <Link href={`/recettes/${r.id}`} className="text-[12.5px] font-semibold text-primary hover:underline">
+                        Voir la fiche →
+                      </Link>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Modifier"
+                          onClick={() => { setEditing(r); setFormOpen(true); }}>
+                          <Pencil className="h-3.5 w-3.5" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label="Supprimer"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => setDeleteTarget(r)}
-                        >
-                          <Trash2 className="h-4 w-4" />
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" aria-label="Supprimer"
+                          onClick={() => setDeleteTarget(r)}>
+                          <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
-                    </TableCell>
+                    </div>
                   )}
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <RecipeFormDialog open={formOpen} onOpenChange={setFormOpen} recipe={editing} />
 

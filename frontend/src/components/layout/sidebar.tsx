@@ -2,9 +2,19 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTheme } from "next-themes";
+import { ChevronsUpDown, LogOut, Moon, Sun, User as UserIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
+import { useLogout } from "@/hooks/use-auth";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { navItems } from "./nav-config";
 
 function initials(name?: string | null, email?: string | null) {
@@ -17,6 +27,9 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const hasRole = useAuthStore((s) => s.hasRole);
   const user = useAuthStore((s) => s.user);
   const roleLabel = user?.roles?.[0] ?? "Membre";
+  const logout = useLogout();
+  const { setTheme, resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
 
   return (
     <div className="flex h-full flex-col bg-sidebar p-3.5 text-sidebar-foreground">
@@ -62,17 +75,46 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
           })}
       </nav>
 
-      {/* User */}
-      <div className="mt-auto flex items-center gap-2.5 border-t border-white/10 px-2 pt-3.5">
-        <div className="flex h-[30px] w-[30px] items-center justify-center rounded-full bg-primary text-xs font-semibold text-white">
-          {initials(user?.name, user?.email)}
-        </div>
-        <div className="leading-tight">
-          <div className="text-[12.5px] font-semibold text-[#f4efe6]">
-            {user?.name ?? "Utilisateur"}
-          </div>
-          <div className="text-[11px] capitalize text-sidebar-muted">{roleLabel}</div>
-        </div>
+      {/* User menu */}
+      <div className="mt-auto border-t border-white/10 pt-2.5">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-sidebar-active">
+              <div className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-full bg-primary text-xs font-semibold text-white">
+                {initials(user?.name, user?.email)}
+              </div>
+              <div className="min-w-0 flex-1 leading-tight">
+                <div className="truncate text-[12.5px] font-semibold text-[#f4efe6]">
+                  {user?.name ?? "Utilisateur"}
+                </div>
+                <div className="truncate text-[11px] capitalize text-sidebar-muted">
+                  {roleLabel}
+                </div>
+              </div>
+              <ChevronsUpDown className="h-4 w-4 flex-none text-sidebar-muted" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="top" className="w-56">
+            <DropdownMenuItem asChild>
+              <Link href="/profile" onClick={onNavigate}>
+                <UserIcon className="h-4 w-4" />
+                Profil
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setTheme(isDark ? "light" : "dark")}>
+              {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              {isDark ? "Thème clair" : "Thème sombre"}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={logout}
+              className="text-destructive focus:text-destructive"
+            >
+              <LogOut className="h-4 w-4" />
+              Déconnexion
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   );
