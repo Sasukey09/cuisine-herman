@@ -42,7 +42,7 @@ function formatValue(value: number | null, format: string): string {
 }
 
 const selectClass =
-  "h-10 rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "h-10 rounded-md border border-input bg-card px-3 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 export function MetricsView() {
   const metrics = useMetrics();

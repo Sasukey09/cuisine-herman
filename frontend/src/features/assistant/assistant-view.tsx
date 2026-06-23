@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect, type FormEvent, type KeyboardEvent } from "react";
-import { Bot, User, Send, Loader2, Wrench } from "lucide-react";
+import { Bot, Send, Loader2, Wrench, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/page-header";
@@ -96,7 +96,7 @@ export function AssistantView() {
                   key={s}
                   type="button"
                   onClick={() => send(s)}
-                  className="rounded-full border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                  className="rounded-full bg-secondary px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-accent"
                 >
                   {s}
                 </button>
@@ -145,23 +145,22 @@ export function AssistantView() {
 
 function MessageBubble({ turn }: { turn: ChatTurn }) {
   const isUser = turn.role === "user";
-  return (
-    <div className={cn("flex gap-3", isUser && "flex-row-reverse")}>
-      <div
-        className={cn(
-          "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-          isUser ? "bg-primary/10 text-primary" : "bg-muted text-foreground",
-        )}
-      >
-        {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
+  if (isUser) {
+    return (
+      <div className="flex justify-end">
+        <div className="max-w-[80%] whitespace-pre-wrap rounded-[14px_14px_4px_14px] bg-primary px-4 py-2.5 text-sm text-primary-foreground">
+          {turn.content || "—"}
+        </div>
       </div>
-      <div className={cn("max-w-[80%] space-y-2", isUser && "items-end")}>
-        <div
-          className={cn(
-            "whitespace-pre-wrap rounded-lg px-3 py-2 text-sm",
-            isUser ? "bg-primary text-primary-foreground" : "bg-muted",
-          )}
-        >
+    );
+  }
+  return (
+    <div className="flex max-w-[84%] gap-2.5">
+      <div className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-lg bg-sidebar text-sidebar-accent">
+        <Sparkles className="h-4 w-4" />
+      </div>
+      <div className="space-y-2">
+        <div className="whitespace-pre-wrap rounded-[14px_14px_14px_4px] border bg-card px-4 py-2.5 text-sm">
           {turn.content || "—"}
         </div>
         {turn.toolCalls && turn.toolCalls.length > 0 && (

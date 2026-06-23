@@ -47,7 +47,7 @@ const OPS = [
 ];
 
 const selectClass =
-  "h-9 rounded-md border border-input bg-background px-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "h-9 rounded-md border border-input bg-card px-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 function cell(v: unknown): string {
   if (v == null) return "";
