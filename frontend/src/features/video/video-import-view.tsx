@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import Link from "next/link";
-import { Loader2, Wand2, Plus, Trash2, CheckCircle2, Youtube, AlertTriangle } from "lucide-react";
+import { Loader2, Wand2, Plus, Trash2, CheckCircle2, Youtube, AlertTriangle, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/page-header";
@@ -19,8 +19,8 @@ import {
 } from "@/components/ui/card";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { formatCurrency, formatPercent } from "@/lib/utils";
-import { useExtractVideo, useSaveVideoRecipe } from "@/hooks/use-video";
-import type { VideoIngredientDraft, VideoSaveResult } from "@/services/types";
+import { useExtractVideo, useExtractVideoFile, useSaveVideoRecipe } from "@/hooks/use-video";
+import type { VideoExtractResult, VideoIngredientDraft, VideoSaveResult } from "@/services/types";
 
 interface Row extends VideoIngredientDraft {}
 
@@ -32,9 +32,20 @@ export function VideoImportView() {
   const [stepsText, setStepsText] = useState("");
   const [hasDraft, setHasDraft] = useState(false);
   const [saved, setSaved] = useState<VideoSaveResult | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const extract = useExtractVideo();
+  const extractFile = useExtractVideoFile();
   const save = useSaveVideoRecipe();
+
+  function loadDraft(res: VideoExtractResult) {
+    setName(res.draft.name);
+    setPortions(res.draft.yield_qty ? String(res.draft.yield_qty) : "");
+    setRows(res.draft.ingredients ?? []);
+    setStepsText((res.draft.steps ?? []).join("\n"));
+    setHasDraft(true);
+    toast.success("Recette extraite — vérifiez les quantités estimées.");
+  }
 
   function onExtract(e: FormEvent) {
     e.preventDefault();
@@ -42,14 +53,19 @@ export function VideoImportView() {
     if (!link || extract.isPending) return;
     setSaved(null);
     extract.mutate(link, {
-      onSuccess: (res) => {
-        setName(res.draft.name);
-        setPortions(res.draft.yield_qty ? String(res.draft.yield_qty) : "");
-        setRows(res.draft.ingredients ?? []);
-        setStepsText((res.draft.steps ?? []).join("\n"));
-        setHasDraft(true);
-        toast.success("Recette extraite — vérifiez les quantités estimées.");
-      },
+      onSuccess: loadDraft,
+      onError: (err) => toast.error(getApiErrorMessage(err)),
+    });
+  }
+
+  function onFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || extractFile.isPending) return;
+    setSaved(null);
+    toast.message("Analyse du fichier… (transcription audio, peut prendre 1–2 min)");
+    extractFile.mutate(file, {
+      onSuccess: loadDraft,
       onError: (err) => toast.error(getApiErrorMessage(err)),
     });
   }
@@ -96,7 +112,7 @@ export function VideoImportView() {
     <>
       <PageHeader
         title="Import depuis une vidéo"
-        description="Collez un lien YouTube, TikTok, Instagram… L'IA en extrait une fiche recette modifiable, puis la chiffre avec vos prix."
+        description="Collez un lien (YouTube, TikTok, Instagram…) OU importez un fichier vidéo. L'IA en extrait une fiche recette modifiable, puis la chiffre avec vos prix."
       />
 
       <form onSubmit={onExtract} className="flex flex-col gap-2 sm:flex-row">
@@ -115,6 +131,28 @@ export function VideoImportView() {
           <span className="ml-2">Analyser</span>
         </Button>
       </form>
+
+      <div className="mt-2 flex items-center gap-3">
+        <input
+          ref={fileRef}
+          type="file"
+          accept="video/*,audio/*"
+          className="hidden"
+          onChange={onFile}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => fileRef.current?.click()}
+          disabled={extractFile.isPending}
+        >
+          {extractFile.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+          <span className="ml-2">Importer un fichier vidéo</span>
+        </Button>
+        <span className="text-xs text-muted-foreground">
+          Alternative fiable si le lien est bloqué (transcription audio, ~1–2 min).
+        </span>
+      </div>
 
       {extract.data && (
         <p className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">

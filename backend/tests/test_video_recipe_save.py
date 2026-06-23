@@ -70,6 +70,62 @@ class FakeDB:
         pass
 
 
+def test_extract_recipe_from_file(monkeypatch):
+    import app.services.video.service as vs
+
+    class FakeSTT:
+        def is_configured(self):
+            return True
+
+        def transcribe(self, path, language=None):
+            return "Tiramisu recipe with mascarpone, eggs and sugar. Mix, layer, chill."
+
+    def fake_transcode(inp):
+        out = inp + ".out.mp3"
+        with open(out, "wb") as fh:
+            fh.write(b"\x00" * 256)  # small real file so getsize() works
+        return out
+
+    monkeypatch.setattr("app.services.video.audio.transcode_to_mp3", fake_transcode)
+    fake_extractor = N(
+        extract=lambda text, hint_title=None: {
+            "name": "Tiramisu", "yield_qty": 6,
+            "ingredients": [{"name": "Mascarpone", "qty": 250, "unit": "g"}],
+            "steps": ["Mélanger", "Dresser", "Réfrigérer"], "summary": None,
+        }
+    )
+
+    class DB:
+        def add(self, *a):
+            pass
+
+        def commit(self):
+            pass
+
+    out = vs.extract_recipe_from_file(
+        DB(), "t1", b"fake-video-bytes", "clip.mp4", "video/mp4",
+        stt_provider=FakeSTT(), extractor=fake_extractor,
+    )
+    assert out["platform"] == "upload"
+    assert out["transcript_source"] == "audio_upload"
+    assert out["draft"]["name"] == "Tiramisu"
+    assert out["draft"]["ingredients"][0]["name"] == "Mascarpone"
+    assert len(out["draft"]["steps"]) == 3
+
+
+def test_extract_from_file_requires_stt(monkeypatch):
+    import app.services.video.service as vs
+    from app.services.video.errors import STTNotConfiguredError
+
+    class NoSTT:
+        def is_configured(self):
+            return False
+
+    import pytest
+    with pytest.raises(STTNotConfiguredError):
+        vs.extract_recipe_from_file(object(), "t1", b"x", "c.mp4", "video/mp4", stt_provider=NoSTT())
+
+
 def test_replace_instructions_numbers_steps_and_drops_blanks(monkeypatch):
     db = FakeDB()
     monkeypatch.setattr(uuid, "uuid4", lambda: "uid")

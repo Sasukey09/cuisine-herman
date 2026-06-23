@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -45,6 +45,36 @@ def api_video_extract(
     except VideoTooLongError as exc:
         raise HTTPException(status_code=413, detail=str(exc))
     except (TranscriptUnavailableError, AudioDownloadError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    except RecipeExtractionError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except VideoError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+@router.post("/extract-file", response_model=VideoExtractResult)
+async def api_video_extract_file(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+    _: list = Depends(require_writer),
+):
+    """Upload a video/audio file → audio (ffmpeg) → Whisper → editable recipe
+    draft. Reliable alternative to URL import (no YouTube IP blocking)."""
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Fichier vide")
+    if len(content) > 300 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Fichier trop volumineux (max 300 Mo).")
+    try:
+        return video_service.extract_recipe_from_file(
+            db, tenant_id, content, file.filename, file.content_type
+        )
+    except STTNotConfiguredError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except VideoTooLongError as exc:
+        raise HTTPException(status_code=413, detail=str(exc))
+    except AudioDownloadError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
     except RecipeExtractionError as exc:
         raise HTTPException(status_code=422, detail=str(exc))

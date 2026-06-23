@@ -10,6 +10,15 @@ export async function extractVideo(url: string): Promise<VideoExtractResult> {
   return data;
 }
 
+export async function extractVideoFile(file: File): Promise<VideoExtractResult> {
+  const form = new FormData();
+  form.append("file", file);
+  const { data } = await api.post<VideoExtractResult>("/video/extract-file", form, {
+    headers: { "Content-Type": undefined as unknown as string },
+  });
+  return data;
+}
+
 export async function saveVideoRecipe(payload: {
   name: string;
   yield_qty: number | null;
