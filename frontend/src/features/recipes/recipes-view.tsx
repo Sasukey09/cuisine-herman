@@ -18,25 +18,25 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { RecipeFormDialog } from "./recipe-form-dialog";
-import { useRecipes, useDeleteRecipe } from "@/hooks/use-recipes";
+import { useEnrichedRecipes, useDeleteRecipe } from "@/hooks/use-recipes";
 import { useAuthStore } from "@/stores/auth-store";
-import { formatNumber } from "@/lib/utils";
-import type { Recipe } from "@/services/types";
+import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
+import type { Recipe, RecipeRow } from "@/services/types";
 
 export function RecipesView() {
-  const { data: recipes, isLoading } = useRecipes();
+  const { data: recipes, isLoading } = useEnrichedRecipes();
   const del = useDeleteRecipe();
   const canWrite = useAuthStore((s) => s.hasRole("admin", "manager"));
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Recipe | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<Recipe | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<RecipeRow | null>(null);
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
         <div className="text-[13.5px] text-muted-foreground">
-          {recipes ? `${recipes.length} recette(s)` : " "}
+          {recipes ? `${recipes.length} recette(s)` : " "}
         </div>
         {canWrite && (
           <div className="flex gap-2">
@@ -57,7 +57,7 @@ export function RecipesView() {
       {isLoading ? (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4">
           {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-[210px] rounded-xl" />
+            <Skeleton key={i} className="h-[230px] rounded-xl" />
           ))}
         </div>
       ) : !recipes || recipes.length === 0 ? (
@@ -67,49 +67,66 @@ export function RecipesView() {
         </div>
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4">
-          {recipes.map((r) => {
-            const defined = Boolean(r.current_version_id);
-            return (
-              <div key={r.id} className="overflow-hidden rounded-xl border bg-card">
-                <Link
-                  href={`/recettes/${r.id}`}
-                  className="flex h-24 items-center justify-center bg-secondary text-primary"
-                >
-                  <ChefHat className="h-9 w-9" />
-                </Link>
-                <div className="p-[15px_17px]">
-                  <div className="flex items-center justify-between gap-2">
-                    <Link href={`/recettes/${r.id}`} className="truncate font-serif text-[17px] font-semibold hover:underline">
-                      {r.name}
-                    </Link>
-                    <Badge variant={defined ? "success" : "secondary"} className="flex-none">
-                      {defined ? "Définie" : "À compléter"}
-                    </Badge>
-                  </div>
-                  <div className="mt-1 text-[12.5px] text-muted-foreground">
-                    {formatNumber(r.yield_qty)} portions
-                  </div>
-                  {canWrite && (
-                    <div className="mt-3 flex items-center justify-between border-t pt-3">
-                      <Link href={`/recettes/${r.id}`} className="text-[12.5px] font-semibold text-primary hover:underline">
-                        Voir la fiche →
-                      </Link>
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Modifier"
-                          onClick={() => { setEditing(r); setFormOpen(true); }}>
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" aria-label="Supprimer"
-                          onClick={() => setDeleteTarget(r)}>
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-                  )}
+          {recipes.map((r) => (
+            <div key={r.id} className="overflow-hidden rounded-xl border bg-card">
+              <Link
+                href={`/recettes/${r.id}`}
+                className="flex h-24 items-center justify-center bg-secondary text-primary"
+              >
+                <ChefHat className="h-9 w-9" />
+              </Link>
+              <div className="p-[15px_17px]">
+                <div className="flex items-center justify-between gap-2">
+                  <Link href={`/recettes/${r.id}`} className="truncate font-serif text-[17px] font-semibold hover:underline">
+                    {r.name}
+                  </Link>
+                  <Badge variant={r.defined ? "success" : "secondary"} className="flex-none">
+                    {r.defined ? "Définie" : "À compléter"}
+                  </Badge>
                 </div>
+                <div className="mt-1 text-[12.5px] text-muted-foreground">
+                  {formatNumber(r.yield_qty)} portions
+                  {r.cost_per_portion != null && ` · coût ${formatCurrency(r.cost_per_portion)}/portion`}
+                </div>
+
+                <div className="mt-3 flex items-center justify-between border-t pt-3">
+                  <div>
+                    <div className="text-[11px] text-muted-foreground">Prix de vente</div>
+                    <div className="text-sm font-semibold">
+                      {r.selling_price != null ? formatCurrency(r.selling_price) : "—"}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[11px] text-muted-foreground">Marge brute</div>
+                    <div className="text-sm font-semibold text-[#5c7a4a]">
+                      {r.margin_pct != null ? formatPercent(r.margin_pct) : "—"}
+                    </div>
+                  </div>
+                </div>
+
+                {canWrite && (
+                  <div className="mt-3 flex items-center justify-between border-t pt-3">
+                    <Link href={`/recettes/${r.id}`} className="text-[12.5px] font-semibold text-primary hover:underline">
+                      Voir la fiche →
+                    </Link>
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Modifier"
+                        onClick={() => {
+                          setEditing({ id: r.id, name: r.name, yield_qty: r.yield_qty, selling_price: r.selling_price });
+                          setFormOpen(true);
+                        }}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" aria-label="Supprimer"
+                        onClick={() => setDeleteTarget(r)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       )}
 

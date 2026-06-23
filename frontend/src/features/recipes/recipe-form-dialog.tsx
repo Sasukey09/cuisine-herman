@@ -28,6 +28,7 @@ const numberOptional = z.preprocess(
 const schema = z.object({
   name: z.string().min(1, "Nom requis"),
   yield_qty: numberOptional,
+  selling_price: numberOptional,
 });
 
 type Values = z.infer<typeof schema>;
@@ -55,12 +56,20 @@ export function RecipeFormDialog({
 
   useEffect(() => {
     if (open) {
-      reset({ name: recipe?.name ?? "", yield_qty: recipe?.yield_qty ?? undefined });
+      reset({
+        name: recipe?.name ?? "",
+        yield_qty: recipe?.yield_qty ?? undefined,
+        selling_price: recipe?.selling_price ?? undefined,
+      });
     }
   }, [open, recipe, reset]);
 
   const onSubmit = (values: Values) => {
-    const payload = { name: values.name, yield_qty: values.yield_qty ?? null };
+    const payload = {
+      name: values.name,
+      yield_qty: values.yield_qty ?? null,
+      selling_price: values.selling_price ?? null,
+    };
     const onSuccess = () => onOpenChange(false);
     if (isEdit) {
       update.mutate({ id: recipe!.id, payload }, { onSuccess });
@@ -91,6 +100,13 @@ export function RecipeFormDialog({
             <Input id="yield_qty" type="number" step="any" placeholder="4" {...register("yield_qty")} />
             {errors.yield_qty && (
               <p className="text-sm text-destructive">{errors.yield_qty.message}</p>
+            )}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="selling_price">Prix de vente / portion (optionnel)</Label>
+            <Input id="selling_price" type="number" step="any" placeholder="12.50" {...register("selling_price")} />
+            {errors.selling_price && (
+              <p className="text-sm text-destructive">{errors.selling_price.message}</p>
             )}
           </div>
           <DialogFooter>

@@ -43,6 +43,7 @@ def create_recipe(db: Session, payload: RecipeCreate, tenant_id: str) -> Recipe:
         tenant_id=tenant_id,
         name=payload.name,
         yield_qty=payload.yield_qty,
+        selling_price=getattr(payload, "selling_price", None),
     )
     db.add(obj)
     db.commit()

@@ -149,13 +149,27 @@ export interface Recipe {
   id: string;
   name: string;
   yield_qty?: number | null;
+  selling_price?: number | null;
   current_version_id?: string | null;
   yield_unit_id?: number | null;
+}
+
+export interface RecipeRow {
+  id: string;
+  name: string;
+  yield_qty: number | null;
+  selling_price: number | null;
+  cost_per_portion: number | null;
+  food_cost_pct: number | null;
+  margin_pct: number | null;
+  has_missing_prices: boolean;
+  defined: boolean;
 }
 
 export interface RecipePayload {
   name: string;
   yield_qty?: number | null;
+  selling_price?: number | null;
 }
 
 export interface RecipeIngredient {
