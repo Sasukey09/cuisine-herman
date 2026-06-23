@@ -45,6 +45,18 @@ export interface Product {
   base_unit_id?: number | null;
 }
 
+export interface ProductRow {
+  id: string;
+  name: string;
+  sku?: string | null;
+  category?: string | null;
+  unit?: string | null;
+  last_cost?: number | null;
+  currency?: string | null;
+  supplier?: string | null;
+  variation_pct?: number | null;
+}
+
 export interface ProductPayload {
   name: string;
   sku?: string | null;

@@ -16,6 +16,7 @@ from app.crud.crud_product import (
     create_product,
     get_product,
     list_products,
+    list_products_enriched,
     update_product,
     delete_product,
 )
@@ -79,6 +80,18 @@ def api_list_products(
     tenant_id: str = Depends(get_current_tenant_id),
 ):
     return list_products(db, tenant_id, skip=skip, limit=limit, q=q)
+
+
+@router.get("/enriched")
+def api_list_products_enriched(
+    skip: int = 0,
+    limit: int = 200,
+    q: Optional[str] = None,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """Products + category, base unit, latest cost/supplier and price variation."""
+    return list_products_enriched(db, tenant_id, skip=skip, limit=limit, q=q)
 
 
 @router.get("/{product_id}", response_model=ProductRead)
