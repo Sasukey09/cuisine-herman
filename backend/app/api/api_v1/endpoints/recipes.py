@@ -52,6 +52,49 @@ def api_list_recipes(
     return list_recipes(db, tenant_id, skip=skip, limit=limit)
 
 
+@router.get("/enriched")
+def api_list_recipes_enriched(
+    skip: int = 0,
+    limit: int = 200,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """Recipes + computed matter cost/portion, selling price, food cost % and
+    gross margin % (so the recipe cards show real figures)."""
+    out = []
+    for r in list_recipes(db, tenant_id, skip=skip, limit=limit):
+        version_id = str(r.current_version_id) if r.current_version_id else None
+        selling = float(r.selling_price) if r.selling_price is not None else None
+        cost_per_portion = food_cost = margin_pct = None
+        has_missing_prices = False
+        if version_id:
+            try:
+                res = cost_engine.compute_recipe_version_cost(
+                    db, tenant_id, version_id, selling_price=selling, persist=False
+                )
+                cost_per_portion = res.get("cost_per_portion")
+                food_cost = res.get("food_cost_pct")
+                has_missing_prices = bool(res.get("has_missing_prices"))
+                if food_cost is not None:
+                    margin_pct = round(100.0 - float(food_cost), 1)
+            except Exception:
+                pass
+        out.append(
+            {
+                "id": str(r.id),
+                "name": r.name,
+                "yield_qty": float(r.yield_qty) if r.yield_qty is not None else None,
+                "selling_price": selling,
+                "cost_per_portion": cost_per_portion,
+                "food_cost_pct": food_cost,
+                "margin_pct": margin_pct,
+                "has_missing_prices": has_missing_prices,
+                "defined": version_id is not None,
+            }
+        )
+    return out
+
+
 @router.post("/import-pdf", response_model=RecipeImportStatus, status_code=201)
 async def api_import_recipe_pdf(
     file: UploadFile = File(...),

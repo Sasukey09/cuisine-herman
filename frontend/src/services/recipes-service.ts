@@ -6,6 +6,7 @@ import type {
   RecipeVersionPayload,
   ComputeCostRequest,
   RecipeCost,
+  RecipeRow,
   RecipeInstruction,
   RecipeImportStatus,
   RecipeImportSaveRequest,
@@ -14,6 +15,11 @@ import type {
 
 export async function getRecipeInstructions(recipeId: string) {
   const { data } = await api.get<RecipeInstruction[]>(`/recipes/${recipeId}/instructions`);
+  return data;
+}
+
+export async function getEnrichedRecipes() {
+  const { data } = await api.get<RecipeRow[]>("/recipes/enriched");
   return data;
 }
 

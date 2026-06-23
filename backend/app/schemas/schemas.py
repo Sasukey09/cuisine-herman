@@ -128,6 +128,7 @@ class InvoiceIngestResult(BaseModel):
 class RecipeBase(BaseModel):
     name: str
     yield_qty: Optional[float]
+    selling_price: Optional[float] = None
 
 
 class RecipeCreate(RecipeBase):
@@ -137,6 +138,7 @@ class RecipeCreate(RecipeBase):
 class RecipeUpdate(BaseModel):
     name: Optional[str] = None
     yield_qty: Optional[float] = None
+    selling_price: Optional[float] = None
 
 
 class RecipeInstructionRead(BaseModel):

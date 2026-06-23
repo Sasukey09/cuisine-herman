@@ -194,6 +194,7 @@ class Recipe(Base):
     name = Column(Text, nullable=False)
     yield_qty = Column(Numeric)
     yield_unit_id = Column(Integer, ForeignKey("units.id"))
+    selling_price = Column(Numeric)  # menu price per portion (for margin)
     current_version_id = Column(UUID(as_uuid=False))
     tags = Column(ARRAY(Text))
     meta = Column("metadata", JSONB)

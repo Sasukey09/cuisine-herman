@@ -13,6 +13,7 @@ import {
   createVersion,
   computeCost,
   getRecipeInstructions,
+  getEnrichedRecipes,
   importRecipePdf,
   saveRecipeImport,
 } from "@/services/recipes-service";
@@ -36,6 +37,10 @@ export function useRecipe(id?: string) {
     queryFn: () => getRecipe(id as string),
     enabled: Boolean(id),
   });
+}
+
+export function useEnrichedRecipes() {
+  return useQuery({ queryKey: [...KEY, "enriched"], queryFn: getEnrichedRecipes });
 }
 
 export function useRecipeInstructions(recipeId?: string) {
