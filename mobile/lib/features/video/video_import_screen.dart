@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../common/format.dart';
 import '../../core/api_error.dart';
 import '../../core/providers.dart';
+import '../../main.dart' show kMuted, kGood, kBorder;
 
 class _Ing {
   _Ing(this.name, this.qty, this.unit);
@@ -84,8 +86,8 @@ class _VideoImportScreenState extends ConsumerState<VideoImportScreen> {
         'ingredients': ingredients,
       });
       final cost = (resp.data as Map<String, dynamic>)['cost'] as Map<String, dynamic>;
-      setState(() => _savedInfo =
-          'Fiche enregistrée. Coût/portion : ${cost['cost_per_portion'] ?? 0} €');
+      setState(() =>
+          _savedInfo = 'Fiche enregistrée. Coût/portion : ${cost['cost_per_portion'] ?? 0} €');
       _snack('Fiche enregistrée et chiffrée.');
     } catch (e) {
       _snack(apiErrorMessage(e));
@@ -101,95 +103,169 @@ class _VideoImportScreenState extends ConsumerState<VideoImportScreen> {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(18, 4, 18, 24),
       children: [
-        const Text('Collez un lien YouTube / TikTok / Instagram. L\'IA en extrait une fiche.',
-            style: TextStyle(color: Colors.grey)),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _url,
-          decoration: const InputDecoration(labelText: 'Lien vidéo', border: OutlineInputBorder()),
-        ),
-        const SizedBox(height: 8),
-        FilledButton.icon(
-          onPressed: _extracting ? null : _extract,
-          icon: _extracting
-              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-              : const Icon(Icons.auto_awesome),
-          label: const Text('Analyser'),
-        ),
-        if (_hasDraft) ...[
-          const Divider(height: 32),
-          const Text('Fiche extraite (quantités estimées à valider)',
-              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
-          const SizedBox(height: 8),
-          TextField(controller: _name, decoration: const InputDecoration(labelText: 'Nom')),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _portions,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Portions'),
-          ),
-          const SizedBox(height: 12),
-          const Text('Ingrédients'),
-          ..._ings.asMap().entries.map((e) {
-            final i = e.key;
-            final ing = e.value;
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 3,
-                    child: TextFormField(
-                      initialValue: ing.name,
-                      decoration: const InputDecoration(isDense: true, hintText: 'Ingrédient'),
-                      onChanged: (v) => ing.name = v,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: TextFormField(
-                      initialValue: ing.qty,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(isDense: true, hintText: 'Qté'),
-                      onChanged: (v) => ing.qty = v,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: TextFormField(
-                      initialValue: ing.unit,
-                      decoration: const InputDecoration(isDense: true, hintText: 'unité'),
-                      onChanged: (v) => ing.unit = v,
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close, size: 18),
-                    onPressed: () => setState(() => _ings.removeAt(i)),
-                  ),
-                ],
-              ),
-            );
-          }),
-          TextButton.icon(
-            onPressed: () => setState(() => _ings.add(_Ing('', '', ''))),
-            icon: const Icon(Icons.add),
-            label: const Text('Ajouter un ingrédient'),
-          ),
-          const SizedBox(height: 8),
-          FilledButton.icon(
-            onPressed: _saving ? null : _save,
-            icon: _saving
-                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.save),
-            label: const Text('Enregistrer la fiche'),
-          ),
-          if (_savedInfo != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Text(_savedInfo!, style: const TextStyle(color: Color(0xFF5C7A4A))),
+        // --- Drop-zone card ----------------------------------------------
+        MockCard(
+          padding: const EdgeInsets.all(18),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(16, 22, 16, 16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFAF6EE),
+              border: Border.all(color: const Color(0xFFD6C9B4), width: 2),
+              borderRadius: BorderRadius.circular(12),
             ),
+            child: Column(
+              children: [
+                const Text('🎬', style: TextStyle(fontSize: 30)),
+                const SizedBox(height: 4),
+                const Text('Importez une vidéo',
+                    style: TextStyle(fontFamily: 'serif', fontSize: 16, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                const Text("Lien YouTube / Instagram. L'IA extrait les ingrédients.",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 12, color: kMuted)),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _url,
+                  style: const TextStyle(fontSize: 13),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    fillColor: Colors.white,
+                    hintText: 'https://…',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(9),
+                      borderSide: const BorderSide(color: kBorder),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: _extracting ? null : _extract,
+                    child: _extracting
+                        ? const SizedBox(
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Text('Analyser'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // --- Extracted recipe card ---------------------------------------
+        if (_hasDraft) ...[
+          const SizedBox(height: 13),
+          MockCard(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Recette extraite',
+                    style: TextStyle(fontFamily: 'serif', fontSize: 15.5, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 2),
+                const Text('Quantités estimées — à valider',
+                    style: TextStyle(fontSize: 12, color: kMuted)),
+                const SizedBox(height: 12),
+                TextField(controller: _name, decoration: const InputDecoration(labelText: 'Nom')),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _portions,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Portions'),
+                ),
+                const SizedBox(height: 12),
+                const Text('Ingrédients',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                ..._ings.asMap().entries.map((e) {
+                  final i = e.key;
+                  final ing = e.value;
+                  return Container(
+                    decoration: const BoxDecoration(
+                      border: Border(bottom: BorderSide(color: Color(0xFFECE4D4))),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.only(right: 4),
+                          child: Text('✓', style: TextStyle(color: kGood, fontSize: 13)),
+                        ),
+                        Expanded(
+                          flex: 3,
+                          child: TextFormField(
+                            initialValue: ing.name,
+                            style: const TextStyle(fontSize: 13),
+                            decoration: const InputDecoration(
+                                isDense: true, border: InputBorder.none, hintText: 'Ingrédient'),
+                            onChanged: (v) => ing.name = v,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: TextFormField(
+                            initialValue: ing.qty,
+                            keyboardType: TextInputType.number,
+                            style: const TextStyle(fontSize: 13),
+                            decoration: const InputDecoration(
+                                isDense: true, border: InputBorder.none, hintText: 'Qté'),
+                            onChanged: (v) => ing.qty = v,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: TextFormField(
+                            initialValue: ing.unit,
+                            style: const TextStyle(fontSize: 13),
+                            decoration: const InputDecoration(
+                                isDense: true, border: InputBorder.none, hintText: 'unité'),
+                            onChanged: (v) => ing.unit = v,
+                          ),
+                        ),
+                        InkWell(
+                          onTap: () => setState(() => _ings.removeAt(i)),
+                          child: const Padding(
+                            padding: EdgeInsets.only(left: 4),
+                            child: Icon(Icons.close, size: 16, color: kMuted),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () => setState(() => _ings.add(_Ing('', '', ''))),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Ajouter un ingrédient'),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: _saving ? null : _save,
+                    child: _saving
+                        ? const SizedBox(
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Text('Créer la recette'),
+                  ),
+                ),
+                if (_savedInfo != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Text(_savedInfo!, style: const TextStyle(color: kGood)),
+                  ),
+              ],
+            ),
+          ),
         ],
       ],
     );
