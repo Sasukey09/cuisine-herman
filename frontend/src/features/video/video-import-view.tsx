@@ -24,6 +24,24 @@ import type { VideoExtractResult, VideoIngredientDraft, VideoSaveResult } from "
 
 interface Row extends VideoIngredientDraft {}
 
+/** Extract a YouTube video id from a watch / youtu.be / shorts / embed URL. */
+function youtubeEmbedId(raw: string): string | null {
+  if (!raw) return null;
+  try {
+    const u = new URL(raw.trim());
+    const host = u.hostname.replace(/^www\./, "");
+    if (host === "youtu.be") return u.pathname.slice(1).split("/")[0] || null;
+    if (host.endsWith("youtube.com")) {
+      if (u.pathname === "/watch") return u.searchParams.get("v");
+      const m = u.pathname.match(/^\/(?:shorts|embed)\/([^/?]+)/);
+      if (m) return m[1];
+    }
+  } catch {
+    /* not a URL yet */
+  }
+  return null;
+}
+
 export function VideoImportView() {
   const [url, setUrl] = useState("");
   const [name, setName] = useState("");
@@ -153,6 +171,32 @@ export function VideoImportView() {
           Alternative fiable si le lien est bloqué (transcription audio, ~1–2 min).
         </span>
       </div>
+
+      {youtubeEmbedId(url) && (
+        <Card className="mt-3">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Youtube className="h-4 w-4 text-red-500" />
+              Aperçu de la vidéo
+            </CardTitle>
+            <CardDescription>
+              Visionnez la vidéo ici. Pour générer la fiche : « Analyser » (si le lien est
+              accessible) ou « Importer un fichier vidéo ».
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="aspect-video w-full overflow-hidden rounded-md border">
+              <iframe
+                className="h-full w-full"
+                src={`https://www.youtube.com/embed/${youtubeEmbedId(url)}`}
+                title="Aperçu vidéo"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {extract.data && (
         <p className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
