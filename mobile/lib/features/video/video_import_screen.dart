@@ -188,7 +188,7 @@ class _VideoImportScreenState extends ConsumerState<VideoImportScreen> {
           if (_savedInfo != null)
             Padding(
               padding: const EdgeInsets.only(top: 12),
-              child: Text(_savedInfo!, style: const TextStyle(color: Colors.green)),
+              child: Text(_savedInfo!, style: const TextStyle(color: Color(0xFF5C7A4A))),
             ),
         ],
       ],

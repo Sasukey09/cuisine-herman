@@ -22,16 +22,22 @@ flutter pub get
 `flutter create` n'écrase pas les fichiers existants (`pubspec.yaml`, `lib/…`).
 
 ## URL de l'API selon la cible
-`lib/core/config.dart` lit `API_BASE_URL` (dart-define), défaut `http://10.0.2.2:8000/api/v1`.
+`lib/core/config.dart` lit `API_BASE_URL` (dart-define). **Défaut : le backend Render
+de prod** (`https://cuisine-backend-t7pv.onrender.com/api/v1`) — l'app mobile partage
+donc les mêmes données que le site web sans configuration. Connecte-toi avec ton
+compte habituel.
+
+Pour pointer vers un backend local en dev :
 
 | Cible | URL à utiliser |
 |---|---|
-| Émulateur Android | `http://10.0.2.2:8000/api/v1` (défaut) |
+| Prod (défaut) | `https://cuisine-backend-t7pv.onrender.com/api/v1` |
+| Émulateur Android | `http://10.0.2.2:8000/api/v1` |
 | Simulateur iOS | `http://localhost:8000/api/v1` |
 | Appareil physique | `http://<IP-LAN-de-ta-machine>:8000/api/v1` |
 
 ```bash
-flutter run --dart-define=API_BASE_URL=http://192.168.1.50:8000/api/v1
+flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8000/api/v1
 ```
 
 > Note : les apps natives ne sont pas soumises au CORS (réglage navigateur
