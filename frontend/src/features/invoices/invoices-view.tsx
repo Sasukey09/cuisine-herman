@@ -44,14 +44,23 @@ export function InvoicesView() {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        {canWrite && (
-          <Button onClick={() => setUploadOpen(true)}>
+      {canWrite && (
+        <button
+          type="button"
+          onClick={() => setUploadOpen(true)}
+          className="w-full rounded-xl border-2 border-dashed border-[#d6c9b4] bg-[#faf6ee] px-6 py-7 text-center transition-colors hover:border-primary/60"
+        >
+          <div className="mb-1 text-3xl">📄</div>
+          <div className="font-serif text-lg font-semibold">Déposez vos factures ici</div>
+          <div className="mb-3 mt-1 text-[13px] text-muted-foreground">
+            PDF, JPG ou PNG — l&apos;OCR extrait automatiquement produits, quantités et prix.
+          </div>
+          <span className="inline-flex items-center gap-2 rounded-lg bg-primary px-[18px] py-[9px] text-[13px] font-semibold text-primary-foreground">
             <Upload className="h-4 w-4" />
-            Importer une facture
-          </Button>
-        )}
-      </div>
+            Parcourir les fichiers
+          </span>
+        </button>
+      )}
 
       <div className="rounded-lg border bg-card">
         <Table>

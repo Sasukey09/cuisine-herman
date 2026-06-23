@@ -6,16 +6,7 @@ import { Plus, Search, Pencil, Trash2, Truck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -68,81 +59,59 @@ export function SuppliersView() {
         )}
       </div>
 
-      <div className="rounded-lg border bg-card">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Nom</TableHead>
-              <TableHead>Code</TableHead>
-              <TableHead>Contact</TableHead>
-              {canWrite && <TableHead className="w-24 text-right">Actions</TableHead>}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <TableRow key={i}>
-                  <TableCell><Skeleton className="h-5 w-40" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-16" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-32" /></TableCell>
-                  {canWrite && <TableCell />}
-                </TableRow>
-              ))
-            ) : !suppliers || suppliers.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={canWrite ? 4 : 3}>
-                  <div className="flex flex-col items-center gap-2 py-10 text-center text-sm text-muted-foreground">
-                    <Truck className="h-8 w-8" />
-                    {debounced ? "Aucun fournisseur ne correspond." : "Aucun fournisseur pour le moment."}
+      {isLoading ? (
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-[150px] rounded-xl" />
+          ))}
+        </div>
+      ) : !suppliers || suppliers.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 rounded-xl border bg-card py-14 text-center text-sm text-muted-foreground">
+          <Truck className="h-8 w-8" />
+          {debounced ? "Aucun fournisseur ne correspond." : "Aucun fournisseur pour le moment."}
+        </div>
+      ) : (
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
+          {suppliers.map((s) => (
+            <div key={s.id} className="rounded-xl border bg-card p-[18px]">
+              <div className="mb-2.5 flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-10 w-10 flex-none items-center justify-center rounded-[10px] bg-secondary font-serif text-lg font-semibold text-primary">
+                    {(s.name || "?").slice(0, 1).toUpperCase()}
                   </div>
-                </TableCell>
-              </TableRow>
-            ) : (
-              suppliers.map((s) => (
-                <TableRow key={s.id}>
-                  <TableCell className="font-medium">
-                    <Link href={`/fournisseurs/${s.id}`} className="hover:underline">
+                  <div className="min-w-0">
+                    <Link href={`/fournisseurs/${s.id}`} className="block truncate text-[15px] font-semibold hover:underline">
                       {s.name}
                     </Link>
-                  </TableCell>
-                  <TableCell>
-                    {s.code ? <Badge variant="secondary">{s.code}</Badge> : <span className="text-muted-foreground">—</span>}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {s.contact?.email || s.contact?.phone || "—"}
-                  </TableCell>
-                  {canWrite && (
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label="Modifier"
-                          onClick={() => {
-                            setEditing(s);
-                            setFormOpen(true);
-                          }}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label="Supprimer"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => setDeleteTarget(s)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  )}
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+                    <div className="truncate text-xs text-muted-foreground">{s.code || "Fournisseur"}</div>
+                  </div>
+                </div>
+                {canWrite && (
+                  <div className="flex flex-none gap-1">
+                    <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Modifier"
+                      onClick={() => { setEditing(s); setFormOpen(true); }}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" aria-label="Supprimer"
+                      onClick={() => setDeleteTarget(s)}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+              <div className="mb-3 truncate text-[12.5px] text-muted-foreground">
+                {s.contact?.email || s.contact?.phone || "Aucun contact renseigné"}
+              </div>
+              <div className="flex items-center justify-between border-t pt-2.5">
+                <span className="text-[12.5px] text-muted-foreground">{s.code ? `Réf. ${s.code}` : "—"}</span>
+                <Link href={`/fournisseurs/${s.id}`} className="text-[12.5px] font-semibold text-primary hover:underline">
+                  Voir le catalogue →
+                </Link>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       <SupplierFormDialog open={formOpen} onOpenChange={setFormOpen} supplier={editing} />
 
