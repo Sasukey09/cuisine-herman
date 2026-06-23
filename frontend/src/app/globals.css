@@ -4,26 +4,34 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.5rem;
+    /* Cuisine Herman — warm editorial theme (cream + terracotta) */
+    --background: 40 39% 93%;          /* #f4efe6 */
+    --foreground: 37 14% 15%;          /* #2a2620 */
+    --card: 41 50% 97%;                /* #fbf8f2 */
+    --card-foreground: 37 14% 15%;
+    --popover: 41 50% 97%;
+    --popover-foreground: 37 14% 15%;
+    --primary: 21 61% 47%;             /* #c2632f terracotta */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 39 42% 89%;           /* #efe7d8 */
+    --secondary-foreground: 37 14% 15%;
+    --muted: 39 42% 89%;
+    --muted-foreground: 38 9% 51%;     /* #8a847a */
+    --accent: 38 40% 91%;              /* #f0e9dc hover */
+    --accent-foreground: 37 14% 15%;
+    --destructive: 6 59% 44%;          /* #b23a2e */
+    --destructive-foreground: 0 0% 100%;
+    --border: 39 33% 85%;              /* #e6ddcd */
+    --input: 39 33% 85%;
+    --ring: 21 61% 47%;
+    --radius: 0.75rem;
+
+    /* dark sidebar palette (consumed by the nav component) */
+    --sidebar: 24 11% 15%;             /* #2a2422 */
+    --sidebar-foreground: 37 23% 80%;  /* #d8cfc1 */
+    --sidebar-active: 20 12% 20%;      /* #3a322e */
+    --sidebar-accent: 22 62% 61%;      /* #d98c5f */
+    --sidebar-muted: 35 11% 55%;       /* #9a8f80 */
   }
 
   .dark {

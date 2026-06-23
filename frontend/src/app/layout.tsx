@@ -1,10 +1,20 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Public_Sans, Newsreader } from "next/font/google";
 import "./globals.css";
 
 import { Providers } from "@/components/providers";
 
-const inter = Inter({ subsets: ["latin"] });
+const sans = Public_Sans({
+  subsets: ["latin"],
+  variable: "--font-sans",
+  display: "swap",
+});
+const serif = Newsreader({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-serif",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Cuisine Herman — Gestion de coûts",
@@ -19,7 +29,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="fr" suppressHydrationWarning>
-      <body className={inter.className}>
+      <body className={`${sans.variable} ${serif.variable} font-sans`}>
         <Providers>{children}</Providers>
       </body>
     </html>

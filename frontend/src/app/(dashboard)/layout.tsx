@@ -19,9 +19,9 @@ export default function DashboardLayout({
 
   return (
     <AuthGuard>
-      <div className="min-h-screen bg-muted/20">
+      <div className="min-h-screen bg-background">
         {/* Desktop sidebar */}
-        <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r bg-card md:block">
+        <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-border/40 bg-sidebar md:block">
           <SidebarNav />
         </aside>
 
