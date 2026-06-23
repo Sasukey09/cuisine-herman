@@ -25,6 +25,10 @@ const schema = z.object({
   code: z.string().optional(),
   email: z.string().email("Email invalide").or(z.literal("")).optional(),
   phone: z.string().optional(),
+  rating: z.preprocess(
+    (v) => (v === "" || v == null ? undefined : Number(v)),
+    z.number().min(0, "0 à 5").max(5, "0 à 5").optional(),
+  ),
 });
 
 type Values = z.infer<typeof schema>;
@@ -54,6 +58,7 @@ export function SupplierFormDialog({ open, onOpenChange, supplier }: Props) {
         code: supplier?.code ?? "",
         email: supplier?.contact?.email ?? "",
         phone: supplier?.contact?.phone ?? "",
+        rating: supplier?.rating ?? undefined,
       });
     }
   }, [open, supplier, reset]);
@@ -69,6 +74,7 @@ export function SupplierFormDialog({ open, onOpenChange, supplier }: Props) {
       name: values.name,
       code: values.code?.trim() || null,
       contact: Object.keys(contact).length ? contact : null,
+      rating: values.rating ?? null,
     };
     const opts = { onSuccess: () => onOpenChange(false) };
     if (isEdit && supplier) update.mutate({ id: supplier.id, payload }, opts);
@@ -102,6 +108,11 @@ export function SupplierFormDialog({ open, onOpenChange, supplier }: Props) {
               <Label htmlFor="phone">Téléphone (optionnel)</Label>
               <Input id="phone" placeholder="01 23 45 67 89" {...register("phone")} />
             </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="rating">Note (0 à 5 ★, optionnel)</Label>
+            <Input id="rating" type="number" min={0} max={5} step={0.5} placeholder="4.5" {...register("rating")} />
+            {errors.rating && <p className="text-sm text-destructive">{errors.rating.message}</p>}
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

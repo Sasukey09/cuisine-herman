@@ -86,18 +86,25 @@ export function SuppliersView() {
                     <div className="truncate text-xs text-muted-foreground">{s.code || "Fournisseur"}</div>
                   </div>
                 </div>
-                {canWrite && (
-                  <div className="flex flex-none gap-1">
-                    <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Modifier"
-                      onClick={() => { setEditing(s); setFormOpen(true); }}>
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" aria-label="Supprimer"
-                      onClick={() => setDeleteTarget(s)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                )}
+                <div className="flex flex-none items-center gap-1.5">
+                  {s.rating != null && (
+                    <span className="whitespace-nowrap text-[12.5px] font-semibold text-amber-600">
+                      ★ {s.rating}
+                    </span>
+                  )}
+                  {canWrite && (
+                    <>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Modifier"
+                        onClick={() => { setEditing(s); setFormOpen(true); }}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" aria-label="Supprimer"
+                        onClick={() => setDeleteTarget(s)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </>
+                  )}
+                </div>
               </div>
               <div className="mb-3 truncate text-[12.5px] text-muted-foreground">
                 {s.contact?.email || s.contact?.phone || "Aucun contact renseigné"}

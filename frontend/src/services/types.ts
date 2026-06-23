@@ -78,6 +78,7 @@ export interface Supplier {
   name: string;
   code?: string | null;
   contact?: SupplierContact | null;
+  rating?: number | null;
 }
 
 export interface SupplierRow {
@@ -85,6 +86,7 @@ export interface SupplierRow {
   name: string;
   code?: string | null;
   contact?: SupplierContact | null;
+  rating?: number | null;
   product_count: number;
 }
 
@@ -92,6 +94,7 @@ export interface SupplierPayload {
   name: string;
   code?: string | null;
   contact?: SupplierContact | null;
+  rating?: number | null;
 }
 
 export type SupplierUpdatePayload = Partial<SupplierPayload>;
