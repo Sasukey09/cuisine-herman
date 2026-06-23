@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../common/format.dart';
 import '../../core/api_error.dart';
 import '../../core/providers.dart';
+import '../../main.dart' show kMuted, kSecondary;
 
 final _fieldsProvider = FutureProvider.autoDispose<List<dynamic>>((ref) async {
   final r = await ref.read(apiClientProvider).dio.get('/custom-fields/');
@@ -222,37 +224,76 @@ class _CustomFieldsScreenState extends ConsumerState<CustomFieldsScreen> {
           ),
         const Divider(height: 32),
 
-        const Text('Champs définis', style: TextStyle(fontWeight: FontWeight.bold)),
+        const Text('Champs définis',
+            style: TextStyle(fontFamily: 'serif', fontSize: 15.5, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 10),
         fields.maybeWhen(
           data: (rows) => rows.isEmpty
               ? const Padding(
-                  padding: EdgeInsets.all(8),
-                  child: Text('Aucun champ.', style: TextStyle(color: Colors.grey)))
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Text('Aucun champ.', style: TextStyle(color: kMuted)))
               : Column(
-                  children: rows.map((f) {
-                    final ff = f as Map<String, dynamic>;
-                    return ListTile(
-                      dense: true,
-                      title: Text('${ff['label']}'),
-                      subtitle: Text('${ff['target']} · ${ff['type']}'),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete_outline),
-                        onPressed: () async {
-                          try {
-                            await ref.read(apiClientProvider).dio.delete('/custom-fields/${ff['id']}');
-                            ref.invalidate(_fieldsProvider);
-                          } catch (e) {
-                            _snack(apiErrorMessage(e));
-                          }
-                        },
-                      ),
-                    );
-                  }).toList(),
+                  children: [
+                    for (final f in rows) ...[
+                      _fieldCard(f as Map<String, dynamic>),
+                      const SizedBox(height: 10),
+                    ],
+                  ],
                 ),
           orElse: () => const Padding(
               padding: EdgeInsets.all(8), child: Center(child: CircularProgressIndicator())),
         ),
       ],
+    );
+  }
+
+  Widget _fieldCard(Map<String, dynamic> ff) {
+    const targets = {'product': 'Produits', 'recipe': 'Recettes'};
+    const types = {
+      'text': 'Texte',
+      'number': 'Nombre',
+      'boolean': 'Booléen',
+      'select': 'Multi-sél.',
+      'date': 'Date',
+    };
+    final scope = targets['${ff['target']}'] ?? '${ff['target']}';
+    final req = ff['required'] == true ? 'Obligatoire' : 'Facultatif';
+    final typeLabel = types['${ff['type']}'] ?? '${ff['type']}';
+    return MockCard(
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${ff['label']}',
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 2),
+                Text('$scope · $req', style: const TextStyle(fontSize: 12, color: kMuted)),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+            decoration: BoxDecoration(color: kSecondary, borderRadius: BorderRadius.circular(7)),
+            child: Text(typeLabel, style: const TextStyle(fontSize: 11.5, color: Color(0xFF8A7F70))),
+          ),
+          InkWell(
+            onTap: () async {
+              try {
+                await ref.read(apiClientProvider).dio.delete('/custom-fields/${ff['id']}');
+                ref.invalidate(_fieldsProvider);
+              } catch (e) {
+                _snack(apiErrorMessage(e));
+              }
+            },
+            child: const Padding(
+              padding: EdgeInsets.only(left: 8),
+              child: Icon(Icons.delete_outline, size: 18, color: kMuted),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

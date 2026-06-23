@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../common/format.dart';
 import '../../core/api_error.dart';
 import '../../core/providers.dart';
+import '../../main.dart' show kMuted;
 
 final _sourcesProvider = FutureProvider.autoDispose<List<dynamic>>((ref) async {
   final r = await ref.read(apiClientProvider).dio.get('/reports/sources');
@@ -91,8 +93,19 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       data: (list) {
         _initSource(list);
         return ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(18, 4, 18, 24),
           children: [
+            const Text('Modèles',
+                style: TextStyle(fontFamily: 'serif', fontSize: 15.5, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 10),
+            for (final s in list) ...[
+              _sourceCard(s as Map<String, dynamic>, list),
+              const SizedBox(height: 11),
+            ],
+            const SizedBox(height: 4),
+            const Text('Rapport personnalisé',
+                style: TextStyle(fontFamily: 'serif', fontSize: 15.5, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
             Row(
               children: [
                 const Text('Source : '),
@@ -212,6 +225,50 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           ],
         );
       },
+    );
+  }
+
+  Widget _sourceCard(Map<String, dynamic> s, List<dynamic> list) {
+    const emojis = ['📊', '🍽️', '🚚', '📦', '📈', '🧾'];
+    final key = '${s['key']}';
+    final idx = list.indexOf(s);
+    final emoji = emojis[(idx < 0 ? 0 : idx) % emojis.length];
+    final cols = (s['columns'] as List?)?.length ?? 0;
+    return MockCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(emoji, style: const TextStyle(fontSize: 24)),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('${s['label']}',
+                        style: const TextStyle(
+                            fontFamily: 'serif', fontSize: 15.5, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 2),
+                    Text('$cols colonnes', style: const TextStyle(fontSize: 12, color: kMuted)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: () {
+                _changeSource(list, key);
+                _run();
+              },
+              child: const Text('Générer'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

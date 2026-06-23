@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../common/format.dart';
 import '../../core/api_error.dart';
 import '../../core/providers.dart';
+import '../../main.dart' show kBorder, kCream, kMuted, kTerracotta;
 
 final _metricsProvider = FutureProvider.autoDispose<List<dynamic>>((ref) async {
   final r = await ref.read(apiClientProvider).dio.get('/metrics/');
@@ -29,7 +31,7 @@ class _MetricsScreenState extends ConsumerState<MetricsScreen> {
   final _formula = TextEditingController();
   String _format = 'number';
   String? _recipeId;
-  List<dynamic>? _evaluation;
+  Map<String, Map<String, dynamic>> _evalById = {};
   bool _creating = false;
 
   @override
@@ -41,6 +43,13 @@ class _MetricsScreenState extends ConsumerState<MetricsScreen> {
 
   void _snack(String m) =>
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+
+  String _fmtVal(num? v, String fmt) {
+    if (v == null) return '—';
+    if (fmt == 'percent') return '${v.toStringAsFixed(1).replaceAll('.', ',')} %';
+    if (fmt == 'currency') return eur(v);
+    return v.toString().replaceAll('.', ',');
+  }
 
   Future<void> _create() async {
     if (_name.text.trim().isEmpty || _formula.text.trim().isEmpty) {
@@ -68,11 +77,13 @@ class _MetricsScreenState extends ConsumerState<MetricsScreen> {
   Future<void> _evaluate() async {
     if (_recipeId == null) return;
     try {
-      final r = await ref
-          .read(apiClientProvider)
-          .dio
-          .get('/metrics/evaluate/recipe/$_recipeId');
-      setState(() => _evaluation = (r.data as Map<String, dynamic>)['metrics'] as List);
+      final r = await ref.read(apiClientProvider).dio.get('/metrics/evaluate/recipe/$_recipeId');
+      final list = (r.data as Map<String, dynamic>)['metrics'] as List;
+      setState(() {
+        _evalById = {
+          for (final e in list.cast<Map>()) '${e['id']}': e.cast<String, dynamic>(),
+        };
+      });
     } catch (e) {
       _snack(apiErrorMessage(e));
     }
@@ -85,124 +96,182 @@ class _MetricsScreenState extends ConsumerState<MetricsScreen> {
     final recipes = ref.watch(_recipesProvider);
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(18, 4, 18, 24),
       children: [
-        const Text('Créez vos calculs avec des formules. Ex. : cost_per_portion * 3',
-            style: TextStyle(color: Colors.grey)),
-        const SizedBox(height: 12),
-        TextField(controller: _name, decoration: const InputDecoration(labelText: 'Nom')),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _formula,
-          decoration: const InputDecoration(labelText: 'Formule', hintText: 'cost_per_portion * 3'),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            const Text('Format : '),
-            DropdownButton<String>(
-              value: _format,
-              items: const [
-                DropdownMenuItem(value: 'number', child: Text('Nombre')),
-                DropdownMenuItem(value: 'currency', child: Text('Montant')),
-                DropdownMenuItem(value: 'percent', child: Text('Pourcentage')),
-              ],
-              onChanged: (v) => setState(() => _format = v ?? 'number'),
-            ),
-          ],
-        ),
-        variables.maybeWhen(
-          data: (vars) => Wrap(
-            spacing: 6,
-            children: vars
-                .map((v) => ActionChip(
-                      label: Text('${(v as Map)['name']}', style: const TextStyle(fontSize: 11)),
-                      onPressed: () {
-                        final name = '${v['name']}';
-                        _formula.text =
-                            _formula.text.isEmpty ? name : '${_formula.text} $name';
-                      },
-                    ))
-                .toList(),
-          ),
-          orElse: () => const SizedBox.shrink(),
-        ),
-        const SizedBox(height: 8),
-        FilledButton.icon(
-          onPressed: _creating ? null : _create,
-          icon: const Icon(Icons.add),
-          label: const Text('Créer'),
-        ),
-        const Divider(height: 32),
-        const Text('Tester sur une recette', style: TextStyle(fontWeight: FontWeight.bold)),
-        recipes.maybeWhen(
-          data: (rs) => Row(
+        // --- Create -------------------------------------------------------
+        MockCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: DropdownButton<String>(
-                  isExpanded: true,
-                  value: _recipeId,
-                  hint: const Text('Choisir une recette'),
-                  items: rs
-                      .map((r) => DropdownMenuItem(
-                            value: '${(r as Map)['id']}',
-                            child: Text('${r['name']}', overflow: TextOverflow.ellipsis),
+              const Text('Nouvel indicateur',
+                  style: TextStyle(fontFamily: 'serif', fontSize: 15.5, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 4),
+              const Text('Ex. : cost_per_portion * 3', style: TextStyle(fontSize: 12, color: kMuted)),
+              const SizedBox(height: 10),
+              TextField(controller: _name, decoration: const InputDecoration(labelText: 'Nom')),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _formula,
+                decoration: const InputDecoration(labelText: 'Formule', hintText: 'cost_per_portion * 3'),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Text('Format : ', style: TextStyle(color: kMuted)),
+                  DropdownButton<String>(
+                    value: _format,
+                    items: const [
+                      DropdownMenuItem(value: 'number', child: Text('Nombre')),
+                      DropdownMenuItem(value: 'currency', child: Text('Montant')),
+                      DropdownMenuItem(value: 'percent', child: Text('Pourcentage')),
+                    ],
+                    onChanged: (v) => setState(() => _format = v ?? 'number'),
+                  ),
+                ],
+              ),
+              variables.maybeWhen(
+                data: (vars) => Wrap(
+                  spacing: 6,
+                  children: vars
+                      .map((v) => ActionChip(
+                            label: Text('${(v as Map)['name']}', style: const TextStyle(fontSize: 11)),
+                            onPressed: () {
+                              final name = '${v['name']}';
+                              _formula.text = _formula.text.isEmpty ? name : '${_formula.text} $name';
+                            },
                           ))
                       .toList(),
-                  onChanged: (v) {
-                    setState(() {
-                      _recipeId = v;
-                      _evaluation = null;
-                    });
-                    _evaluate();
-                  },
+                ),
+                orElse: () => const SizedBox.shrink(),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _creating ? null : _create,
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Créer'),
                 ),
               ),
             ],
           ),
+        ),
+        const SizedBox(height: 13),
+
+        // --- Evaluate against a recipe -----------------------------------
+        recipes.maybeWhen(
+          data: (rs) => MockCard(
+            child: Row(
+              children: [
+                const Text('Tester sur : ', style: TextStyle(color: kMuted, fontSize: 13)),
+                Expanded(
+                  child: DropdownButton<String>(
+                    isExpanded: true,
+                    value: _recipeId,
+                    hint: const Text('Choisir une recette'),
+                    items: rs
+                        .map((r) => DropdownMenuItem(
+                              value: '${(r as Map)['id']}',
+                              child: Text('${r['name']}', overflow: TextOverflow.ellipsis),
+                            ))
+                        .toList(),
+                    onChanged: (v) {
+                      setState(() => _recipeId = v);
+                      _evaluate();
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
           orElse: () => const SizedBox.shrink(),
         ),
-        if (_evaluation != null)
-          ..._evaluation!.map((m) {
-            final mm = m as Map<String, dynamic>;
-            return ListTile(
-              dense: true,
-              title: Text('${mm['name']}'),
-              trailing: Text(mm['error'] != null ? '${mm['error']}' : '${mm['value'] ?? '—'}'),
+        const SizedBox(height: 13),
+
+        // --- The metrics, mockup cards -----------------------------------
+        metrics.when(
+          loading: () => const Padding(
+              padding: EdgeInsets.all(20), child: Center(child: CircularProgressIndicator())),
+          error: (e, _) => Padding(
+              padding: const EdgeInsets.all(12), child: Text(apiErrorMessage(e))),
+          data: (rows) {
+            if (rows.isEmpty) {
+              return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 20),
+                  child: Text('Aucun indicateur.', style: TextStyle(color: kMuted)));
+            }
+            return Column(
+              children: [
+                for (final m in rows) ...[
+                  _metricCard(m as Map<String, dynamic>),
+                  const SizedBox(height: 11),
+                ],
+              ],
             );
-          }),
-        const Divider(height: 32),
-        const Text('Mes indicateurs', style: TextStyle(fontWeight: FontWeight.bold)),
-        metrics.maybeWhen(
-          data: (rows) => rows.isEmpty
-              ? const Padding(
-                  padding: EdgeInsets.all(8),
-                  child: Text('Aucun indicateur.', style: TextStyle(color: Colors.grey)))
-              : Column(
-                  children: rows.map((m) {
-                    final mm = m as Map<String, dynamic>;
-                    return ListTile(
-                      dense: true,
-                      title: Text('${mm['name']}'),
-                      subtitle: Text('${mm['formula']}'),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete_outline),
-                        onPressed: () async {
-                          try {
-                            await ref.read(apiClientProvider).dio.delete('/metrics/${mm['id']}');
-                            ref.invalidate(_metricsProvider);
-                          } catch (e) {
-                            _snack(apiErrorMessage(e));
-                          }
-                        },
-                      ),
-                    );
-                  }).toList(),
-                ),
-          orElse: () => const Padding(
-              padding: EdgeInsets.all(8), child: Center(child: CircularProgressIndicator())),
+          },
         ),
       ],
+    );
+  }
+
+  Widget _metricCard(Map<String, dynamic> mm) {
+    final id = '${mm['id']}';
+    final fmt = '${mm['format'] ?? 'number'}';
+    final ev = _evalById[id];
+    final hasVal = ev != null && ev['error'] == null && ev['value'] != null;
+    final desc = mm['description'];
+    return MockCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text('${mm['name']}',
+                    style: const TextStyle(fontFamily: 'serif', fontSize: 15, fontWeight: FontWeight.w600)),
+              ),
+              if (hasVal)
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Text(_fmtVal(ev['value'] as num?, fmt),
+                      style: const TextStyle(
+                          fontFamily: 'serif', fontSize: 20, fontWeight: FontWeight.w600, color: kTerracotta)),
+                ),
+              InkWell(
+                onTap: () async {
+                  try {
+                    await ref.read(apiClientProvider).dio.delete('/metrics/$id');
+                    ref.invalidate(_metricsProvider);
+                  } catch (e) {
+                    _snack(apiErrorMessage(e));
+                  }
+                },
+                child: const Padding(
+                  padding: EdgeInsets.only(left: 6, top: 2),
+                  child: Icon(Icons.delete_outline, size: 18, color: kMuted),
+                ),
+              ),
+            ],
+          ),
+          if (desc != null && '$desc'.isNotEmpty) ...[
+            const SizedBox(height: 5),
+            Text('$desc', style: const TextStyle(fontSize: 12, color: kMuted)),
+          ],
+          const SizedBox(height: 9),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+            decoration: BoxDecoration(
+              color: kCream,
+              border: Border.all(color: kBorder),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text('${mm['formula']}',
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 11.5, color: Color(0xFF4A443C))),
+          ),
+        ],
+      ),
     );
   }
 }
