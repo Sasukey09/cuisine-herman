@@ -148,17 +148,19 @@ jobs:
         run: flutter build apk --release
 
       # Regression test for the bug that made every release build offline.
+      # Scoped to build/app: the root Gradle script redirects each plugin's build
+      # dir under build/<plugin>/, and those carry their own merged manifests.
       - name: The release manifest must grant INTERNET
         working-directory: mobile
         run: |
-          MERGED=$(find build -path '*merged_manifest*' -name AndroidManifest.xml \
-                   | grep -i release | head -1)
+          MERGED=$(find build/app -path '*merged_manifest*release*' \
+                   -name AndroidManifest.xml | head -1)
           if [ -z "$MERGED" ]; then
-            echo "::error::merged release manifest not found"; exit 1
+            echo "::error::merged release manifest of the app module not found"; exit 1
           fi
           echo "Checking $MERGED"
           if ! grep -q 'android.permission.INTERNET' "$MERGED"; then
             echo "::error::INTERNET permission missing — every API call would fail in release"
             exit 1
           fi
-          echo "OK: INTERNET granted in the release manifest."
+          echo "OK: INTERNET granted in the app's release manifest."
