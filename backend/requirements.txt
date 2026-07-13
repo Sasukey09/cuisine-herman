@@ -1,7 +1,7 @@
 # fastapi 0.100 tirait starlette 0.27 (8 avis de securite sur la couche HTTP de
 # CHAQUE requete). Monter fastapi impose pydantic v2 (fastapi>=0.139 exige >=2.9).
 fastapi==0.139.0
-uvicorn[standard]==0.34.0
+uvicorn[standard]==0.51.0
 # uvicorn >= 0.30 a SUPPRIME uvicorn.workers.UvicornWorker (la classe que gunicorn
 # charge en prod). Elle vit desormais dans ce paquet. Sans lui, le conteneur meurt
 # au demarrage avec 'class uri invalid or not found' — et la CI ne le voyait pas,
