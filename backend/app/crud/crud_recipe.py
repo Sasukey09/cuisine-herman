@@ -55,7 +55,7 @@ def update_recipe(db: Session, recipe_id: str, tenant_id: str, payload: RecipeUp
     obj = get_recipe(db, recipe_id, tenant_id)
     if obj is None:
         return None
-    for field, value in payload.dict(exclude_unset=True).items():
+    for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(obj, field, value)
     db.commit()
     db.refresh(obj)
