@@ -17,7 +17,11 @@ linux/
 macos/
 .metadata
 
-# EXCEPTION: android/app/src/main/AndroidManifest.xml is force-added to git
-# (`git add -f`) because it carries the INTERNET permission. Without it every
-# API call fails in release builds. `flutter create` never overwrites an
-# existing file, so keeping it tracked survives a regeneration.
+# EXCEPTIONS — two generated files are force-added to git (`git add -f`) because
+# they carry fixes that must survive a `flutter create` regeneration (which
+# never overwrites an existing file):
+#   android/app/src/main/AndroidManifest.xml  -> INTERNET permission, without
+#       which every API call fails in a release build.
+#   android/app/build.gradle.kts              -> compileSdk 36, without which
+#       file_picker's transitive deps refuse to build a release APK.
+# Do NOT track android/local.properties: it holds a machine-specific SDK path.
