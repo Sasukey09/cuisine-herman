@@ -3,7 +3,7 @@ import pytest
 from app.services.video import transcript as transcript_mod
 from app.services.video import audio as audio_mod
 from app.services.video import service as video_service
-from app.services.ai import tools as ai_tools
+from app.services.recipe_import import service as recipe_import_service
 from app.services.video.errors import STTNotConfiguredError, TranscriptUnavailableError
 
 
@@ -55,22 +55,34 @@ def test_audio_disabled_raises(monkeypatch):
         transcript_mod.get_transcript("https://youtu.be/dQw4w9WgXcQ")
 
 
-def test_save_draft_delegates_to_create_recipe_draft(monkeypatch):
+def test_save_draft_delegates_to_the_recipe_import_service(monkeypatch):
+    """save_draft goes through recipe_import.save_import.
+
+    It used to call the AI tool ``create_recipe_draft``, which dropped the
+    ingredients and the steps; it was rewritten to reuse the PDF-import path.
+    This test pins the current contract.
+    """
     captured = {}
 
-    def fake_execute(db, tenant_id, name, tool_input):
-        captured["args"] = (tenant_id, name, tool_input)
+    def fake_save_import(db, tenant_id, name, servings, instructions, ingredients, **kwargs):
+        captured["args"] = dict(
+            db=db, tenant_id=tenant_id, name=name, servings=servings,
+            instructions=instructions, ingredients=ingredients,
+        )
         return {"recipe_id": "r1", "cost": {"cost_per_portion": 1.0}}
 
-    monkeypatch.setattr(ai_tools, "execute_tool", fake_execute)
+    monkeypatch.setattr(recipe_import_service, "save_import", fake_save_import)
     out = video_service.save_draft(
         db="DB", tenant_id="t1", name="Gâteau", yield_qty=8,
         ingredients=[{"name": "fraises", "qty": 500, "unit": "g"}],
+        instructions=["Laver les fraises", "Cuire 20 min"],
     )
+
     assert out["recipe_id"] == "r1"
-    tenant_id, tool_name, payload = captured["args"]
-    assert tenant_id == "t1"
-    assert tool_name == "create_recipe_draft"
-    assert payload["name"] == "Gâteau"
-    assert payload["yield_qty"] == 8
-    assert payload["ingredients"][0]["name"] == "fraises"
+    args = captured["args"]
+    assert args["tenant_id"] == "t1"
+    assert args["name"] == "Gâteau"
+    assert args["servings"] == 8
+    assert args["ingredients"][0]["name"] == "fraises"
+    # The regression this path was written for: steps must survive.
+    assert args["instructions"] == ["Laver les fraises", "Cuire 20 min"]

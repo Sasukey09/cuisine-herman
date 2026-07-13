@@ -2,6 +2,7 @@ from typing import List
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.tenancy import assert_product_in_tenant
 from app.db.session import get_db
 from app.api.deps import get_current_tenant_id, require_writer
 from app.schemas.schemas import (
@@ -180,6 +181,8 @@ def api_add_line(
     unit_id = None
     if payload.unit:
         unit_id = crud_price.get_units_by_code(db).get(payload.unit.strip().lower())
+    # Client-supplied product id: refuse one owned by another organization.
+    assert_product_in_tenant(db, tenant_id, payload.product_id)
     line = crud_invoice_line.create_invoice_line(
         db,
         invoice_id,

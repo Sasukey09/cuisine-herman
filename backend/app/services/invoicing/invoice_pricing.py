@@ -12,6 +12,7 @@ from app.crud import crud_invoice_line, crud_price, crud_match
 from app.services.matching.product_matcher import match_product
 from app.services.costing import cost_engine
 from app.core import metrics
+from app.core.tenancy import assert_product_in_tenant
 
 
 def persist_extraction(db: Session, tenant_id: str, invoice_id: str, extraction) -> List[InvoiceLine]:
@@ -72,7 +73,7 @@ def _price_and_recompute(
         source_invoice_line_id=str(line.id),
     )
     metrics.PRICE_CHANGES_DETECTED.inc()
-    cost_engine.recompute_for_product(db, str(line.product_id))
+    cost_engine.recompute_for_product(db, str(line.product_id), tenant_id)
     # Purchase ledger + price/margin alerts (best-effort; never breaks pricing).
     from app.services.purchasing import purchase_service
     purchase_service.record_purchase(db, tenant_id, line, invoice)
@@ -133,7 +134,7 @@ def delete_line(db: Session, tenant_id: str, line: InvoiceLine) -> None:
     db.delete(line)
     db.commit()
     if product_id:
-        cost_engine.recompute_for_product(db, product_id)
+        cost_engine.recompute_for_product(db, product_id, tenant_id)
 
 
 def delete_invoice(db: Session, tenant_id: str, invoice_id: str) -> bool:
@@ -152,7 +153,7 @@ def delete_invoice(db: Session, tenant_id: str, invoice_id: str) -> bool:
     db.delete(invoice)
     db.commit()
     for pid in product_ids:
-        cost_engine.recompute_for_product(db, pid)
+        cost_engine.recompute_for_product(db, pid, tenant_id)
     return True
 
 
@@ -170,6 +171,9 @@ def map_line_product(
     db: Session, tenant_id: str, line: InvoiceLine, product_id: str
 ) -> Dict[str, Any]:
     """Manually map a line to a product, then create its price + recompute."""
+    # The product id comes straight from the request body: refuse one that
+    # belongs to another organization.
+    assert_product_in_tenant(db, tenant_id, product_id)
     invoice = db.query(Invoice).filter(Invoice.id == line.invoice_id).first()
     line.product_id = product_id
     line.match_confidence = 100.0  # manual mapping is authoritative

@@ -8,7 +8,9 @@ pydantic==1.10.9
 python-jose==3.3.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
-python-multipart==0.0.6
+# 0.0.6 carried CVE-2024-24762 (ReDoS on a malformed multipart boundary) — and
+# this app accepts invoice uploads from the internet.
+python-multipart==0.0.18
 celery==5.3.1
 redis==4.6.0
 boto3==1.26.160

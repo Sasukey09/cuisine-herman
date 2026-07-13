@@ -1,6 +1,7 @@
 import os
 import sys
 from datetime import datetime, timedelta
+from functools import lru_cache
 from typing import Optional
 
 from jose import jwt
@@ -51,6 +52,23 @@ def get_password_hash(password: str) -> str:
 
 def verify_password(plain_password: str, hashed_password: Optional[str]) -> bool:
     if not hashed_password:
+        return False
+    return pwd_context.verify(plain_password, hashed_password)
+
+
+@lru_cache(maxsize=1)
+def _dummy_hash() -> str:
+    return get_password_hash("cuisine-herman-nonexistent-account")
+
+
+def verify_password_constant_time(plain_password: str, hashed_password: Optional[str]) -> bool:
+    """Same as :func:`verify_password`, but always pays the bcrypt cost.
+
+    Without this, "unknown email" answers in ~1 ms while "wrong password" takes
+    ~100 ms, which is enough to enumerate who has an account.
+    """
+    if not hashed_password:
+        pwd_context.verify(plain_password, _dummy_hash())
         return False
     return pwd_context.verify(plain_password, hashed_password)
 

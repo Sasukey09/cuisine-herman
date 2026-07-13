@@ -1,10 +1,11 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import JWTError
 from sqlalchemy.orm import Session
 
+from app.core.rate_limit import client_ip, get_login_guard
 from app.db.session import get_db
 from app.schemas.schemas import (
     Token,
@@ -50,14 +51,40 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/token", response_model=Token)
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = crud_user.get_user_by_email(db, form_data.username)
-    if not user or not security.verify_password(form_data.password, user.password_hash):
+def login(
+    request: Request,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
+):
+    guard = get_login_guard()
+    ip = client_ip(request)
+    email = form_data.username
+
+    wait = guard.retry_after(email, ip)
+    if wait > 0:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                "Trop de tentatives de connexion échouées. "
+                f"Réessayez dans {wait} seconde(s)."
+            ),
+            headers={"Retry-After": str(wait)},
+        )
+
+    user = crud_user.get_user_by_email(db, email)
+    # Constant-time: an unknown email must not answer faster than a wrong password.
+    password_ok = security.verify_password_constant_time(
+        form_data.password, user.password_hash if user else None
+    )
+    if not user or not password_ok:
+        guard.record_failure(email, ip)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    guard.record_success(email, ip)
     return _issue_tokens(user)
 
 
