@@ -71,12 +71,9 @@ jobs:
   audit:
     name: Backend — dependency audit
     runs-on: ubuntu-latest
-    # TODO(blocking): flip to a hard gate once python-jose is replaced by PyJWT.
-    # python-jose 3.3.0 carries CVE-2024-33663 (algorithm confusion). We only
-    # ever sign HS256 with a symmetric key, so it is not exploitable here — but
-    # the dependency is unmaintained and must go. Reporting, not blocking, so
-    # the team does not learn to ignore a permanently red pipeline.
-    continue-on-error: true
+    # A hard gate now. It was only advisory while the stack carried 31 known
+    # vulnerabilities (a permanently red pipeline is one the team learns to
+    # ignore). The stack is clean, so any NEW advisory must block the merge.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
