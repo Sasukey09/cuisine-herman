@@ -71,10 +71,35 @@ class OcrOrchestrator:
             self._breakers[name] = breaker
         return breaker
 
+    @staticmethod
+    def _has_real_provider(cfg: OcrConfig) -> bool:
+        return bool(cfg.mistral_api_key or (cfg.gcp_project and cfg.docai_processor_id))
+
     def _chain(self, cfg: OcrConfig) -> List[str]:
+        """Build the provider chain. The stub is a *local demo* provider only.
+
+        It is appended ONLY when no real provider is configured at all. Once a
+        real one exists, a stub fallback can no longer mean "no OCR available" —
+        it can only mean "OCR is down", and answering an outage with a canned
+        invoice fabricates accounting data: the fake lines get priced, land in
+        the purchase ledger and propagate into every recipe cost.
+
+        This deliberately ignores ``allow_stub_fallback=true``: a single wrong
+        environment variable must not be able to turn fabricated invoices back
+        on in a properly configured deployment. (Exactly what happened — the
+        Render blueprint pinned the flag to true, so the code default was moot.)
+        """
         chain = list(cfg.chain)
-        if cfg.allow_stub_fallback and "stub" not in chain:
+        if "stub" in chain:
+            return chain  # explicitly requested by name: the operator meant it
+
+        if cfg.allow_stub_fallback and not self._has_real_provider(cfg):
             chain.append("stub")
+        elif cfg.allow_stub_fallback:
+            log_event(
+                logger, logging.WARNING, "ocr.stub_fallback_ignored",
+                reason="a real OCR provider is configured; refusing to fabricate an invoice",
+            )
         return chain
 
     def run(self, file_bytes: bytes, content_type: Optional[str] = None) -> OcrResult:

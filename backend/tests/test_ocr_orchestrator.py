@@ -102,3 +102,42 @@ def test_circuit_breaker_skips_provider_after_threshold(env, monkeypatch):
     orch.run(b"2")  # mistral short-circuited -> not called again
     assert mistral.calls == 1
     assert google.calls == 2
+
+
+# --------------------------------------------------------------------------- #
+# The stub must never rescue a configured provider (it fabricates invoices)
+# --------------------------------------------------------------------------- #
+def _cfg(**over):
+    from app.services.ocr.config import OcrConfig
+    base = dict(
+        chain=["mistral", "google"], timeout_seconds=1.0, max_retries=0,
+        retry_backoff=0.0, cb_fail_threshold=3, cb_reset_seconds=1.0,
+        allow_stub_fallback=True,
+        mistral_api_key=None, mistral_url="x", mistral_model="m",
+        gcp_project=None, docai_location="eu", docai_processor_id=None,
+        docai_processor_version=None,
+    )
+    base.update(over)
+    return OcrConfig(**base)
+
+
+def test_stub_is_used_only_when_no_real_provider_exists():
+    """Local demo with no OCR key: the stub is a legitimate convenience."""
+    orch = OcrOrchestrator()
+    assert "stub" in orch._chain(_cfg(allow_stub_fallback=True))
+
+
+def test_stub_is_refused_once_a_real_provider_is_configured():
+    """The production bug: the Render blueprint pinned OCR_ALLOW_STUB_FALLBACK
+    to true, so a Mistral outage answered with a canned invoice that then got
+    priced and propagated into recipe costs. A single env var must not be able
+    to turn fabricated accounting data back on."""
+    orch = OcrOrchestrator()
+    chain = orch._chain(_cfg(allow_stub_fallback=True, mistral_api_key="sk-real"))
+    assert "stub" not in chain, "an outage must surface, not be papered over"
+
+
+def test_an_operator_can_still_ask_for_the_stub_by_name():
+    orch = OcrOrchestrator()
+    chain = orch._chain(_cfg(chain=["stub"], mistral_api_key="sk-real"))
+    assert chain == ["stub"]
