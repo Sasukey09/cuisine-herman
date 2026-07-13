@@ -1,9 +1,11 @@
 name: CI
 
 # Gate every change to main. Nothing here talks to production.
+# Runs on every branch too, so a change can be proven green *before* it reaches
+# main — which is what actually deploys (Render/Vercel auto-deploy from main).
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
     branches: [main]
 
