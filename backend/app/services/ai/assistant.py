@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.core.logging import get_logger, log_event
 from .config import AIConfig, get_ai_config
 from .errors import AINotConfiguredError, AIProviderError
+from . import context as ai_context
 from . import tools as ai_tools
 
 logger = get_logger("ai.assistant")
@@ -72,12 +73,12 @@ class AIAssistant:
         self._client = anthropic.Anthropic()
         return self._client
 
-    def _create(self, cfg: AIConfig, messages: List[Dict[str, Any]]):
+    def _create(self, cfg: AIConfig, messages: List[Dict[str, Any]], system_prompt: str):
         client = self._get_client()
         kwargs: Dict[str, Any] = {
             "model": cfg.model,
             "max_tokens": cfg.max_tokens,
-            "system": SYSTEM_PROMPT,
+            "system": system_prompt,
             "messages": messages,
             "tools": ai_tools.tool_schemas(),
             "thinking": {"type": "adaptive"},
@@ -104,6 +105,13 @@ class AIAssistant:
         history: Optional[List[Dict[str, str]]] = None,
     ) -> Dict[str, Any]:
         cfg = self.config
+
+        # The assistant used to start blind: it had to guess that a tool call
+        # might reveal a price spike. Now it already knows what is going wrong in
+        # THIS restaurant before the chef says a word.
+        situation = ai_context.build_situation(db, tenant_id)
+        system_prompt = SYSTEM_PROMPT + ai_context.render_briefing(situation)
+
         messages: List[Dict[str, Any]] = []
         for turn in history or []:
             role = turn.get("role")
@@ -117,7 +125,7 @@ class AIAssistant:
         reply_text = ""
 
         for iteration in range(cfg.max_tool_iterations):
-            response = self._create(cfg, messages)
+            response = self._create(cfg, messages, system_prompt)
             _accumulate_usage(usage, getattr(response, "usage", None))
 
             content_blocks = list(getattr(response, "content", []) or [])

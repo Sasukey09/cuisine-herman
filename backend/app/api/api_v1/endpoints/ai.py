@@ -1,9 +1,27 @@
+from typing import List
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.db.session import get_db
-from app.api.deps import get_current_tenant_id, require_writer, quota, daily_quota
-from app.schemas.schemas import AIChatRequest, AIChatResponse
+from app.api.deps import (
+    daily_quota,
+    get_current_tenant_id,
+    get_current_user,
+    quota,
+    require_writer,
+)
+from app.crud import crud_ai_conversation
+from app.models.models import User
+from app.schemas.schemas import (
+    AIChatRequest,
+    AIChatResponse,
+    AIConversationDetail,
+    AIConversationRead,
+    AISuggestions,
+)
+from app.services.ai import context as ai_context
 from app.services.ai.assistant import get_assistant
 from app.services.ai.errors import AINotConfiguredError, AIProviderError
 
@@ -14,24 +32,84 @@ _AI_UNAVAILABLE = (
     "(ANTHROPIC_API_KEY)."
 )
 
-
 # Each call bills Anthropic. Without a ceiling, one scripted account drains the
 # budget — and the tokens are not the caller's to spend.
 MAX_MESSAGE_CHARS = 4000
-MAX_HISTORY_TURNS = 40
+# How much of a saved thread is replayed to the model. Old turns cost input
+# tokens on every message; the whole thread stays readable in the UI regardless.
+CONTEXT_TURNS = 20
+
+
+@router.get("/suggestions", response_model=AISuggestions)
+def api_ai_suggestions(
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """Questions worth asking *for this restaurant*.
+
+    The chat used to offer the same three canned prompts to everybody, whether
+    or not they meant anything for that tenant's data.
+    """
+    situation = ai_context.build_situation(db, tenant_id)
+    return {"suggestions": ai_context.suggestions(situation)}
+
+
+@router.get("/conversations", response_model=List[AIConversationRead])
+def api_list_conversations(
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    return crud_ai_conversation.list_conversations(db, tenant_id)
+
+
+@router.get("/conversations/{conversation_id}", response_model=AIConversationDetail)
+def api_get_conversation(
+    conversation_id: str,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    convo = crud_ai_conversation.get_conversation(db, tenant_id, conversation_id)
+    if convo is None:
+        raise HTTPException(status_code=404, detail="Conversation introuvable")
+    messages = crud_ai_conversation.list_messages(db, conversation_id)
+    return {
+        "id": str(convo.id),
+        "title": convo.title,
+        "updated_at": convo.updated_at,
+        "messages": [
+            {"role": m.role, "content": m.content, "created_at": m.created_at} for m in messages
+        ],
+    }
+
+
+@router.delete("/conversations/{conversation_id}", status_code=204)
+def api_delete_conversation(
+    conversation_id: str,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+    _: list = Depends(require_writer),
+):
+    if not crud_ai_conversation.delete_conversation(db, tenant_id, conversation_id):
+        raise HTTPException(status_code=404, detail="Conversation introuvable")
 
 
 @router.post("/chat", response_model=AIChatResponse)
-def api_ai_chat(
+async def api_ai_chat(
     payload: AIChatRequest,
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant_id),
+    current_user: User = Depends(get_current_user),
     _: list = Depends(require_writer),
     _q: None = Depends(quota("ai", "AI_CHAT_PER_MIN", 30)),
     _qd: None = Depends(daily_quota("ai", "AI_CHAT_PER_DAY", 300)),
 ):
-    """Ask the AI assistant a question. It reads the tenant's own data via
-    tenant-scoped tools (recipes, costs, products, prices, alerts)."""
+    """Ask the assistant. The thread is persisted, so a reload no longer erases it.
+
+    Pass ``conversation_id`` to continue a thread; omit it to start a new one.
+    History is read from the database rather than from the request body: the
+    client's copy used to be the only source of truth, so a reload lost it — and
+    a crafted request could rewrite what the model believed had been said.
+    """
     if not payload.message or not payload.message.strip():
         raise HTTPException(status_code=400, detail="Message vide")
     if len(payload.message) > MAX_MESSAGE_CHARS:
@@ -39,15 +117,39 @@ def api_ai_chat(
             status_code=413,
             detail=f"Message trop long ({MAX_MESSAGE_CHARS} caractères maximum).",
         )
-    if len(payload.history) > MAX_HISTORY_TURNS:
-        raise HTTPException(
-            status_code=413,
-            detail=f"Conversation trop longue ({MAX_HISTORY_TURNS} messages maximum).",
-        )
-    assistant = get_assistant()
-    history = [{"role": m.role, "content": m.content} for m in payload.history]
+
+    message = payload.message.strip()
+
+    def _work():
+        if payload.conversation_id:
+            convo = crud_ai_conversation.get_conversation(db, tenant_id, payload.conversation_id)
+            if convo is None:
+                raise HTTPException(status_code=404, detail="Conversation introuvable")
+        else:
+            convo = crud_ai_conversation.create_conversation(
+                db, tenant_id, str(current_user.id), message
+            )
+
+        stored = crud_ai_conversation.list_messages(db, str(convo.id))
+        history = [{"role": m.role, "content": m.content} for m in stored][-CONTEXT_TURNS:]
+
+        crud_ai_conversation.add_message(db, str(convo.id), "user", message)
+
+        result = get_assistant().chat(db, tenant_id, message, history)
+
+        reply = result.get("reply") or ""
+        if reply:
+            crud_ai_conversation.add_message(db, str(convo.id), "assistant", reply)
+        crud_ai_conversation.touch(db, convo)
+
+        result["conversation_id"] = str(convo.id)
+        return result
+
     try:
-        return assistant.chat(db, tenant_id, payload.message, history)
+        # The model call is a blocking network round trip of several seconds: from
+        # an `async def` it would freeze the worker's event loop for every other
+        # tenant (the Phase 4 lesson).
+        return await run_in_threadpool(_work)
     except AINotConfiguredError:
         raise HTTPException(status_code=503, detail=_AI_UNAVAILABLE)
     except AIProviderError as exc:

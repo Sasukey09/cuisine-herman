@@ -329,7 +329,12 @@ class AIChatMessage(BaseModel):
 
 class AIChatRequest(BaseModel):
     message: str
+    # `history` is kept for backward compatibility with older clients, but it is
+    # IGNORED: the server now reads the thread from the database. The client's
+    # copy was the only source of truth, so a reload lost it — and a crafted
+    # request could rewrite what the model believed had been said.
     history: List[AIChatMessage] = []
+    conversation_id: Optional[str] = None
 
 
 class AIToolCall(BaseModel):
@@ -341,6 +346,32 @@ class AIChatResponse(BaseModel):
     reply: str
     tool_calls: List[AIToolCall] = []
     usage: Optional[dict] = None
+    conversation_id: Optional[str] = None
+
+
+class AIConversationRead(BaseModel):
+    id: str
+    title: Optional[str] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AIStoredMessage(BaseModel):
+    role: str
+    content: str
+    created_at: Optional[datetime] = None
+
+
+class AIConversationDetail(BaseModel):
+    id: str
+    title: Optional[str] = None
+    updated_at: Optional[datetime] = None
+    messages: List[AIStoredMessage] = []
+
+
+class AISuggestions(BaseModel):
+    suggestions: List[str] = []
 
 
 # --------------------------------------------------------------------------- #

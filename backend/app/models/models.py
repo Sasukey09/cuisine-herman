@@ -459,3 +459,27 @@ class PriceAlert(Base):
     message = Column(Text)
     is_read = Column(Boolean, default=False)
     created_at = Column(TIMESTAMP, server_default=func.now())
+
+
+class AIConversation(Base):
+    """A saved assistant thread. The chat used to live in React state alone:
+    reloading the page erased everything the chef had asked and been told."""
+
+    __tablename__ = "ai_conversations"
+    id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
+    tenant_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"))
+    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"))
+    title = Column(Text)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    updated_at = Column(TIMESTAMP, server_default=func.now())
+
+
+class AIMessage(Base):
+    __tablename__ = "ai_messages"
+    id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
+    conversation_id = Column(
+        UUID(as_uuid=False), ForeignKey("ai_conversations.id", ondelete="CASCADE")
+    )
+    role = Column(Text, nullable=False)  # user | assistant
+    content = Column(Text, nullable=False)
+    created_at = Column(TIMESTAMP, server_default=func.now())
