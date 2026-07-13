@@ -10,6 +10,8 @@ from types import SimpleNamespace as N
 
 import pytest
 
+from app.core.tenancy import CrossTenantReferenceError
+
 from app.services.recipe_import import service as svc
 from app.services.recipe_import.extractor import RecipeDocumentExtractor
 from app.services.recipe_import.errors import RecipeExtractionError
@@ -244,6 +246,21 @@ def test_process_import_extraction_error(monkeypatch):
 # save (honors corrected product_id; computes cost)
 # --------------------------------------------------------------------------- #
 class FakeDB:
+    """Minimal session. ``query`` exists so the tenant-ownership guard can run:
+    save_import() now refuses a product_id belonging to another organization."""
+
+    def __init__(self, owned_product_ids=("chosen",)):
+        self._owned = list(owned_product_ids)
+
+    def query(self, *_cols):
+        return self
+
+    def filter(self, *_criteria):
+        return self
+
+    def all(self):
+        return [(pid,) for pid in self._owned]
+
     def add(self, *a):
         pass
 
@@ -293,3 +310,31 @@ def test_save_import_persists_and_costs(monkeypatch):
     assert captured["selling_price"] == 5.0
     # the procedure is persisted as instructions, not dropped
     assert steps_seen["steps"] == ["Étaler", "Cuire"]
+
+
+def test_save_import_rejects_a_product_id_from_another_organization(monkeypatch):
+    """The corrected product_id comes from the client and must be verified.
+
+    Without this guard a tenant could bind its recipe to a foreign product, and
+    cost recomputation would then walk into that organization's recipes.
+    """
+    monkeypatch.setattr(svc.crud_price, "get_units_by_code", lambda db: {"g": 1})
+
+    db = FakeDB(owned_product_ids=[])  # this tenant owns no product at all
+
+    with pytest.raises(CrossTenantReferenceError):
+        svc.save_import(
+            db,
+            "t1",
+            name="Pizza",
+            servings=4,
+            instructions=[],
+            ingredients=[
+                {
+                    "name": "Mozzarella",
+                    "quantity": 200,
+                    "unit": "g",
+                    "product_id": "product-owned-by-another-tenant",
+                }
+            ],
+        )

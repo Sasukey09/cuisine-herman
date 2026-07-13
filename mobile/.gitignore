@@ -4,7 +4,8 @@
 build/
 .flutter-plugins
 .flutter-plugins-dependencies
-pubspec.lock
+# pubspec.lock IS tracked: this is an application, not a library. Flutter's own
+# guidance is to commit it so every machine and CI resolve identical versions.
 *.iml
 .idea/
 
@@ -16,3 +17,14 @@ windows/
 linux/
 macos/
 .metadata
+
+# EXCEPTIONS — two generated files are force-added to git (`git add -f`) because
+# they carry fixes that must survive a `flutter create` regeneration (which
+# never overwrites an existing file):
+#   android/app/src/main/AndroidManifest.xml  -> INTERNET permission, without
+#       which every API call fails in a release build.
+#   android/app/build.gradle.kts              -> compileSdk 36 for our module.
+#   android/build.gradle.kts                  -> compileSdk 36 for every PLUGIN
+#       module too; without it file_picker still compiles against 34 and the
+#       release APK dies in checkReleaseAarMetadata.
+# Do NOT track android/local.properties: it holds a machine-specific SDK path.

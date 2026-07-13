@@ -60,9 +60,11 @@ def test_process_invoice_orchestration(monkeypatch):
         return N(id=f"price-{product_id}")
 
     monkeypatch.setattr(invoice_pricing.crud_price, "create_price", fake_create_price)
+    # recompute_for_product now REQUIRES the tenant: it used to recompute the
+    # recipes of every tenant referencing the product.
     monkeypatch.setattr(
         invoice_pricing.cost_engine, "recompute_for_product",
-        lambda db, pid: recomputed.append(pid) or [],
+        lambda db, pid, tenant_id: recomputed.append((pid, tenant_id)) or [],
     )
 
     summary = invoice_pricing.process_invoice(FakeDB(invoice), "t1", "inv1")
@@ -72,4 +74,5 @@ def test_process_invoice_orchestration(monkeypatch):
     assert summary["prices_created"] == 1           # l1 priced; l2 no product; l3 no unit_price
     assert summary["needs_review"] == ["l2"]
     assert created_prices == ["p1"]
-    assert recomputed == ["p1"]                     # recompute triggered for the priced product
+    # recompute triggered for the priced product, scoped to the caller's tenant
+    assert recomputed == [("p1", "t1")]

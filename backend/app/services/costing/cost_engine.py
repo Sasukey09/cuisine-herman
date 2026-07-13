@@ -196,18 +196,28 @@ def compute_recipe_version_cost(
     return result
 
 
-def recompute_for_product(db: Session, product_id: str, as_of: Optional[date] = None) -> List[str]:
-    """Recompute (and persist) every recipe version that uses ``product_id``."""
+def recompute_for_product(
+    db: Session, product_id: str, tenant_id: str, as_of: Optional[date] = None
+) -> List[str]:
+    """Recompute (and persist) every recipe version of ``tenant_id`` using ``product_id``.
+
+    ``tenant_id`` is mandatory: without it, a tenant who planted a foreign
+    product id in one of their own recipes could trigger recomputation across
+    another organization's recipes.
+    """
     rows = (
-        db.query(RecipeVersion.id, Recipe.tenant_id)
+        db.query(RecipeVersion.id)
         .join(RecipeIngredient, RecipeIngredient.recipe_version_id == RecipeVersion.id)
         .join(Recipe, Recipe.id == RecipeVersion.recipe_id)
-        .filter(RecipeIngredient.product_id == product_id)
+        .filter(
+            RecipeIngredient.product_id == product_id,
+            Recipe.tenant_id == tenant_id,
+        )
         .distinct()
         .all()
     )
     recomputed = []
-    for version_id, tenant_id in rows:
+    for (version_id,) in rows:
         compute_recipe_version_cost(db, str(tenant_id), str(version_id), persist=True)
         recomputed.append(str(version_id))
     if recomputed:

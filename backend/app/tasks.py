@@ -43,11 +43,11 @@ def process_invoice_ocr(self, invoice_id: str, tenant_id: str, s3_key: str, cont
 
 
 @celery_app.task(name="app.tasks.recompute_recipe_costs")
-def recompute_recipe_costs(product_id: str):
+def recompute_recipe_costs(product_id: str, tenant_id: str):
     """Recompute cost snapshots for every recipe version using this product."""
     db = SessionLocal()
     try:
-        recomputed = cost_engine.recompute_for_product(db, product_id)
+        recomputed = cost_engine.recompute_for_product(db, product_id, tenant_id)
         return {"product_id": product_id, "recomputed_versions": recomputed}
     finally:
         db.close()

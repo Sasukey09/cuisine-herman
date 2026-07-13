@@ -1,0 +1,166 @@
+name: CI
+
+# Gate every change to main. Nothing here talks to production.
+# Runs on every branch too, so a change can be proven green *before* it reaches
+# main — which is what actually deploys (Render/Vercel auto-deploy from main).
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------- backend --
+  backend:
+    name: Backend — tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # The initial migration runs sql/schema.sql, which needs the `vector`
+        # extension — a bare postgres image cannot create it.
+        image: pgvector/pgvector:pg15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: cuisine_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # A real (throwaway) key: app.core.security now refuses placeholders.
+      SECRET_KEY: ci-only-secret-2f8b9c1d4e6a7b3c5d9e0f1a2b3c4d5e6f7a8b9c
+      DATABASE_URL: postgresql+psycopg2://postgres:password@localhost:5432/cuisine_test
+      # No OCR keys in CI, and the stub must NOT rescue us silently.
+      OCR_ALLOW_STUB_FALLBACK: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11" # same as the Dockerfile
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # pytest.ini forces --cov, so pytest-cov must be present.
+          pip install ruff pytest pytest-cov
+
+      - name: Lint (errors only — style is not a gate yet)
+        working-directory: backend
+        run: ruff check app tests --select E9,F63,F7,F82
+
+      - name: Tests
+        working-directory: backend
+        run: pytest -q
+
+      - name: Migrations apply from scratch
+        working-directory: backend
+        run: alembic upgrade head
+
+  # ------------------------------------------------------ dependency audit --
+  audit:
+    name: Backend — dependency audit
+    runs-on: ubuntu-latest
+    # TODO(blocking): flip to a hard gate once python-jose is replaced by PyJWT.
+    # python-jose 3.3.0 carries CVE-2024-33663 (algorithm confusion). We only
+    # ever sign HS256 with a symmetric key, so it is not exploitable here — but
+    # the dependency is unmaintained and must go. Reporting, not blocking, so
+    # the team does not learn to ignore a permanently red pipeline.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install pip-audit
+      - name: pip-audit
+        working-directory: backend
+        run: pip-audit -r requirements.txt --desc
+
+  # --------------------------------------------------------------- frontend --
+  frontend:
+    name: Web — lint, types, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install
+        working-directory: frontend
+        run: npm ci
+      - name: Lint
+        working-directory: frontend
+        run: npm run lint
+      - name: Typecheck
+        working-directory: frontend
+        run: npx tsc --noEmit
+      - name: Build
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_API_URL: https://ci.invalid/api/v1
+        run: npm run build
+
+  # ----------------------------------------------------------------- mobile --
+  mobile:
+    name: Mobile — analyze + release APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          # Pinned to the dev machine's version. The action's rolling "stable"
+          # resolved an older Flutter (compileSdk 34, no built-in Kotlin), which
+          # does not reproduce what we actually build against.
+          flutter-version: 3.44.1
+          cache: true
+
+      # The native folders are gitignored and regenerated here. `flutter create`
+      # never overwrites an existing file, so our tracked AndroidManifest.xml
+      # (the one carrying INTERNET) survives.
+      - name: Generate native scaffolding
+        working-directory: mobile
+        run: |
+          flutter create --platforms=android \
+            --org com.cuisineherman --project-name cuisine_herman_mobile .
+          flutter pub get
+
+      - name: Analyze
+        working-directory: mobile
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Build release APK
+        working-directory: mobile
+        run: flutter build apk --release
+
+      # Regression test for the bug that made every release build offline.
+      # Scoped to build/app: the root Gradle script redirects each plugin's build
+      # dir under build/<plugin>/, and those carry their own merged manifests.
+      - name: The release manifest must grant INTERNET
+        working-directory: mobile
+        run: |
+          MERGED=$(find build/app -path '*merged_manifest*release*' \
+                   -name AndroidManifest.xml | head -1)
+          if [ -z "$MERGED" ]; then
+            echo "::error::merged release manifest of the app module not found"; exit 1
+          fi
+          echo "Checking $MERGED"
+          if ! grep -q 'android.permission.INTERNET' "$MERGED"; then
+            echo "::error::INTERNET permission missing — every API call would fail in release"
+            exit 1
+          fi
+          echo "OK: INTERNET granted in the app's release manifest."

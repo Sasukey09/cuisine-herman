@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
+from app.core.tenancy import assert_products_in_tenant
 from app.models.models import Product, Recipe, RecipeVersion, RecipeIngredient
 from app.crud import crud_price, crud_recipe_import
 from app.services.ocr.service import extract_text
@@ -165,6 +166,11 @@ def save_import(db: Session, tenant_id: str, name: str, servings: Optional[float
     """Persist the (validated) preview as a recipe + version + ingredients, store
     the steps, then compute and persist the cost. Honors an explicit product_id
     per ingredient (user correction); otherwise re-matches by name."""
+    # The corrected product ids come from the client: refuse any that belong to
+    # another organization.
+    assert_products_in_tenant(
+        db, tenant_id, [ing.get("product_id") for ing in (ingredients or [])]
+    )
     units_by_code = crud_price.get_units_by_code(db)
 
     recipe = Recipe(

@@ -1,6 +1,12 @@
-"""OCR orchestrator: provider chain with resilience and fallback.
+"""OCR orchestrator: provider chain with resilience.
 
-Order (default): Mistral OCR -> Google Document AI -> [stub in dev] -> error.
+Order (default): Mistral OCR -> Google Document AI -> error.
+
+There is deliberately no silent fallback: when every provider fails the chain
+raises ``AllProvidersFailedError`` and logs ``ocr.all_failed``. The canned stub
+provider only joins the chain when ``OCR_ALLOW_STUB_FALLBACK=true`` is set
+explicitly (local demos), because returning fake invoice lines would corrupt
+prices, the purchase ledger and every recipe cost derived from them.
 Each provider call is guarded by a circuit breaker, retried on transient errors,
 and bounded by a timeout. Structured logs + Prometheus metrics are emitted.
 """

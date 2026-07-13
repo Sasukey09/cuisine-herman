@@ -1,18 +1,36 @@
+import logging
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 
 from app.api.api_v1.api import api_router
 from app.api.health import router as health_router
+from app.core.logging import get_logger, log_event
 from app.core.middleware import PrometheusMiddleware
+from app.core.tenancy import CrossTenantReferenceError
 from app.core import metrics
 
 APP_NAME = "CuisineHerman API"
 
+logger = get_logger(__name__)
+
 
 def create_app() -> FastAPI:
     app = FastAPI(title=APP_NAME)
+
+    @app.exception_handler(CrossTenantReferenceError)
+    async def _cross_tenant(request: Request, exc: CrossTenantReferenceError):
+        """Someone referenced another organization's row. Log it, then answer 404.
+
+        404 rather than 403 on purpose: a 403 would confirm the id exists
+        somewhere else. This is a security signal, so it is logged as a warning.
+        """
+        log_event(
+            logger, logging.WARNING, "tenancy.cross_tenant_reference",
+            path=request.url.path, kind=exc.kind, ids=exc.ids,
+        )
+        return JSONResponse(status_code=404, content={"detail": str(exc)})
 
     # HTTP metrics first so it wraps everything below it.
     app.add_middleware(PrometheusMiddleware)

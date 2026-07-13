@@ -13,7 +13,12 @@ dependencies:
   dio: ^5.7.0
   flutter_riverpod: ^2.5.1
   flutter_secure_storage: ^9.2.2
-  file_picker: ^8.1.4
+  # file_picker was dropped: even its latest release (11.0.2) applies its own
+  # Kotlin Gradle Plugin (1.8.22), which conflicts with Flutter's built-in
+  # Kotlin — its classes never compile and the release APK fails on
+  # GeneratedPluginRegistrant ("cannot find symbol: FilePickerPlugin").
+  # file_selector is the Flutter-team-maintained equivalent.
+  file_selector: ^1.0.3
   intl: ^0.19.0
 
 dev_dependencies:

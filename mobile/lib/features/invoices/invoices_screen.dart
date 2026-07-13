@@ -1,5 +1,5 @@
 import 'package:dio/dio.dart';
-import 'package:file_picker/file_picker.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -24,16 +24,21 @@ class InvoicesScreen extends ConsumerStatefulWidget {
 class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
   bool _uploading = false;
 
+  /// PDF or photo of an invoice. `mimeTypes` is what Android's file dialog
+  /// actually honours; `extensions` covers the desktop/web pickers.
+  static const _invoiceFiles = XTypeGroup(
+    label: 'Factures',
+    extensions: ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
+    mimeTypes: ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'],
+  );
+
   Future<void> _upload() async {
     final messenger = ScaffoldMessenger.of(context);
-    final picked = await FilePicker.platform.pickFiles(
-      withData: true,
-      type: FileType.custom,
-      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
-    );
-    if (picked == null || picked.files.isEmpty) return;
-    final file = picked.files.first;
-    if (file.bytes == null) {
+    final file = await openFile(acceptedTypeGroups: const [_invoiceFiles]);
+    if (file == null) return;
+
+    final bytes = await file.readAsBytes();
+    if (bytes.isEmpty) {
       messenger.showSnackBar(const SnackBar(content: Text('Fichier illisible.')));
       return;
     }
@@ -41,7 +46,7 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
     setState(() => _uploading = true);
     try {
       final form = FormData.fromMap({
-        'file': MultipartFile.fromBytes(file.bytes!, filename: file.name),
+        'file': MultipartFile.fromBytes(bytes, filename: file.name),
       });
       await ref.read(apiClientProvider).dio.post(
             '/invoices/ingest',

@@ -2,6 +2,7 @@ import uuid
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
+from app.core.tenancy import assert_products_in_tenant
 from app.models.models import Recipe, RecipeVersion, RecipeIngredient
 
 
@@ -23,6 +24,12 @@ def create_version(db: Session, tenant_id: str, recipe_id: str, payload) -> Reci
     )
     if recipe is None:
         return None
+
+    # Ingredient product ids come from the request body: refuse any that belong
+    # to another organization (they would leak into cost recomputation).
+    assert_products_in_tenant(
+        db, tenant_id, [i.product_id for i in (payload.ingredients or []) if i.product_id]
+    )
 
     version = RecipeVersion(
         id=str(uuid.uuid4()),

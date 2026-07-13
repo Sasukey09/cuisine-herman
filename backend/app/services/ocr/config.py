@@ -59,7 +59,11 @@ def get_ocr_config() -> OcrConfig:
         retry_backoff=_float("OCR_RETRY_BACKOFF", 0.5),
         cb_fail_threshold=_int("OCR_CB_FAIL_THRESHOLD", 3),
         cb_reset_seconds=_float("OCR_CB_RESET_SECONDS", 30.0),
-        allow_stub_fallback=_bool("OCR_ALLOW_STUB_FALLBACK", True),
+        # OFF by default. When every provider fails, the pipeline must raise —
+        # never quietly return the canned demo invoice, which would be priced,
+        # stored in the purchase ledger and propagated into recipe costs.
+        # Set to true only for a local demo without any OCR key.
+        allow_stub_fallback=_bool("OCR_ALLOW_STUB_FALLBACK", False),
         mistral_api_key=os.getenv("MISTRAL_API_KEY"),
         mistral_url=os.getenv("MISTRAL_OCR_URL", "https://api.mistral.ai/v1/ocr"),
         mistral_model=os.getenv("MISTRAL_OCR_MODEL", "mistral-ocr-latest"),
