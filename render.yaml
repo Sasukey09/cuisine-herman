@@ -47,7 +47,12 @@ services:
       - key: OCR_PROVIDER_CHAIN
         value: mistral,google
       - key: OCR_ALLOW_STUB_FALLBACK
-        value: "true"                # set false once a real OCR provider is configured
+        # MUST stay false. When true and the OCR provider fails, the pipeline
+        # silently returns a canned demo invoice ("Fournisseur: March, Tomates
+        # 10 kg…") which is then priced, written to the purchase ledger and
+        # propagated into every recipe cost derived from it. A provider outage
+        # must surface as an error, never as fabricated accounting data.
+        value: "false"
       - key: CORS_ORIGINS
         sync: false                  # <-- set to your frontend URL, e.g. https://app.vercel.app
       # Object storage (use a managed S3-compatible service, e.g. Cloudflare R2):
