@@ -4,13 +4,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../common/async_list.dart';
 import '../../common/create_dialog.dart';
 import '../../common/format.dart';
-import '../../core/api_error.dart';
 import '../../core/providers.dart';
 import '../../main.dart' show kMuted, kTerracotta, kWarn;
 
-final _suppliersProvider = FutureProvider.autoDispose<List<dynamic>>((ref) async {
-  final resp = await ref.read(apiClientProvider).dio.get('/suppliers/enriched');
-  return resp.data as List<dynamic>;
+final _suppliersProvider = FutureProvider.autoDispose<Loaded>((ref) async {
+  return fetchWithCache(ref, cacheKey: 'suppliers', request: () async {
+    final resp = await ref.read(apiClientProvider).dio.get('/suppliers/enriched');
+    return resp.data;
+  });
 });
 
 class SuppliersScreen extends ConsumerWidget {
@@ -23,23 +24,26 @@ class SuppliersScreen extends ConsumerWidget {
       CreateField('code', 'Code (optionnel)'),
     ]);
     if (data == null) return;
-    try {
-      await ref.read(apiClientProvider).dio.post('/suppliers/', data: {
+    await createOrQueue(
+      ref,
+      messenger,
+      path: '/suppliers/',
+      body: {
         'name': data['name'],
         if ((data['code'] ?? '').isNotEmpty) 'code': data['code'],
-      });
-      ref.invalidate(_suppliersProvider);
-      messenger.showSnackBar(const SnackBar(content: Text('Fournisseur créé.')));
-    } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(apiErrorMessage(e))));
-    }
+      },
+      label: 'Fournisseur : ${data['name']}',
+      successMessage: 'Fournisseur créé.',
+      onDone: () => ref.invalidate(_suppliersProvider),
+    );
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      body: asyncCardList(
+      body: offlineCardList(
         ref: ref,
+        header: const PendingWritesBanner(),
         provider: _suppliersProvider,
         empty: 'Aucun fournisseur. Touchez + pour en ajouter.',
         itemBuilder: (s) {

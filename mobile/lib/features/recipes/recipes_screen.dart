@@ -8,9 +8,11 @@ import '../../core/api_error.dart';
 import '../../core/providers.dart';
 import '../../main.dart' show kMuted, kBorder, kCard, kGood;
 
-final _recipesProvider = FutureProvider.autoDispose<List<dynamic>>((ref) async {
-  final resp = await ref.read(apiClientProvider).dio.get('/recipes/enriched', queryParameters: {'limit': 200});
-  return resp.data as List<dynamic>;
+final _recipesProvider = FutureProvider.autoDispose<Loaded>((ref) async {
+  return fetchWithCache(ref, cacheKey: 'recipes', request: () async {
+    final resp = await ref.read(apiClientProvider).dio.get('/recipes/enriched', queryParameters: {'limit': 200});
+    return resp.data;
+  });
 });
 
 const _emojis = ['🍽️', '🥗', '🍲', '🥘', '🍛', '🍚', '🥩', '🐟', '🍝', '🥧', '🍰', '🥦'];
@@ -41,8 +43,9 @@ class RecipesScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      body: asyncCardList(
+      body: offlineCardList(
         ref: ref,
+        header: const PendingWritesBanner(),
         provider: _recipesProvider,
         empty: 'Aucune recette. Touchez + (ou créez-en via l\'assistant / l\'import vidéo).',
         itemBuilder: (r) {
