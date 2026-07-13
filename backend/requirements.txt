@@ -40,6 +40,8 @@ openai>=1.40.0
 # httpx >=0.25 required by anthropic 0.69+; 0.27 keeps the OCR httpx usage working.
 httpx==0.27.2
 prometheus-client==0.20.0
+# Error reporting. Inert until SENTRY_DSN is set.
+sentry-sdk[fastapi]==2.19.2
 # Optional: install only when using the Google Document AI provider
 # google-cloud-documentai==2.29.2
 

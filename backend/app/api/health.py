@@ -13,12 +13,24 @@ from sqlalchemy import text
 
 from app.db.session import engine
 from app.core import metrics
+from app.core.logging import get_logger
 from app.services.ocr.config import get_ocr_config
+
+logger = get_logger(__name__)
 
 router = APIRouter(tags=["health"])
 
 # (ok, detail): ok True=up, False=down, None=skipped (not configured)
 CheckResult = Tuple[Optional[bool], Optional[object]]
+
+
+def _safe_detail(exc: Exception) -> str:
+    """`/ready` is public. A raw exception on it hands out the connection string,
+    the database host and the driver stack trace to anyone who asks. The full
+    error goes to the logs, where it belongs; the probe answers with the class
+    name, which is enough to tell postgres-down from redis-down."""
+    logger.warning("readiness check failed: %s", exc, exc_info=True)
+    return type(exc).__name__
 
 
 def check_postgres() -> CheckResult:
@@ -27,7 +39,7 @@ def check_postgres() -> CheckResult:
             conn.execute(text("SELECT 1"))
         return True, None
     except Exception as exc:  # pragma: no cover - needs a live DB
-        return False, str(exc)
+        return False, _safe_detail(exc)
 
 
 def check_redis() -> CheckResult:
@@ -41,7 +53,7 @@ def check_redis() -> CheckResult:
         client.ping()
         return True, None
     except Exception as exc:  # pragma: no cover
-        return False, str(exc)
+        return False, _safe_detail(exc)
 
 
 def check_s3() -> CheckResult:
@@ -62,7 +74,7 @@ def check_s3() -> CheckResult:
         client.list_buckets()
         return True, None
     except Exception as exc:  # pragma: no cover
-        return False, str(exc)
+        return False, _safe_detail(exc)
 
 
 def check_ocr() -> CheckResult:
@@ -77,7 +89,7 @@ def check_ocr() -> CheckResult:
             if (p := orch._provider(name)) is not None and p.is_configured()
         ]
     except Exception as exc:  # pragma: no cover
-        return False, str(exc)
+        return False, _safe_detail(exc)
     if configured:
         return True, {"configured": configured}
     if cfg.allow_stub_fallback:

@@ -1,151 +1,135 @@
-Architecture détaillée — Plateforme SaaS de gestion de restauration
+# Architecture
 
-Résumé exécutif
+> **Ce document décrit ce qui existe.**
+>
+> La version précédente était un document de *conception* — elle promettait GraphQL, des
+> WebSockets, une connexion Google OAuth2, du Kubernetes, du rate-limiting Redis et des audit
+> trails. **Rien de tout cela n'était dans le code**, mais le document se lisait comme une
+> description de l'existant. Une documentation qui invente des fonctionnalités est pire que pas
+> de documentation : elle fait perdre des heures à celui qui la croit.
+>
+> Le projet de conception initial est conservé dans `docs/design-2026-initial.md`.
 
-Conception d'une plateforme SaaS multi-tenant, hautement disponible et extensible pour la gestion complète des achats, factures, recettes, fiches techniques et analyses IA. L'architecture suit DDD, Clean Architecture et Event-Driven Architecture : services métier découplés, API HTTP exposée par un Backend FastAPI, traitements asynchrones via Celery, stockage PostgreSQL, cache Redis, files d'attente Celery, stockage objets compatible S3, et frontends Next.js (web) et Flutter (mobile). Sécurité, observabilité, CI/CD et scalabilité cloud-ready sont intégrés dès la conception.
+## Vue d'ensemble
 
-Contraintes technologiques imposées
-- Backend : Python + FastAPI
-- DB : PostgreSQL
-- Cache : Redis
-- Queue : Celery
-- Storage : S3-compatible
-- Frontend Web : Next.js, React, TypeScript, Tailwind, shadcn UI
-- Mobile : Flutter
-- Auth : JWT + OAuth Google
-- Infra : Docker / Docker Compose, Kubernetes-ready
+```
+  Site Next.js (Vercel)  ─┐
+                          ├─► API FastAPI (Render, Docker) ─► PostgreSQL
+  App Flutter (Android)  ─┘         │                        └─► Redis (quotas, anti-brute-force)
+                                    │
+                                    ├─► Mistral OCR      (factures, recettes PDF)
+                                    ├─► Anthropic Claude (assistant, extraction)
+                                    └─► OpenAI Whisper   (import vidéo hors YouTube)
+```
 
-Principes d'architecture
-- Domain-Driven Design : domaines clairs (Procurement, Catalog, Recipes, Costing, OCR, AI, Analytics, Tenancy).
-- Clean Architecture : séparation interface / application / domaine / infrastructure.
-- Event-Driven : tout changement de prix, import facture, ou création de recette publie des événements consommés par workers.
-- Idempotence et immutabilité : snapshots pour calculs de coût, immuabilité des versions de recette, audit logs.
-- Sécurité : RBAC, encryption at-rest/in-transit, scoping tenant, audit trails.
+Les trois clients tapent la **même API REST**. Il n'y a **pas** de GraphQL, **pas** de WebSocket,
+**pas** de temps réel.
 
-Composants principaux
+## Authentification
 
-1) API Gateway / Backend
-- FastAPI app (stateless) exposant REST/GraphQL endpoints et WebSocket pour notifications.
-- Auth middleware (JWT validation, OAuth2 Google flows).
-- RBAC middleware + tenant scoping filter (inject tenant_id depuis token / subdomain / header).
-- OpenAPI / Swagger + Redoc.
-- Versioning API (`/api/v1/`).
+`OAuth2PasswordBearer` + **JWT HS256** (PyJWT). Pas de Google, pas de SSO, pas de cookie : le jeton
+voyage dans l'en-tête `Authorization: Bearer`.
 
-2) Domain Services (dans le Backend)
-- Supplier Service (CRUD, search, history).
-- Invoice Service (upload, parse, validation, link lines to products).
-- OCR Orchestrator (interface provider-agnostic, calls ocr_service via queue or sync).
-- Catalog Service (products, aliases, categories, unit conversions).
-- Pricing Service (persist price history, compute WAP, moving averages).
-- Recipe Service (versions, ingredients, duplication, archiving).
-- Cost Engine (compute cost snapshots, triggers on price change).
-- Video/Transcription Service (ingest URL, fetch, transcribe, NLP extraction).
-- AI Service (RAG, embeddings, LLM suggestions).
+- L'algorithme est **épinglé** à la vérification → pas de confusion d'algorithme.
+- Chaque jeton porte un claim `tv` (`users.token_version`). `POST /auth/logout` incrémente la
+  colonne : **tous** les jetons de l'utilisateur meurent, sur tous ses appareils. Avant, « se
+  déconnecter » n'était qu'un `setState(null)` : un refresh token volé restait valable 14 jours.
+- **Anti-brute-force** sur `/auth/token` : compteur par compte **et** par IP, backoff exponentiel
+  (4 essais libres, puis 30 s → 15 min), dans Redis. Échoue **ouvert** si Redis tombe :
+  verrouiller tous les restaurateurs à cause d'un incident de cache serait pire que l'attaque.
+- Pas de réinitialisation par email (aucun fournisseur de mail) : un **admin** définit un nouveau
+  mot de passe depuis l'écran Administration, ce qui révoque aussi les sessions de l'utilisateur.
 
-3) OCR Service (microservice)
-- Interface: extract_invoice(file_url), extract_products(ocr_result), normalize_units(quantities)
-- Implementation pluggable: Mistral OCR, Google Document AI, Tesseract fallback.
-- Runs as separate container, scalable; communicates via S3 and event queue.
+## Multi-tenant
 
-4) Worker Layer (Celery)
-- Tasks: run_ocr, parse_invoice, match_products (fuzzy matching), persist_prices, recompute_recipe_costs, generate_transcription, ai_analysis, send_notifications.
-- Broker: Redis (or Redis + RabbitMQ if needed).
-- Result backend: Redis or PostgreSQL for job tracking.
+Une organisation = un `tenant_id`. **Chaque** lecture et **chaque** écriture le filtre, dans la
+couche CRUD. Les identifiants fournis par le client (`product_id` d'une ligne de facture, d'un
+ingrédient…) sont **vérifiés** contre le tenant appelant (`app/core/tenancy.py`) : sans ça, on
+pouvait référencer le produit d'un autre restaurant et déclencher un recalcul chez lui.
 
-5) Storage & DB
-- PostgreSQL primary (OLTP) with partitioning strategies for large invoice tables.
-- S3-compatible object storage for invoices, images, video audio artifacts, and model artifacts.
-- pgvector extension for embeddings storage (AI RAG use-cases).
-- Redis for cache, rate-limiting, Celery broker.
+Rôles : `admin`, `manager`, `viewer`. Les écritures exigent `admin` ou `manager`. Il n'y a **pas**
+de permissions fines (les tables `permissions` / `role_permissions` existent mais ne sont jamais
+lues).
 
-6) Search & Analytics
-- OpenSearch / Elasticsearch for full-text search (products, suppliers), aggregations and dashboards.
-- Materialized views in PostgreSQL for aggregated metrics; workers refresh asynchronously.
+## Le pipeline qui fait le produit
 
-7) AI / NLP Stack
-- Embeddings store: pgvector or vector DB (e.g., Pinecone optional).
-- LLMs: OpenAI (or self-hosted Llama 2/ Mistral) via adapter service.
-- Transcription: Whisper (local) or cloud STT.
-- RAG pipeline: chunking, embeddings, retrieval, prompt engineering.
+```
+facture (PDF/photo)
+   → validation des octets RÉELS (magic bytes, taille, anti-spoofing MIME)
+   → OCR (Mistral → Google DocAI ; disjoncteur, réessais, délai d'expiration)
+   → lignes persistées
+   → rapprochement produit (SKU/nom/alias exacts, puis flou ; < 80 % = « à revoir »)
+   → historique de prix + journal d'achats
+   → recalcul du coût de TOUTES les recettes qui utilisent ce produit
+   → alertes (hausse de prix, marge dégradée)
+```
 
-8) Frontend
-- Next.js app: Admin UI, reporting, recipe editor, invoice review UI.
-- React components in TypeScript using Tailwind and shadcn UI.
-- SSR + client-side for dashboards; SWR/react-query for data fetching.
-- Flutter mobile app consumes same API; authentication via OAuth/JWT refresh flows.
+**Il n'y a pas de repli silencieux sur des données d'exemple.** Si l'OCR tombe, la requête échoue
+en 502. Le fournisseur « stub » ne peut plus rejoindre la chaîne dès qu'un vrai fournisseur est
+configuré : une facture inventée serait prixée, historisée, et propagée dans le coût de toutes les
+recettes qui en dépendent.
 
-9) DevOps & Infra
-- Containerized services (Docker). Compose for local dev; Helm charts for k8s.
-- Terraform for cloud infra (VPC, buckets, RDS, EKS/GKE/AKS).
-- CI/CD: GitHub Actions -> build images -> push to registry -> deploy to staging/prod via CD pipeline.
-- Secrets: Vault or cloud secret manager.
-- Backups: RDS snapshots + WAL archiving to S3; periodic verification tests.
+## Le moteur de coût
 
-Domain Model & Data Flow (haute-niveau)
+`app/services/costing/cost_engine.py` — calcul en `Decimal`, gère les pertes (`loss_pct`), les
+rendements (`yield_pct`) et les conversions d'unités. Un prix manquant est **signalé**
+(`has_missing_prices`), jamais deviné : un coût sous-estimé en silence, c'est un plat vendu à perte.
 
-- Upload facture (UI / API): file -> S3 -> emit InvoiceUploaded event.
-- OCR worker picks event -> downloads file -> provider OCR -> returns structured text -> store raw OCR result in S3 and DB.
-- Parser worker consumes OCR -> extract invoice header (supplier, date, invoice_no) and lines -> create invoice + invoice_lines rows (status=parsed/needs_review).
-- For each invoice_line: try fuzzy match on `product_aliases`; if match create purchase + product_price record and emit PriceChanged event if price diff beyond threshold.
-- PriceChanged event -> pushed to Celery queue `price_changes`.
-- Cost Engine workers consume `price_changes` -> find affected recipes (reverse index or precomputed dependencies) -> recompute cost snapshots per recipe_version -> store `recipe_costs` snapshot and emit DashboardUpdated event.
-- Video ingestion: submit URL -> fetch video/audio -> transcribe -> NLP extract ingredients/quantities -> create draft recipe_version for user review.
-- AI suggestions: user triggers or periodic job to run analyze_recipe()/suggest_optimizations() using embeddings + LLM; suggestions stored in `ai_suggestions`.
+Le listing des recettes calcule tous les coûts **en un lot** : 1 requête pour les ingrédients de
+toutes les versions, 1 pour le dernier prix de tous les produits, les unités en cache. Avant,
+c'était un calcul par recette — **7 500 requêtes SQL pour 500 recettes**.
 
-Multi-tenancy strategy
+## Ce qui bloque, et ce qui ne bloque pas
 
-- Single database with tenant_id column on most tables (sargable indices). For large customers, optionally support schema-per-tenant or dedicated DB.
-- Tenant isolation enforced at application layer and DB row-level security (RLS) as extra protection.
-- Billing & rate-limits per tenant.
+Les appels lents (OCR, Claude, Whisper, stockage objet) tournent **hors de la boucle d'événements**
+(`run_in_threadpool`). Dans une coroutine, un appel bloquant de 30 s gèle le **worker entier** :
+avec `WEB_CONCURRENCY=2`, un seul import de facture rendait l'API muette **pour tous les clients**.
 
-Unit conversion system
+Le worker Celery existe (`app/tasks.py`) mais **n'est pas utilisé** : les clients appellent le
+chemin synchrone. Le code **vérifie qu'un worker répond** avant de lui confier un travail —
+`.delay()` réussit même sans worker, et la facture resterait « queued » à vie.
 
-- Canonical units table with categories (mass, volume, count). Each unit stores conversion factor to canonical base of its category.
-- Normalization routines in both Catalog Service and OCR normalizer to convert quantities to canonical units before storing.
+## Quotas et coûts
 
-Calculation Engine (détails)
+Chaque route qui facture un tiers (Anthropic, Mistral, OpenAI) ou brûle du CPU a **deux** plafonds
+par tenant : un **par minute** (borne la rafale) et un **par jour** (borne la facture). Le second
+existe parce que 30 appels IA/minute autorisent quand même **43 200 appels/jour**, soit ~970 $
+d'Anthropic pour un seul client en 24 h. Un plafond par minute borne une rafale, pas une dépense.
 
-- Event: PriceChange {product_id, old_price, new_price, effective_date}
-- Worker identifies dependent recipe_versions via `recipe_ingredients` join.
-- For each recipe_version: compute cost by summing ingredient_qty_normalized * latest_product_price_at_date * (1 + loss_pct) / yield.
-- Persist snapshot with `snapshot_price_source` (list of price ids used) for reproducibility.
-- Use batching and rate-limit recomputations for very large fan-outs; provide priority queueing for critical paths.
+## Mode hors connexion (mobile uniquement)
 
-Customization & Extensibility
+Le cache local sert la dernière réponse valide quand le réseau manque — **toujours** avec son âge
+affiché. Un coût périmé présenté comme actuel est pire que pas de coût : le chef fixerait un prix
+de vente dessus. Une erreur venant du **serveur** (401, 500) n'est pas avalée.
 
-- Custom fields/metrics stored as JSON schemas in `custom_fields` and `custom_metrics`; UI renders form generators.
-- Custom formulas: use a safe expression language (e.g., exprtk or a sandboxed evaluator) with variables resolved to latest metrics.
-- Report builder: pull-based report generator using stored queries and templates; jobs created for heavy reports.
+Les **créations** faites hors ligne sont mises en file et rejouées. Seulement les créations : une
+création ne peut pas entrer en conflit (le serveur attribue l'id). Mettre en file les modifications
+et suppressions obligerait à arbitrer de vrais conflits, et se tromper là-dessus corrompt les coûts
+silencieusement.
 
-Security & Compliance
+## Observabilité
 
-- Auth: OAuth2 flows + JWT access tokens (short-lived) + refresh tokens (rotate). Google OAuth as federated login provider.
-- RBAC: roles + permissions; admin can manage tenant users.
-- Audit: immutable audit_logs for CRUD operations and cost recalculation events.
-- RLS in Postgres for defense in depth.
-- Rate-limiting at API gateway (per-tenant throttles).
-- Encrypt S3 and DB at rest; TLS in transit.
-- GDPR: data export and deletion endpoints; data retention policies.
+- Logs **structurés** JSON (`app/core/logging.py`) avec des événements nommés :
+  `ocr.provider.failure`, `login.locked`, `tenancy.cross_tenant_reference`, `quota.unavailable`…
+- **Prometheus** sur `/metrics` (protégeable par `METRICS_TOKEN`).
+- **Sentry** si `SENTRY_DSN` est défini ; totalement inerte sinon.
+- `/live`, `/health`, `/ready` (Postgres, Redis, stockage, OCR). `/ready` ne renvoie **pas**
+  l'exception brute : elle contiendrait la chaîne de connexion à la base.
 
-Observability & SLOs
+## RGPD
 
-- Metrics: Prometheus scraping; Grafana dashboards for latency, error rate, queue depth, task failure rates.
-- Tracing: OpenTelemetry across services to trace OCR -> parser -> price update flows.
-- Logging: structured logs to ELK/Cloud logging.
-- Alerts: PagerDuty integration on critical SLO breaches.
+- `GET /rgpd/export` — tout ce que la plateforme détient sur l'organisation, en JSON exploitable
+  (art. 15 & 20). Les empreintes de mots de passe en sont **exclues** : elles sont à nous de
+  protéger, pas à eux d'emporter.
+- `POST /rgpd/delete-organization` — effacement définitif (art. 17). Il faut **retaper le nom exact**
+  de l'organisation : c'est la seule chose entre un mauvais clic et toutes les factures, recettes et
+  prix jamais enregistrés.
+- `GET /rgpd/audit` — registre : qui a fait quoi, quand (art. 30).
+- **Aucun cookie** → **pas de bandeau de consentement** : l'authentification passe par un en-tête.
 
-Operational considerations
+## Ce qui n'existe pas (et qu'on ne prétend pas avoir)
 
-- Testing: unit tests, integration tests; end-to-end pipelines using test containers (Postgres, Redis); contract tests for AI adapters.
-- Canary releases and feature flags for risky features (parsers, AI suggestions).
-- Data migrations via Alembic; perform schema migrations backward-compatible where possible.
-
-Next steps (après validation)
-
-- Générer diagrammes Mermaid (architecture globale, sequence flows: invoice import, price change -> recalculation, video ingestion).
-- Générer schéma SQL complet (DDL) et modèles SQLAlchemy.
-- Ensuite: scaffolding FastAPI project et tâches Celery.
-
-Validation requise
-
-J'attends votre validation de cette architecture (ou retours précis) avant de générer les diagrammes Mermaid et passer à l'étape 2.
+GraphQL · WebSockets / temps réel · OAuth Google / SSO · Kubernetes · réplicas de lecture ·
+permissions fines · notifications push · mode hors connexion sur le **web** · édition et
+suppression depuis le **mobile** · réinitialisation de mot de passe par email · stockage objet
+configuré en production (les fichiers de factures ne sont pas conservés).
