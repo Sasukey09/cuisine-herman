@@ -216,6 +216,14 @@ def reset_user_password(
     Bumping token_version logs the user out everywhere: whoever knew the old
     password (or held a stolen token) is cut off immediately.
     """
+    # Validate the input before touching the database: a weak password is
+    # rejected whether or not the user exists (which also avoids confirming that
+    # an id exists, and keeps the check free of a query).
+    if len(payload.password or "") < 8:
+        raise HTTPException(
+            status_code=400, detail="Le mot de passe doit faire au moins 8 caractères."
+        )
+
     target = (
         db.query(User)
         .filter(User.id == user_id, User.tenant_id == current_user.tenant_id)
@@ -223,10 +231,6 @@ def reset_user_password(
     )
     if target is None:
         raise HTTPException(status_code=404, detail="User not found")
-    if len(payload.password or "") < 8:
-        raise HTTPException(
-            status_code=400, detail="Le mot de passe doit faire au moins 8 caractères."
-        )
 
     target.password_hash = security.get_password_hash(payload.password)
     target.token_version = int(target.token_version or 0) + 1
