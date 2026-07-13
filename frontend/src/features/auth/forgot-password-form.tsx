@@ -34,9 +34,13 @@ export function ForgotPasswordForm() {
   // NOTE: the backend has no /auth/forgot-password endpoint yet. This UI is
   // wired and ready; once the endpoint exists, replace the timeout with the
   // real API call (auth-service.requestPasswordReset).
+  // There is no mail provider, so no reset link can be sent. This screen used to
+  // fake a 600 ms delay and then claim "check your emails" — the user waited for
+  // a message that would never arrive. Tell the truth, and point to the one path
+  // that actually works (an admin can now reset a password).
   const onSubmit = async () => {
     setPending(true);
-    await new Promise((r) => setTimeout(r, 600));
+    await new Promise((r) => setTimeout(r, 200));
     setPending(false);
     setSubmitted(true);
   };
@@ -47,11 +51,12 @@ export function ForgotPasswordForm() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <CheckCircle2 className="h-5 w-5 text-primary" />
-            Vérifiez vos emails
+            Demandez à votre administrateur
           </CardTitle>
           <CardDescription>
-            Si un compte existe pour cette adresse, vous recevrez un lien de
-            réinitialisation.
+            La réinitialisation par email n&apos;est pas encore disponible. L&apos;administrateur
+            de votre établissement peut vous définir un nouveau mot de passe depuis l&apos;écran
+            <span className="font-medium text-foreground"> Administration</span>.
           </CardDescription>
         </CardHeader>
         <CardFooter>

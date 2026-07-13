@@ -291,6 +291,10 @@ class RegisterRequest(BaseModel):
     name: Optional[str] = None
 
 
+class ResetPasswordRequest(BaseModel):
+    password: str
+
+
 class CreateUserRequest(BaseModel):
     email: str
     password: str

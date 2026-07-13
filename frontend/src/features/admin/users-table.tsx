@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Users } from "lucide-react";
+import { KeyRound, Plus, Users } from "lucide-react";
 
 import {
   Card,
@@ -22,8 +22,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { UserFormDialog } from "./user-form-dialog";
+import { ResetPasswordDialog } from "./reset-password-dialog";
 import { useUsers } from "@/hooks/use-admin";
 import { useAuthStore } from "@/stores/auth-store";
+import type { Me } from "@/services/types";
 
 const roleVariant: Record<string, "default" | "secondary" | "outline"> = {
   admin: "default",
@@ -35,6 +37,7 @@ export function UsersTable() {
   const { data: users, isLoading } = useUsers();
   const currentUser = useAuthStore((s) => s.user);
   const [formOpen, setFormOpen] = useState(false);
+  const [resetTarget, setResetTarget] = useState<Me | null>(null);
 
   return (
     <Card>
@@ -57,7 +60,8 @@ export function UsersTable() {
             <TableRow>
               <TableHead className="pl-6">Nom</TableHead>
               <TableHead>Email</TableHead>
-              <TableHead className="pr-6">Rôles</TableHead>
+              <TableHead>Rôles</TableHead>
+              <TableHead className="pr-6 text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -66,12 +70,13 @@ export function UsersTable() {
                 <TableRow key={i}>
                   <TableCell className="pl-6"><Skeleton className="h-5 w-32" /></TableCell>
                   <TableCell><Skeleton className="h-5 w-48" /></TableCell>
-                  <TableCell className="pr-6"><Skeleton className="h-5 w-20" /></TableCell>
+                  <TableCell><Skeleton className="h-5 w-20" /></TableCell>
+                  <TableCell className="pr-6"><Skeleton className="h-5 w-24" /></TableCell>
                 </TableRow>
               ))
             ) : !users || users.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={3}>
+                <TableCell colSpan={4}>
                   <p className="py-8 text-center text-sm text-muted-foreground">
                     Aucun utilisateur.
                   </p>
@@ -87,7 +92,7 @@ export function UsersTable() {
                     )}
                   </TableCell>
                   <TableCell className="text-muted-foreground">{u.email}</TableCell>
-                  <TableCell className="pr-6">
+                  <TableCell>
                     <span className="flex flex-wrap gap-1">
                       {u.roles.length ? (
                         u.roles.map((r) => (
@@ -100,6 +105,18 @@ export function UsersTable() {
                       )}
                     </span>
                   </TableCell>
+                  <TableCell className="pr-6 text-right">
+                    {/* The "mot de passe oublié" screen tells the user to ask an
+                        admin. Until now an admin had no way to actually do it. */}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setResetTarget(u)}
+                    >
+                      <KeyRound className="h-3.5 w-3.5" />
+                      Mot de passe
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))
             )}
@@ -108,6 +125,7 @@ export function UsersTable() {
       </CardContent>
 
       <UserFormDialog open={formOpen} onOpenChange={setFormOpen} />
+      <ResetPasswordDialog user={resetTarget} onOpenChange={(o) => !o && setResetTarget(null)} />
     </Card>
   );
 }

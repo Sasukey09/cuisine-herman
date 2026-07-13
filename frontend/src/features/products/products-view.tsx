@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Plus, Search, Pencil, Trash2, Package } from "lucide-react";
 
@@ -46,7 +47,10 @@ function Variation({ pct }: { pct?: number | null }) {
 }
 
 export function ProductsView() {
-  const [search, setSearch] = useState("");
+  // The header search sends the term here (?q=...): without reading it, that
+  // search would navigate and then show an unfiltered list — a dead end.
+  const params = useSearchParams();
+  const [search, setSearch] = useState(params.get("q") ?? "");
   const [cat, setCat] = useState("");
   const debounced = useDebounce(search, 300);
   const { data: products, isLoading } = useEnrichedProducts(debounced || undefined);

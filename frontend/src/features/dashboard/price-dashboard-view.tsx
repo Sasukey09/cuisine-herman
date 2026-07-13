@@ -10,8 +10,7 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   ChefHat,
-  LineChart,
-} from "lucide-react";
+  LineChart, Check } from "lucide-react";
 
 import {
   Card,
@@ -21,12 +20,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   usePriceDashboard,
   useStoredPriceAlerts,
-  useProductPriceHistory,
-} from "@/hooks/use-purchasing";
+  useProductPriceHistory, useMarkPriceAlertRead } from "@/hooks/use-purchasing";
 import { useProducts } from "@/hooks/use-products";
 import { formatCurrency } from "@/lib/utils";
 import type { PriceMovement } from "@/services/types";
@@ -115,6 +114,7 @@ function MovementRow({ m, up }: { m: PriceMovement; up: boolean }) {
 export function PriceDashboardView() {
   const { data, isLoading } = usePriceDashboard();
   const { data: alerts } = useStoredPriceAlerts();
+  const markRead = useMarkPriceAlertRead();
 
   if (isLoading) {
     return <Skeleton className="h-64 w-full" />;
@@ -235,13 +235,27 @@ export function PriceDashboardView() {
         <CardContent className="space-y-1">
           {alerts && alerts.length > 0 ? (
             alerts.slice(0, 20).map((a) => (
-              <div key={a.id} className="flex items-center gap-2 px-2 py-1.5 text-sm">
+              <div key={a.id} className="group flex items-center gap-2 px-2 py-1.5 text-sm">
                 {a.type === "price_decrease" ? (
                   <ArrowDownRight className="h-4 w-4 shrink-0 text-emerald-500" />
                 ) : (
                   <ArrowUpRight className="h-4 w-4 shrink-0 text-red-500" />
                 )}
-                <span>{a.message}</span>
+                <span className="flex-1">{a.message}</span>
+                {/* The endpoint, the service and this hook all existed — nothing
+                    ever called them, so alerts piled up with no way to dismiss a
+                    handled one. */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 shrink-0 px-2 text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                  aria-label={`Marquer comme traitée : ${a.message}`}
+                  disabled={markRead.isPending}
+                  onClick={() => markRead.mutate(a.id)}
+                >
+                  <Check className="h-3.5 w-3.5" />
+                  Traitée
+                </Button>
               </div>
             ))
           ) : (
