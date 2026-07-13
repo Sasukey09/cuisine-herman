@@ -56,18 +56,27 @@ def create_app() -> FastAPI:
     app.add_middleware(PrometheusMiddleware)
 
     origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
-    # "*" together with allow_credentials=True would let ANY site read an
-    # authenticated response. Browsers reject that combination, but an operator
-    # setting it would silently break every client instead of being told why.
-    if "*" in origins:
-        raise RuntimeError(
-            "CORS_ORIGINS=* is refused: credentials are allowed, so origins must "
-            "be an explicit list (e.g. https://app.example.com)."
+
+    # A wildcard origin combined with allow_credentials lets any site read an
+    # authenticated response. We do NOT crash on it — refusing to boot over an
+    # env var would take the whole API down for a misconfiguration — but we drop
+    # credentials (auth here is a Bearer header, so nothing depends on them) and
+    # shout in the logs until the origin list is set properly.
+    wildcard = "*" in origins
+    if wildcard:
+        log_event(
+            logger, logging.ERROR, "security.cors_wildcard",
+            detail=(
+                "CORS_ORIGINS='*' — any website can call this API. Set it to your "
+                "frontend origin (e.g. https://app.example.com). Credentials are "
+                "disabled meanwhile."
+            ),
         )
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
-        allow_credentials=True,
+        allow_credentials=not wildcard,
         allow_methods=["*"],
         allow_headers=["*"],
     )
