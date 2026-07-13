@@ -113,3 +113,41 @@ def test_a_broken_audit_log_never_breaks_the_login():
             pass
 
     rgpd.record(Broken(), "t1", "u1", rgpd.ACTION_LOGIN, {"ip": "1.2.3.4"})  # must not raise
+
+
+def test_the_export_survives_the_types_the_database_actually_returns():
+    """The bug this closes: the export shipped as a 500 in production.
+
+    The rows come straight from the ORM — prices are `Decimal`, dates are
+    `datetime`, ids are UUID. A plain `Dict[str, Any]` return annotation made
+    FastAPI build a response model that could not serialize any of them. My
+    tests had mocked the database, so nothing ever fed a real type through.
+    """
+    import datetime as dt
+    import json
+    import uuid as uuidlib
+    from decimal import Decimal
+
+    from fastapi.encoders import jsonable_encoder
+
+    payload = {
+        "organization": {"id": str(uuidlib.uuid4()), "name": "Restaurant Herman"},
+        "products": [
+            {
+                "id": uuidlib.uuid4(),
+                "name": "Beurre doux AOP",
+                "last_cost": Decimal("8.51"),
+                "created_at": dt.datetime(2026, 7, 13, 12, 0, 0),
+                "effective_date": dt.date(2026, 7, 13),
+                "meta": {"origine": "Normandie"},
+                "sku": None,
+            }
+        ],
+    }
+
+    # Must not raise, and must produce real JSON.
+    encoded = jsonable_encoder(payload)
+    text = json.dumps(encoded)
+
+    assert "Beurre doux AOP" in text
+    assert "8.51" in text

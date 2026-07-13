@@ -1,6 +1,8 @@
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_tenant_id, get_current_user, require_admin
@@ -18,7 +20,7 @@ def api_export_data(
     tenant_id: str = Depends(get_current_tenant_id),
     current_user: User = Depends(get_current_user),
     _: list = Depends(require_admin),
-) -> Dict[str, Any]:
+):
     """RGPD art. 15 & 20 — everything we hold on this organization, as JSON.
 
     Portability means the customer can walk away with their data and load it
@@ -30,7 +32,11 @@ def api_export_data(
         db, tenant_id, str(current_user.id), rgpd.ACTION_DATA_EXPORTED,
         {"tables": len(payload)},
     )
-    return payload
+    # The rows come straight from the ORM: prices are Decimal, dates are
+    # datetime, and a return annotation would make FastAPI build a response
+    # model that chokes on them (this shipped as a 500). jsonable_encoder knows
+    # how to turn all of it into JSON.
+    return JSONResponse(content=jsonable_encoder(payload))
 
 
 @router.get("/audit", response_model=List[AuditLogRead])
