@@ -9,7 +9,7 @@ import logging
 
 from app.core.logging import get_logger, log_event
 from app.db.session import get_db
-from app.api.deps import get_current_tenant_id, require_writer, quota
+from app.api.deps import get_current_tenant_id, require_writer, quota, daily_quota
 from app.schemas.schemas import (
     RecipeCreate,
     RecipeUpdate,
@@ -115,6 +115,7 @@ async def api_import_recipe_pdf(
     tenant_id: str = Depends(get_current_tenant_id),
     _: list = Depends(require_writer),
     _q: None = Depends(quota("pdf_import", "PDF_IMPORT_PER_MIN", 10)),
+    _qd: None = Depends(daily_quota("pdf_import", "PDF_IMPORT_PER_DAY", 100)),
 ):
     """Upload a recipe PDF -> OCR -> AI extraction -> product matching -> cost
     preview. Returns a job with status + an editable preview (nothing is saved as

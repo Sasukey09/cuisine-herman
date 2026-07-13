@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 from app.db.session import get_db
-from app.api.deps import get_current_tenant_id, require_writer, quota
+from app.api.deps import get_current_tenant_id, require_writer, quota, daily_quota
 from app.schemas.schemas import (
     VideoExtractRequest,
     VideoExtractResult,
@@ -30,6 +30,7 @@ def api_video_extract(
     tenant_id: str = Depends(get_current_tenant_id),
     _: list = Depends(require_writer),
     _q: None = Depends(quota("video", "VIDEO_IMPORT_PER_MIN", 10)),
+    _qd: None = Depends(daily_quota("video", "VIDEO_IMPORT_PER_DAY", 50)),
 ):
     """Paste a video URL → transcript → AI-extracted, editable recipe draft.
 
@@ -63,6 +64,7 @@ async def api_video_extract_file(
     # Whisper bills per minute of audio: this route was the one expensive video
     # path left without a ceiling.
     _q: None = Depends(quota("video", "VIDEO_IMPORT_PER_MIN", 10)),
+    _qd: None = Depends(daily_quota("video", "VIDEO_IMPORT_PER_DAY", 50)),
 ):
     """Upload a video/audio file → audio (ffmpeg) → Whisper → editable recipe
     draft. Reliable alternative to URL import (no YouTube IP blocking)."""
