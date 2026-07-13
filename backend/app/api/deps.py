@@ -114,3 +114,29 @@ def quota(bucket: str, env_name: str, default_per_minute: int):
             )
 
     return dependency
+
+
+def daily_quota(bucket: str, env_name: str, default_per_day: int):
+    """Dependency factory: at most N calls per DAY, per tenant.
+
+    A per-minute ceiling bounds a burst, not a bill. At 30 AI calls/min a single
+    tenant could still make 43 200 calls a day — roughly $970 of Anthropic usage,
+    for one customer, in one day. The daily cap is what actually bounds the spend
+    (and it is the only thing standing between a stolen token and the budget).
+    """
+    limit = _quota_limit(env_name, default_per_day)
+
+    def dependency(tenant_id: str = Depends(get_current_tenant_id)) -> None:
+        wait = get_quota_guard().check(f"{bucket}:daily:{tenant_id}", limit, 86400)
+        if wait:
+            hours = max(1, wait // 3600)
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=(
+                    f"Quota quotidien atteint ({limit}/jour sur cette opération). "
+                    f"Réessayez dans environ {hours} heure(s)."
+                ),
+                headers={"Retry-After": str(wait)},
+            )
+
+    return dependency

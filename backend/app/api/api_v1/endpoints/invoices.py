@@ -6,7 +6,7 @@ from starlette.concurrency import run_in_threadpool
 from app.core.tenancy import assert_product_in_tenant
 from app.core.uploads import validate_upload
 from app.db.session import get_db
-from app.api.deps import get_current_tenant_id, require_writer, quota
+from app.api.deps import get_current_tenant_id, require_writer, quota, daily_quota
 from app.schemas.schemas import (
     InvoiceCreateResp,
     InvoiceRead,
@@ -67,6 +67,7 @@ async def api_upload_invoice(
     tenant_id: str = Depends(get_current_tenant_id),
     _: list = Depends(require_writer),
     _q: None = Depends(quota("ocr", "OCR_PER_MIN", 20)),
+    _qd: None = Depends(daily_quota("ocr", "OCR_PER_DAY", 400)),
 ):
     content = await file.read()
     validate_upload(content, file.content_type)
@@ -91,6 +92,7 @@ async def api_ingest_invoice(
     tenant_id: str = Depends(get_current_tenant_id),
     _: list = Depends(require_writer),
     _q: None = Depends(quota("ocr", "OCR_PER_MIN", 20)),
+    _qd: None = Depends(daily_quota("ocr", "OCR_PER_DAY", 400)),
 ):
     """Full pipeline: upload -> OCR extract -> persist lines -> auto-match ->
     create price history -> recompute affected recipe costs."""
@@ -128,6 +130,7 @@ async def api_ingest_invoice_async(
     tenant_id: str = Depends(get_current_tenant_id),
     _: list = Depends(require_writer),
     _q: None = Depends(quota("ocr", "OCR_PER_MIN", 20)),
+    _qd: None = Depends(daily_quota("ocr", "OCR_PER_DAY", 400)),
 ):
     """Upload -> store file -> enqueue OCR as a Celery task and return immediately.
 
@@ -418,6 +421,7 @@ async def api_extract_invoice(
     # the paid OCR quota at will.
     _: list = Depends(require_writer),
     _q: None = Depends(quota("ocr", "OCR_PER_MIN", 20)),
+    _qd: None = Depends(daily_quota("ocr", "OCR_PER_DAY", 400)),
 ):
     content = await file.read()
     validate_upload(content, file.content_type)
