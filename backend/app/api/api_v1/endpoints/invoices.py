@@ -1,10 +1,11 @@
 from typing import List
-from fastapi import APIRouter, Depends, File, UploadFile, HTTPException
+from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.tenancy import assert_product_in_tenant
+from app.core.uploads import validate_upload
 from app.db.session import get_db
-from app.api.deps import get_current_tenant_id, require_writer
+from app.api.deps import get_current_tenant_id, require_writer, quota
 from app.schemas.schemas import (
     InvoiceCreateResp,
     InvoiceRead,
@@ -50,9 +51,11 @@ async def api_upload_invoice(
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant_id),
     _: list = Depends(require_writer),
+    _q: None = Depends(quota("ocr", "OCR_PER_MIN", 20)),
 ):
-    invoice = create_invoice_from_upload(db, file, tenant_id)
     content = await file.read()
+    validate_upload(content, file.content_type)
+    invoice = create_invoice_from_upload(db, file, tenant_id)
     key = s3_storage.upload_invoice(tenant_id, invoice["id"], file.filename, content, file.content_type)
     if key:
         set_invoice_file_url(db, invoice["id"], tenant_id, key)
@@ -65,12 +68,14 @@ async def api_ingest_invoice(
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant_id),
     _: list = Depends(require_writer),
+    _q: None = Depends(quota("ocr", "OCR_PER_MIN", 20)),
 ):
     """Full pipeline: upload -> OCR extract -> persist lines -> auto-match ->
     create price history -> recompute affected recipe costs."""
+    content = await file.read()
+    validate_upload(content, file.content_type)
     invoice = create_invoice_from_upload(db, file, tenant_id)
     invoice_id = invoice["id"]
-    content = await file.read()
     # persist the original file (non-blocking if storage is unavailable)
     key = s3_storage.upload_invoice(tenant_id, invoice_id, file.filename, content, file.content_type)
     if key:
@@ -90,6 +95,7 @@ async def api_ingest_invoice_async(
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant_id),
     _: list = Depends(require_writer),
+    _q: None = Depends(quota("ocr", "OCR_PER_MIN", 20)),
 ):
     """Upload -> store file -> enqueue OCR as a Celery task and return immediately.
 
@@ -97,9 +103,10 @@ async def api_ingest_invoice_async(
     (field ``ocr_status``: queued/processing/done/error). Falls back to inline
     processing if storage or the task broker is unavailable.
     """
+    content = await file.read()
+    validate_upload(content, file.content_type)
     invoice = create_invoice_from_upload(db, file, tenant_id)
     invoice_id = invoice["id"]
-    content = await file.read()
     key = s3_storage.upload_invoice(tenant_id, invoice_id, file.filename, content, file.content_type)
 
     def _process_inline() -> str:
@@ -132,7 +139,7 @@ async def api_ingest_invoice_async(
 @router.get("/", response_model=List[InvoiceRead])
 def api_list_invoices(
     skip: int = 0,
-    limit: int = 50,
+    limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant_id),
 ):
@@ -361,8 +368,13 @@ def api_update_line(
 async def api_extract_invoice(
     file: UploadFile = File(...),
     tenant_id: str = Depends(get_current_tenant_id),
+    # Was the only expensive route without it: a read-only `viewer` could burn
+    # the paid OCR quota at will.
+    _: list = Depends(require_writer),
+    _q: None = Depends(quota("ocr", "OCR_PER_MIN", 20)),
 ):
     content = await file.read()
+    validate_upload(content, file.content_type)
     try:
         return extract_invoice(content, file.content_type)
     except OcrError:

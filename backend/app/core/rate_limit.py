@@ -70,10 +70,18 @@ class _MemoryStore:
         now = time.monotonic()
         with self._mutex:
             self._purge(now)
-            count, _ = self._counts.get(key, (0, 0.0))
+            count, expires = self._counts.get(key, (0, 0.0))
             count += 1
-            self._counts[key] = (count, now + ttl)
+            # Keep the original expiry: a fixed window, not a sliding one that
+            # a caller could keep pushing forward.
+            self._counts[key] = (count, expires if count > 1 else now + ttl)
             return count
+
+    def ttl(self, key: str) -> int:
+        now = time.monotonic()
+        with self._mutex:
+            _, expires = self._counts.get(key, (0, 0.0))
+            return max(0, int(expires - now)) + 1 if expires > now else 0
 
     def lock(self, key: str, seconds: int) -> None:
         with self._mutex:
@@ -103,9 +111,15 @@ class _RedisStore:
     def incr(self, key: str, ttl: int) -> int:
         pipe = self._r.pipeline()
         pipe.incr(key)
-        pipe.expire(key, ttl)
+        # nx=True: only set the TTL on the first hit, so the window is fixed and
+        # a caller cannot keep pushing it forward with every request.
+        pipe.expire(key, ttl, nx=True)
         count, _ = pipe.execute()
         return int(count)
+
+    def ttl(self, key: str) -> int:
+        value = self._r.ttl(key)
+        return int(value) if value and value > 0 else 0
 
     def lock(self, key: str, seconds: int) -> None:
         self._r.setex(key, seconds, b"1")
@@ -174,6 +188,46 @@ class LoginGuard:
             self._store.clear([f"{key}:fail", f"{key}:lock"])
         except Exception as exc:
             log_event(logger, logging.WARNING, "login.guard.unavailable", error=str(exc))
+
+
+class QuotaGuard:
+    """Fixed-window quota for the endpoints that cost real money or CPU.
+
+    ``/ai/chat`` bills Anthropic on every call, OCR bills Mistral, and
+    ``/products/match`` runs a fuzzy score against the whole catalogue. Without
+    a ceiling, one scripted account can drain the budget or pin a worker — and
+    Gunicorn workers are shared, so the blast radius is every tenant.
+    """
+
+    def __init__(self, store) -> None:
+        self._store = store
+
+    def check(self, key: str, limit: int, window_seconds: int) -> int:
+        """Count this call. Returns seconds to wait, 0 when it may proceed."""
+        try:
+            full_key = f"quota:{key}"
+            count = self._store.incr(full_key, window_seconds)
+            if count > limit:
+                return self._store.ttl(full_key) or window_seconds
+        except Exception as exc:  # a cache outage must not take the app down
+            log_event(logger, logging.WARNING, "quota.unavailable", error=str(exc))
+        return 0
+
+
+_quota: Optional[QuotaGuard] = None
+
+
+def get_quota_guard() -> QuotaGuard:
+    global _quota
+    if _quota is None:
+        _quota = QuotaGuard(_build_store())
+    return _quota
+
+
+def reset_quota_guard() -> None:
+    """Test hook."""
+    global _quota
+    _quota = None
 
 
 def _build_store():

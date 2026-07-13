@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from functools import lru_cache
 from typing import Optional
 
-from jose import jwt
+import jwt  # PyJWT — replaces python-jose (CVE-2024-33663, unmaintained)
 from passlib.context import CryptContext
 
 ALGORITHM = "HS256"
@@ -91,5 +91,10 @@ def create_refresh_token(data: dict) -> str:
 
 
 def decode_access_token(token: str) -> dict:
-    """Decode and verify a JWT. Raises jose.JWTError on failure."""
+    """Decode and verify a JWT. Raises ``jwt.PyJWTError`` on failure.
+
+    ``algorithms`` is pinned, so a token claiming ``alg: none`` or an asymmetric
+    algorithm is rejected rather than trusted (algorithm confusion). ``exp`` is
+    verified by PyJWT itself.
+    """
     return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])

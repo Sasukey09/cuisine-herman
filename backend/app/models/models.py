@@ -47,6 +47,10 @@ class User(Base):
     created_at = Column(TIMESTAMP, server_default=func.now())
     last_login = Column(TIMESTAMP)
     meta = Column("metadata", JSONB)
+    # Bumped on logout / password change: every token carrying an older `tv`
+    # claim is refused. Without it, "log out" was purely cosmetic — a stolen
+    # refresh token stayed valid for its full 14-day life.
+    token_version = Column(Integer, nullable=False, server_default="0")
 
 
 class Supplier(Base):

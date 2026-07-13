@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.api.deps import get_current_tenant_id, require_writer
+from app.api.deps import get_current_tenant_id, require_writer, quota
 from app.schemas.schemas import (
     VideoExtractRequest,
     VideoExtractResult,
@@ -28,6 +28,7 @@ def api_video_extract(
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant_id),
     _: list = Depends(require_writer),
+    _q: None = Depends(quota("video", "VIDEO_IMPORT_PER_MIN", 10)),
 ):
     """Paste a video URL → transcript → AI-extracted, editable recipe draft.
 

@@ -1,10 +1,10 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.api.deps import get_current_tenant_id, require_writer
+from app.api.deps import get_current_tenant_id, require_writer, quota
 from app.schemas.schemas import (
     ProductCreate,
     ProductUpdate,
@@ -51,13 +51,24 @@ def api_product_supplier_comparison(
     return purchase_service.supplier_comparison(db, tenant_id, product_id)
 
 
+# The fuzzy score runs a sliding-window comparison of `text` against every
+# product and alias in the catalogue: cost is O(len(text) × catalogue size).
+MAX_MATCH_TEXT_CHARS = 300
+
+
 @router.post("/match", response_model=ProductMatchResultRead)
 def api_match_product(
     payload: ProductMatchRequest,
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant_id),
     _: list = Depends(require_writer),
+    _q: None = Depends(quota("match", "PRODUCT_MATCH_PER_MIN", 60)),
 ):
+    if len(payload.text or "") > MAX_MATCH_TEXT_CHARS:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Libellé trop long ({MAX_MATCH_TEXT_CHARS} caractères maximum).",
+        )
     return match_product(db, tenant_id, payload.text, payload.fuzzy_min_score)
 
 
@@ -74,7 +85,7 @@ def api_create_product(
 @router.get("/", response_model=List[ProductRead])
 def api_list_products(
     skip: int = 0,
-    limit: int = 50,
+    limit: int = Query(50, ge=1, le=200),
     q: Optional[str] = None,
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant_id),
@@ -85,7 +96,7 @@ def api_list_products(
 @router.get("/enriched")
 def api_list_products_enriched(
     skip: int = 0,
-    limit: int = 200,
+    limit: int = Query(200, ge=1, le=500),
     q: Optional[str] = None,
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant_id),

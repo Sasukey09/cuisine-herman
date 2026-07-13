@@ -41,7 +41,7 @@ def api_cost_trends(
 
 @router.get("/top-products", response_model=List[TopProduct])
 def api_top_products(
-    limit: int = 10,
+    limit: int = Query(10, ge=1, le=100),
     date_from: Optional[date] = Query(None, alias="from"),
     date_to: Optional[date] = Query(None, alias="to"),
     db: Session = Depends(get_db),

@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.api.deps import get_current_tenant_id
+from app.api.deps import get_current_tenant_id, require_writer
 
 FILES = {"file": ("invoice.pdf", b"%PDF-1.4 fake content", "application/pdf")}
 
@@ -15,8 +15,11 @@ def test_invoice_extract_endpoint(monkeypatch):
     monkeypatch.setenv("OCR_PROVIDER_CHAIN", "stub")
     monkeypatch.setenv("OCR_ALLOW_STUB_FALLBACK", "true")
 
-    # Override auth so the test does not need a DB-backed user.
+    # Override auth so the test does not need a DB-backed user. `require_writer`
+    # must be overridden too: the route now refuses read-only `viewer` accounts,
+    # which used to be able to burn the paid OCR quota.
     app.dependency_overrides[get_current_tenant_id] = lambda: "test-tenant"
+    app.dependency_overrides[require_writer] = lambda: ["admin"]
     try:
         client = TestClient(app)
         resp = client.post("/api/v1/invoices/extract", files=FILES)
@@ -42,10 +45,29 @@ def test_an_ocr_outage_never_fabricates_an_invoice(monkeypatch):
     monkeypatch.delenv("GCP_PROJECT_ID", raising=False)
 
     app.dependency_overrides[get_current_tenant_id] = lambda: "test-tenant"
+    app.dependency_overrides[require_writer] = lambda: ["admin"]
     try:
         client = TestClient(app)
         resp = client.post("/api/v1/invoices/extract", files=FILES)
         assert resp.status_code == 502, "an OCR outage must surface, not be papered over"
         assert "lines" not in resp.json()
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_a_read_only_viewer_cannot_burn_the_ocr_quota():
+    """The RBAC hole this closed.
+
+    /invoices/extract was the ONLY expensive route without `require_writer`, so
+    an account documented as "read-only" could call a paid OCR provider on loop.
+    """
+    from app.api.deps import get_current_roles
+
+    app.dependency_overrides[get_current_tenant_id] = lambda: "test-tenant"
+    app.dependency_overrides[get_current_roles] = lambda: ["viewer"]
+    try:
+        client = TestClient(app)
+        resp = client.post("/api/v1/invoices/extract", files=FILES)
+        assert resp.status_code == 403
     finally:
         app.dependency_overrides.clear()
