@@ -82,3 +82,19 @@ def get_ingredients(db: Session, version_id: str):
         .filter(RecipeIngredient.recipe_version_id == version_id)
         .all()
     )
+
+
+def list_ingredients_for_versions(db: Session, version_ids) -> dict:
+    """Ingredients of MANY versions in one query -> {version_id: [ingredients]}."""
+    ids = [str(v) for v in version_ids if v]
+    if not ids:
+        return {}
+    rows = (
+        db.query(RecipeIngredient)
+        .filter(RecipeIngredient.recipe_version_id.in_(ids))
+        .all()
+    )
+    out: dict = {i: [] for i in ids}
+    for row in rows:
+        out.setdefault(str(row.recipe_version_id), []).append(row)
+    return out

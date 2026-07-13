@@ -4,6 +4,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.uploads import validate_upload
+import logging
+
+from app.core.logging import get_logger, log_event
 from app.db.session import get_db
 from app.api.deps import get_current_tenant_id, require_writer, quota
 from app.schemas.schemas import (
@@ -31,6 +34,8 @@ from app.services.costing import cost_engine
 from app.services.recipe_import import service as recipe_import_service
 
 router = APIRouter()
+
+logger = get_logger(__name__)
 
 
 @router.post("/", response_model=RecipeRead)
@@ -62,24 +67,30 @@ def api_list_recipes_enriched(
 ):
     """Recipes + computed matter cost/portion, selling price, food cost % and
     gross margin % (so the recipe cards show real figures)."""
+    recipes = list_recipes(db, tenant_id, skip=skip, limit=limit)
+
+    # One batch instead of a cost computation per recipe (which re-queried every
+    # unit, every conversion and one price per ingredient, every time).
+    try:
+        costs = cost_engine.compute_costs_for_recipes(db, tenant_id, recipes)
+    except Exception as exc:
+        # Degrade to "no figures" rather than a 500 — but say so, instead of the
+        # silent `except: pass` that made this impossible to debug in production.
+        log_event(
+            logger, logging.ERROR, "recipes.enriched.cost_failed",
+            tenant_id=tenant_id, error=str(exc),
+        )
+        costs = {}
+
     out = []
-    for r in list_recipes(db, tenant_id, skip=skip, limit=limit):
+    for r in recipes:
         version_id = str(r.current_version_id) if r.current_version_id else None
         selling = float(r.selling_price) if r.selling_price is not None else None
-        cost_per_portion = food_cost = margin_pct = None
-        has_missing_prices = False
-        if version_id:
-            try:
-                res = cost_engine.compute_recipe_version_cost(
-                    db, tenant_id, version_id, selling_price=selling, persist=False
-                )
-                cost_per_portion = res.get("cost_per_portion")
-                food_cost = res.get("food_cost_pct")
-                has_missing_prices = bool(res.get("has_missing_prices"))
-                if food_cost is not None:
-                    margin_pct = round(100.0 - float(food_cost), 1)
-            except Exception:
-                pass
+        res = costs.get(version_id) or {}
+        cost_per_portion = res.get("cost_per_portion")
+        food_cost = res.get("food_cost_pct")
+        has_missing_prices = bool(res.get("has_missing_prices"))
+        margin_pct = round(100.0 - float(food_cost), 1) if food_cost is not None else None
         out.append(
             {
                 "id": str(r.id),
