@@ -636,3 +636,20 @@ class CreateProductFromLine(BaseModel):
     """
     name: Optional[str] = None
     sku: Optional[str] = None
+
+
+class AuditLogRead(BaseModel):
+    id: str
+    action: Optional[str] = None
+    user_id: Optional[str] = None
+    data: Optional[dict] = None
+    created_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DeleteOrganizationRequest(BaseModel):
+    """Retyping the exact name is the only thing between a mis-click and every
+    invoice, recipe and price this restaurant has ever recorded."""
+
+    confirm_name: str

@@ -18,6 +18,7 @@ from app.schemas.schemas import (
 )
 from app.core import security
 from app.crud import crud_user, crud_rbac
+from app.services.rgpd import service as rgpd
 from app.api.deps import get_current_user, get_current_roles, require_admin
 from app.models.models import User
 
@@ -92,6 +93,7 @@ def login(
         )
 
     guard.record_success(email, ip)
+    rgpd.record(db, str(user.tenant_id), str(user.id), rgpd.ACTION_LOGIN, {"ip": ip})
     return _issue_tokens(user)
 
 
@@ -127,6 +129,7 @@ def logout(
     current_user.token_version = int(current_user.token_version or 0) + 1
     db.add(current_user)
     db.commit()
+    rgpd.record(db, str(current_user.tenant_id), str(current_user.id), rgpd.ACTION_LOGOUT)
 
 
 @router.get("/me", response_model=MeRead)
@@ -196,6 +199,10 @@ def create_user(
         name=payload.name,
     )
     crud_rbac.assign_role(db, str(user.id), str(roles[payload.role].id))
+    rgpd.record(
+        db, str(current_user.tenant_id), str(current_user.id), rgpd.ACTION_USER_CREATED,
+        {"created_user": payload.email, "role": payload.role},
+    )
     return user
 
 
@@ -236,3 +243,7 @@ def reset_user_password(
     target.token_version = int(target.token_version or 0) + 1
     db.add(target)
     db.commit()
+    rgpd.record(
+        db, str(current_user.tenant_id), str(current_user.id), rgpd.ACTION_PASSWORD_RESET,
+        {"target_user": target.email},
+    )

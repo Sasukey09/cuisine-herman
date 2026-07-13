@@ -18,7 +18,32 @@ APP_NAME = "CuisineHerman API"
 logger = get_logger(__name__)
 
 
+def _init_sentry() -> None:
+    """Error reporting. Inert until SENTRY_DSN is set, so nothing changes for a
+    deployment that has not opted in — and `console.error` stops being the only
+    place a production crash is ever seen."""
+    dsn = os.getenv("SENTRY_DSN")
+    if not dsn:
+        return
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.fastapi import FastApiIntegration
+
+        sentry_sdk.init(
+            dsn=dsn,
+            environment=os.getenv("APP_ENV", "production"),
+            traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.05")),
+            # Bodies can carry an invoice, a password reset, a chat message.
+            send_default_pii=False,
+            integrations=[FastApiIntegration()],
+        )
+        log_event(logger, logging.INFO, "sentry.enabled")
+    except Exception as exc:  # a broken reporter must not take the app down
+        log_event(logger, logging.WARNING, "sentry.init_failed", error=str(exc))
+
+
 def create_app() -> FastAPI:
+    _init_sentry()
     app = FastAPI(title=APP_NAME)
 
     @app.exception_handler(UnsafeURLError)
@@ -85,7 +110,20 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
 
     @app.get("/metrics")
-    def prometheus_metrics():
+    def prometheus_metrics(request: Request):
+        """Prometheus scrape endpoint.
+
+        Was wide open to the internet: request counts, latencies and error rates
+        per route are a free map of the app for anyone probing it. Set
+        METRICS_TOKEN and have the scraper send `Authorization: Bearer <token>`.
+        Left open when unset, so an existing scraper is not silently broken —
+        but the deployment docs now say to set it.
+        """
+        expected = os.getenv("METRICS_TOKEN")
+        if expected:
+            sent = (request.headers.get("authorization") or "").removeprefix("Bearer ").strip()
+            if sent != expected:
+                return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
         payload, content_type = metrics.render_latest()
         return Response(content=payload, media_type=content_type)
 

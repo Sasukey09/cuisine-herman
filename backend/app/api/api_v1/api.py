@@ -8,6 +8,7 @@ from app.api.api_v1.endpoints import (
     auth,
     dashboard,
     ai,
+    rgpd,
     video,
     metrics,
     custom_fields,
@@ -24,6 +25,7 @@ api_router.include_router(invoices.router, prefix="/invoices", tags=["invoices"]
 api_router.include_router(recipes.router, prefix="/recipes", tags=["recipes"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 api_router.include_router(ai.router, prefix="/ai", tags=["ai"])
+api_router.include_router(rgpd.router, prefix="/rgpd", tags=["rgpd"])
 api_router.include_router(video.router, prefix="/video", tags=["video"])
 api_router.include_router(metrics.router, prefix="/metrics", tags=["metrics"])
 api_router.include_router(custom_fields.router, prefix="/custom-fields", tags=["custom-fields"])
