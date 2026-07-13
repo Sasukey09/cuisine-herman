@@ -26,7 +26,8 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
 
   Future<void> _upload() async {
     final messenger = ScaffoldMessenger.of(context);
-    final picked = await FilePicker.platform.pickFiles(
+    // file_picker 11 moved to static methods (`FilePicker.platform` is gone).
+    final picked = await FilePicker.pickFiles(
       withData: true,
       type: FileType.custom,
       allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
