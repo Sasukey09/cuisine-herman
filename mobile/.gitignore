@@ -22,6 +22,8 @@ macos/
 # never overwrites an existing file):
 #   android/app/src/main/AndroidManifest.xml  -> INTERNET permission, without
 #       which every API call fails in a release build.
-#   android/app/build.gradle.kts              -> compileSdk 36, without which
-#       file_picker's transitive deps refuse to build a release APK.
+#   android/app/build.gradle.kts              -> compileSdk 36 for our module.
+#   android/build.gradle.kts                  -> compileSdk 36 for every PLUGIN
+#       module too; without it file_picker still compiles against 34 and the
+#       release APK dies in checkReleaseAarMetadata.
 # Do NOT track android/local.properties: it holds a machine-specific SDK path.
