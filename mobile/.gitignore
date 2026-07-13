@@ -16,3 +16,8 @@ windows/
 linux/
 macos/
 .metadata
+
+# EXCEPTION: android/app/src/main/AndroidManifest.xml is force-added to git
+# (`git add -f`) because it carries the INTERNET permission. Without it every
+# API call fails in release builds. `flutter create` never overwrites an
+# existing file, so keeping it tracked survives a regeneration.
