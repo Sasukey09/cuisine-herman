@@ -155,7 +155,7 @@ def api_update_invoice(
     _: list = Depends(require_writer),
 ):
     """Edit the invoice header manually (number / date / total / currency)."""
-    inv = update_invoice(db, invoice_id, tenant_id, **payload.dict(exclude_unset=True))
+    inv = update_invoice(db, invoice_id, tenant_id, **payload.model_dump(exclude_unset=True))
     if inv is None:
         raise HTTPException(status_code=404, detail="Invoice not found")
     return inv

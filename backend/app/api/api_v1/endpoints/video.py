@@ -93,7 +93,7 @@ def api_video_save(
     """Persist a (reviewed/edited) draft as a recipe and compute its cost."""
     if not payload.name.strip():
         raise HTTPException(status_code=400, detail="Nom de recette requis")
-    ingredients = [i.dict() for i in payload.ingredients]
+    ingredients = [i.model_dump() for i in payload.ingredients]
     return video_service.save_draft(
         db, tenant_id, payload.name.strip(), payload.yield_qty, ingredients,
         instructions=payload.steps,

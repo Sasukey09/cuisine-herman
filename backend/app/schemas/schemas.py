@@ -1,5 +1,5 @@
 from typing import Optional, List
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from datetime import date, datetime
 # Alias for fields literally named ``date``: the field name shadows the ``date``
 # type in the class namespace, which makes some pydantic versions resolve
@@ -9,8 +9,8 @@ from datetime import date as DateType
 
 class SupplierBase(BaseModel):
     name: str
-    code: Optional[str]
-    contact: Optional[dict]
+    code: Optional[str] = None
+    contact: Optional[dict] = None
     rating: Optional[float] = None
 
 
@@ -28,25 +28,24 @@ class SupplierUpdate(BaseModel):
 class SupplierRead(SupplierBase):
     id: str
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SupplierPriceRead(BaseModel):
     id: str
-    product_id: Optional[str]
-    product_name: Optional[str]
-    price: Optional[float]
-    currency: Optional[str]
-    unit_id: Optional[int]
-    effective_date: Optional[date]
-    source_invoice_line_id: Optional[str]
+    product_id: Optional[str] = None
+    product_name: Optional[str] = None
+    price: Optional[float] = None
+    currency: Optional[str] = None
+    unit_id: Optional[int] = None
+    effective_date: Optional[date] = None
+    source_invoice_line_id: Optional[str] = None
 
 
 class ProductBase(BaseModel):
     name: str
-    sku: Optional[str]
-    base_unit_id: Optional[int]
+    sku: Optional[str] = None
+    base_unit_id: Optional[int] = None
 
 
 class ProductCreate(ProductBase):
@@ -62,8 +61,7 @@ class ProductUpdate(BaseModel):
 class ProductRead(ProductBase):
     id: str
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class InvoiceCreateResp(BaseModel):
@@ -73,31 +71,29 @@ class InvoiceCreateResp(BaseModel):
 
 class InvoiceRead(BaseModel):
     id: str
-    invoice_number: Optional[str]
-    date: Optional[DateType]
-    total_amount: Optional[float]
-    currency: Optional[str]
-    parsed: Optional[bool]
-    ocr_status: Optional[str]
-    supplier_id: Optional[str]
-    created_at: Optional[datetime]
+    invoice_number: Optional[str] = None
+    date: Optional[DateType] = None
+    total_amount: Optional[float] = None
+    currency: Optional[str] = None
+    parsed: Optional[bool] = None
+    ocr_status: Optional[str] = None
+    supplier_id: Optional[str] = None
+    created_at: Optional[datetime] = None
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class InvoiceLineRead(BaseModel):
     id: str
-    product_id: Optional[str]
-    description: Optional[str]
-    qty: Optional[float]
-    unit_id: Optional[int]
-    unit_price: Optional[float]
-    line_total: Optional[float]
-    match_confidence: Optional[float]
+    product_id: Optional[str] = None
+    description: Optional[str] = None
+    qty: Optional[float] = None
+    unit_id: Optional[int] = None
+    unit_price: Optional[float] = None
+    line_total: Optional[float] = None
+    match_confidence: Optional[float] = None
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class MapProductRequest(BaseModel):
@@ -107,7 +103,7 @@ class MapProductRequest(BaseModel):
 class MapProductResult(BaseModel):
     line_id: str
     product_id: str
-    price_id: Optional[str]
+    price_id: Optional[str] = None
 
 
 class InvoiceProcessSummary(BaseModel):
@@ -129,7 +125,7 @@ class InvoiceIngestResult(BaseModel):
 
 class RecipeBase(BaseModel):
     name: str
-    yield_qty: Optional[float]
+    yield_qty: Optional[float] = None
     selling_price: Optional[float] = None
 
 
@@ -148,17 +144,15 @@ class RecipeInstructionRead(BaseModel):
     step_number: int
     content: str
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class RecipeRead(RecipeBase):
     id: str
-    current_version_id: Optional[str]
-    yield_unit_id: Optional[int]
+    current_version_id: Optional[str] = None
+    yield_unit_id: Optional[int] = None
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class RecipeIngredientCreate(BaseModel):
@@ -177,8 +171,7 @@ class RecipeIngredientRead(RecipeIngredientCreate):
     id: str
     ingredient_name: Optional[str] = None  # free-text label when unmatched
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class RecipeVersionCreate(BaseModel):
@@ -191,12 +184,11 @@ class RecipeVersionRead(BaseModel):
     id: str
     recipe_id: str
     version_number: int
-    notes: Optional[str]
+    notes: Optional[str] = None
     is_published: bool
     ingredients: List[RecipeIngredientRead] = []
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ComputeCostRequest(BaseModel):
@@ -205,68 +197,68 @@ class ComputeCostRequest(BaseModel):
 
 
 class CostLine(BaseModel):
-    product_id: Optional[str]
-    qty_base: Optional[float]
-    unit_price: Optional[float]
-    line_cost: Optional[float]
-    price_id: Optional[str]
+    product_id: Optional[str] = None
+    qty_base: Optional[float] = None
+    unit_price: Optional[float] = None
+    line_cost: Optional[float] = None
+    price_id: Optional[str] = None
     missing_price: bool = False
 
 
 class RecipeCostRead(BaseModel):
     recipe_version_id: str
-    computed_cost_total: Optional[float]
-    cost_per_portion: Optional[float]
-    food_cost_pct: Optional[float]
-    margin_estimated: Optional[float]
+    computed_cost_total: Optional[float] = None
+    cost_per_portion: Optional[float] = None
+    food_cost_pct: Optional[float] = None
+    margin_estimated: Optional[float] = None
     has_missing_prices: bool = False
     snapshot_id: Optional[str] = None
     breakdown: List[CostLine] = []
 
 
 class CostTrendPoint(BaseModel):
-    computed_at: Optional[datetime]
+    computed_at: Optional[datetime] = None
     recipe_id: str
-    recipe_name: Optional[str]
+    recipe_name: Optional[str] = None
     recipe_version_id: str
-    computed_cost_total: Optional[float]
-    cost_per_portion: Optional[float]
-    food_cost_pct: Optional[float]
+    computed_cost_total: Optional[float] = None
+    cost_per_portion: Optional[float] = None
+    food_cost_pct: Optional[float] = None
 
 
 class TopProduct(BaseModel):
     product_id: str
-    name: Optional[str]
+    name: Optional[str] = None
     total_spend: float
     total_qty: float
     line_count: int
 
 
 class PriceTrendPoint(BaseModel):
-    effective_date: Optional[date]
-    price: Optional[float]
-    currency: Optional[str]
-    supplier_id: Optional[str]
+    effective_date: Optional[date] = None
+    price: Optional[float] = None
+    currency: Optional[str] = None
+    supplier_id: Optional[str] = None
 
 
 class MarginAlert(BaseModel):
     recipe_id: str
-    recipe_name: Optional[str]
+    recipe_name: Optional[str] = None
     recipe_version_id: str
-    cost_per_portion: Optional[float]
-    food_cost_pct: Optional[float]
-    computed_at: Optional[datetime]
+    cost_per_portion: Optional[float] = None
+    food_cost_pct: Optional[float] = None
+    computed_at: Optional[datetime] = None
 
 
 class PriceAlert(BaseModel):
     product_id: str
-    product_name: Optional[str]
-    previous_price: Optional[float]
-    latest_price: Optional[float]
-    change_pct: Optional[float]
-    currency: Optional[str]
-    effective_date: Optional[date]
-    supplier_id: Optional[str]
+    product_name: Optional[str] = None
+    previous_price: Optional[float] = None
+    latest_price: Optional[float] = None
+    change_pct: Optional[float] = None
+    currency: Optional[str] = None
+    effective_date: Optional[date] = None
+    supplier_id: Optional[str] = None
 
 
 class Token(BaseModel):
@@ -285,9 +277,9 @@ class ProductMatchRequest(BaseModel):
 
 
 class ProductMatchResultRead(BaseModel):
-    product_id: Optional[str]
-    confidence_score: Optional[float]
-    match_type: Optional[str]
+    product_id: Optional[str] = None
+    confidence_score: Optional[float] = None
+    match_type: Optional[str] = None
     manual_review: bool = False
     matched_alias: Optional[str] = None
 
@@ -309,17 +301,16 @@ class CreateUserRequest(BaseModel):
 class UserRead(BaseModel):
     id: str
     email: str
-    name: Optional[str]
+    name: Optional[str] = None
     tenant_id: str
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class MeRead(BaseModel):
     id: str
     email: str
-    name: Optional[str]
+    name: Optional[str] = None
     tenant_id: str
     roles: List[str] = []
 

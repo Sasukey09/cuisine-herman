@@ -123,7 +123,7 @@ def update_product(db: Session, product_id: str, tenant_id: str, payload: Produc
     obj = get_product(db, product_id, tenant_id)
     if obj is None:
         return None
-    data = payload.dict(exclude_unset=True)
+    data = payload.model_dump(exclude_unset=True)
     for field, value in data.items():
         setattr(obj, field, value)
     db.commit()

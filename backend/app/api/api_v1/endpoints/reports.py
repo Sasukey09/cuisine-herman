@@ -42,7 +42,7 @@ def api_create_report(
     tenant_id: str = Depends(get_current_tenant_id),
     _: list = Depends(require_writer),
 ):
-    definition = payload.definition.dict()
+    definition = payload.definition.model_dump()
     try:
         reports_service.validate_definition(definition)
     except reports_service.ReportError as exc:
@@ -61,7 +61,7 @@ def api_update_report(
 ):
     definition = None
     if payload.definition is not None:
-        definition = payload.definition.dict()
+        definition = payload.definition.model_dump()
         try:
             reports_service.validate_definition(definition)
         except reports_service.ReportError as exc:
@@ -91,7 +91,7 @@ def api_run_adhoc(
 ):
     """Run an unsaved definition (live preview in the builder)."""
     try:
-        return reports_service.run_report(db, tenant_id, definition.dict())
+        return reports_service.run_report(db, tenant_id, definition.model_dump())
     except reports_service.ReportError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 

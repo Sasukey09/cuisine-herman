@@ -144,7 +144,7 @@ def api_recipe_import_save(
         raise HTTPException(status_code=400, detail="Nom de recette requis")
     if not payload.ingredients:
         raise HTTPException(status_code=400, detail="Au moins un ingrédient est requis")
-    ingredients = [i.dict() for i in payload.ingredients]
+    ingredients = [i.model_dump() for i in payload.ingredients]
     return recipe_import_service.save_import(
         db,
         tenant_id,
