@@ -1,3 +1,16 @@
+# ---------------------------------------------------------------------------
+# RÉGION — action à fort impact, gratuite.
+#
+# Les services actuels tournent en Oregon (gcp-us-west1) : vérifié, l'origine
+# résout en gcp-us-west1-1.origin.onrender.com. Tous les utilisateurs sont en
+# France -> ~150-200 ms ajoutées à CHAQUE requête (les endpoints les plus
+# triviaux mesurent 250-400 ms depuis Paris).
+#
+# `region: frankfurt` ci-dessous s'applique aux services CRÉÉS à partir de ce
+# blueprint. Render ne peut PAS déplacer un service existant : il faut le
+# recréer (web + base + redis) dans la nouvelle région. À faire au moment du
+# passage en plan payant — qui est de toute façon nécessaire (voir plus bas).
+# ---------------------------------------------------------------------------
 # Render.com Blueprint — provisions the whole backend stack.
 # Deploy: push to GitHub, then Render Dashboard -> New -> Blueprint -> pick this repo.
 # Set CORS_ORIGINS (your frontend URL) and, for real OCR, MISTRAL_API_KEY.
@@ -7,12 +20,14 @@ databases:
     databaseName: cuisine
     user: cuisine
     plan: free
+    region: frankfurt      # cf. l'entete : les services actuels sont en Oregon
 
 services:
   # --- Redis (Celery broker / cache) ---
   - type: keyvalue
     name: cuisine-redis
     plan: free
+    region: frankfurt      # cf. l'entete : les services actuels sont en Oregon
     ipAllowList: []
 
   # --- FastAPI backend ---
@@ -22,6 +37,7 @@ services:
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     plan: free
+    region: frankfurt      # cf. l'entete : les services actuels sont en Oregon
     healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
@@ -92,6 +108,7 @@ services:
     dockerContext: ./backend
     dockerCommand: celery -A app.celery_app.celery_app worker --loglevel=info
     plan: free
+    region: frankfurt      # cf. l'entete : les services actuels sont en Oregon
     envVars:
       - key: DATABASE_URL
         fromDatabase:
