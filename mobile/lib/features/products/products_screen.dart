@@ -6,19 +6,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../common/async_list.dart';
 import '../../common/create_dialog.dart';
 import '../../common/format.dart';
-import '../../core/api_error.dart';
 import '../../core/providers.dart';
 import '../../main.dart' show kMuted, kBorder, kCard;
 
 final _query = StateProvider.autoDispose<String>((ref) => '');
 
-final _productsProvider = FutureProvider.autoDispose<List<dynamic>>((ref) async {
-  final q = ref.watch(_query).trim();
-  final resp = await ref.read(apiClientProvider).dio.get('/products/enriched', queryParameters: {
-    'limit': 200,
-    if (q.isNotEmpty) 'q': q,
+final _productsProvider = FutureProvider.autoDispose<Loaded>((ref) async {
+  return fetchWithCache(ref, cacheKey: 'products', request: () async {
+    final q = ref.watch(_query).trim();
+    final resp = await ref.read(apiClientProvider).dio.get('/products/enriched', queryParameters: {
+      'limit': 200,
+      if (q.isNotEmpty) 'q': q,
+    });
+    return resp.data;
   });
-  return resp.data as List<dynamic>;
 });
 
 class ProductsScreen extends ConsumerWidget {
@@ -31,26 +32,31 @@ class ProductsScreen extends ConsumerWidget {
       CreateField('sku', 'SKU (optionnel)'),
     ]);
     if (data == null) return;
-    try {
-      await ref.read(apiClientProvider).dio.post('/products/', data: {
+    await createOrQueue(
+      ref,
+      messenger,
+      path: '/products/',
+      body: {
         'name': data['name'],
         if ((data['sku'] ?? '').isNotEmpty) 'sku': data['sku'],
-      });
-      ref.invalidate(_productsProvider);
-      messenger.showSnackBar(const SnackBar(content: Text('Produit créé.')));
-    } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(apiErrorMessage(e))));
-    }
+      },
+      label: 'Produit : ${data['name']}',
+      successMessage: 'Produit créé.',
+      onDone: () => ref.invalidate(_productsProvider),
+    );
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      body: asyncCardList(
+      body: offlineCardList(
         ref: ref,
         provider: _productsProvider,
         empty: 'Aucun produit. Touchez + pour en ajouter.',
-        header: _SearchPill(onChanged: (v) => ref.read(_query.notifier).state = v),
+        header: Column(children: [
+          const PendingWritesBanner(),
+          _SearchPill(onChanged: (v) => ref.read(_query.notifier).state = v),
+        ]),
         itemBuilder: (p) {
           final sub = [p['category'], p['supplier']]
               .where((e) => e != null && '$e'.isNotEmpty)

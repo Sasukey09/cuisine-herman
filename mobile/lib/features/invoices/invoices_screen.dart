@@ -9,9 +9,11 @@ import '../../core/api_error.dart';
 import '../../core/providers.dart';
 import '../../main.dart' show kMuted, kInk, kGood, kWarn;
 
-final _invoicesProvider = FutureProvider.autoDispose<List<dynamic>>((ref) async {
-  final resp = await ref.read(apiClientProvider).dio.get('/invoices/');
-  return resp.data as List<dynamic>;
+final _invoicesProvider = FutureProvider.autoDispose<Loaded>((ref) async {
+  return fetchWithCache(ref, cacheKey: 'invoices', request: () async {
+    final resp = await ref.read(apiClientProvider).dio.get('/invoices/');
+    return resp.data;
+  });
 });
 
 class InvoicesScreen extends ConsumerStatefulWidget {
@@ -124,7 +126,7 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: asyncCardList(
+      body: offlineCardList(
         ref: ref,
         provider: _invoicesProvider,
         header: _dropZone(),
