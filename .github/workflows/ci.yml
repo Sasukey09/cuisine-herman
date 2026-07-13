@@ -59,13 +59,17 @@ jobs:
         working-directory: backend
         run: ruff check app tests --select E9,F63,F7,F82
 
-      - name: Tests
-        working-directory: backend
-        run: pytest -q
-
+      # Before the tests, not after: otherwise the Postgres service sits there
+      # empty and no test can touch a real database. That gap is how an endpoint
+      # shipped a 500 in production while the suite was green — every test mocked
+      # the session, so no real Decimal or datetime ever went through it.
       - name: Migrations apply from scratch
         working-directory: backend
         run: alembic upgrade head
+
+      - name: Tests
+        working-directory: backend
+        run: pytest -q
 
       # The tests import the app directly, so they never exercise the command
       # that actually runs in production. That blind spot shipped a broken
