@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
+from app.core.url_guard import assert_safe_fetch_url
 from app.models.models import VideoSource, Transcription
 from .platforms import detect_platform
 from .transcript import get_transcript
@@ -103,6 +104,12 @@ def extract_recipe_from_url(
     stt_provider: Any = None,
     extractor: Any = None,
 ) -> Dict[str, Any]:
+    # SSRF: everything below hands this URL to yt-dlp / an HTTP fetch. Refuse
+    # anything that is not a supported public video host BEFORE touching the
+    # network — otherwise a caller can make the server read cloud metadata or
+    # an internal service and hand the body back.
+    assert_safe_fetch_url(url)
+
     platform = detect_platform(url)
 
     source = VideoSource(

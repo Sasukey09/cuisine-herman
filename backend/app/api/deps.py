@@ -1,10 +1,13 @@
+import os
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError
+from jwt import PyJWTError
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.core import security
+from app.core.rate_limit import get_quota_guard
 from app.crud import crud_rbac
 from app.models.models import User
 
@@ -23,7 +26,7 @@ def get_current_user(
 ) -> User:
     try:
         payload = security.decode_access_token(token)
-    except JWTError:
+    except PyJWTError:
         raise _credentials_exc
 
     # Refresh tokens must not be usable as access tokens.
@@ -37,6 +40,12 @@ def get_current_user(
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
         raise _credentials_exc
+
+    # Tokens minted before the last logout are dead. Absent claim == 0, so the
+    # tokens already in the wild when this shipped keep working.
+    if int(payload.get("tv", 0)) != int(user.token_version or 0):
+        raise _credentials_exc
+
     return user
 
 
@@ -71,3 +80,37 @@ def require_roles(*allowed: str):
 # Convenience guard for mutating endpoints.
 require_writer = require_roles("admin", "manager")
 require_admin = require_roles("admin")
+
+
+# --------------------------------------------------------------------------- #
+# Per-tenant quotas on the endpoints that cost money or CPU
+# --------------------------------------------------------------------------- #
+def _quota_limit(env_name: str, default: int) -> int:
+    try:
+        return int(os.getenv(env_name, str(default)))
+    except ValueError:
+        return default
+
+
+def quota(bucket: str, env_name: str, default_per_minute: int):
+    """Dependency factory: at most N calls per minute, per tenant.
+
+    Applied to the routes that bill a third party (Anthropic, Mistral, OpenAI)
+    or burn a worker's CPU. Without it, one scripted account drains the budget
+    for everyone — Gunicorn workers are shared across tenants.
+    """
+    limit = _quota_limit(env_name, default_per_minute)
+
+    def dependency(tenant_id: str = Depends(get_current_tenant_id)) -> None:
+        wait = get_quota_guard().check(f"{bucket}:{tenant_id}", limit, 60)
+        if wait:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=(
+                    f"Trop de requêtes ({limit}/min maximum sur cette opération). "
+                    f"Réessayez dans {wait} seconde(s)."
+                ),
+                headers={"Retry-After": str(wait)},
+            )
+
+    return dependency

@@ -99,6 +99,14 @@ class AuthController extends Notifier<AuthState> {
   }
 
   Future<void> logout() async {
+    // Revoke the tokens server-side (every device). Clearing local storage
+    // alone left a stolen refresh token valid for its full 14-day life.
+    // Best-effort: a network failure must never trap the user in the app.
+    try {
+      await ref.read(apiClientProvider).dio.post('/auth/logout');
+    } catch (_) {
+      // offline, or the token is already dead — log out locally anyway
+    }
     await ref.read(tokenStoreProvider).clear();
     state = const AuthState(status: AuthStatus.unauthenticated);
   }

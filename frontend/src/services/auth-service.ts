@@ -25,3 +25,8 @@ export async function getMe(): Promise<Me> {
   const { data } = await api.get<Me>("/auth/me");
   return data;
 }
+
+/** Revoke every token of the current user (all devices), server-side. */
+export async function logout(): Promise<void> {
+  await api.post("/auth/logout");
+}

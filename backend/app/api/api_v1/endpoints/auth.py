@@ -2,7 +2,7 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
-from jose import JWTError
+from jwt import PyJWTError
 from sqlalchemy.orm import Session
 
 from app.core.rate_limit import client_ip, get_login_guard
@@ -24,7 +24,13 @@ router = APIRouter()
 
 
 def _issue_tokens(user: User) -> dict:
-    data = {"sub": str(user.id), "tenant_id": str(user.tenant_id)}
+    # `tv` pins the token to the user's current token_version: bumping it on
+    # logout invalidates every token already issued, including refresh tokens.
+    data = {
+        "sub": str(user.id),
+        "tenant_id": str(user.tenant_id),
+        "tv": int(user.token_version or 0),
+    }
     return {
         "access_token": security.create_access_token(data),
         "refresh_token": security.create_refresh_token(data),
@@ -92,14 +98,34 @@ def login(
 def refresh(payload: RefreshRequest, db: Session = Depends(get_db)):
     try:
         claims = security.decode_access_token(payload.refresh_token)
-    except JWTError:
+    except PyJWTError:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
     if claims.get("type") != "refresh":
         raise HTTPException(status_code=401, detail="Not a refresh token")
     user = db.query(User).filter(User.id == claims.get("sub")).first()
     if user is None:
         raise HTTPException(status_code=401, detail="User no longer exists")
+    # A refresh token issued before a logout must not mint anything.
+    if int(claims.get("tv", 0)) != int(user.token_version or 0):
+        raise HTTPException(status_code=401, detail="Session révoquée")
     return _issue_tokens(user)
+
+
+@router.post("/logout", status_code=204)
+def logout(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Revoke every token of the caller — access AND refresh, on every device.
+
+    Logging out used to be a purely client-side `setState(null)`: a refresh
+    token captured beforehand kept minting access tokens for 14 days, with no
+    way for anyone to cut it off short of rotating SECRET_KEY (which would log
+    out every customer).
+    """
+    current_user.token_version = int(current_user.token_version or 0) + 1
+    db.add(current_user)
+    db.commit()
 
 
 @router.get("/me", response_model=MeRead)

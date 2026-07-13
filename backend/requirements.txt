@@ -1,20 +1,21 @@
 fastapi==0.100.0
 uvicorn[standard]==0.22.0
-gunicorn==21.2.0
+gunicorn==23.0.0
 SQLAlchemy==2.0.36
 psycopg2-binary==2.9.10
 alembic==1.11.1
 pydantic==1.10.9
-python-jose==3.3.0
+# python-jose dropped: CVE-2024-33663 (algorithm confusion) and unmaintained.
+PyJWT==2.10.1
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 # 0.0.6 carried CVE-2024-24762 (ReDoS on a malformed multipart boundary) — and
 # this app accepts invoice uploads from the internet.
-python-multipart==0.0.18
+python-multipart==0.0.20
 celery==5.3.1
 redis==4.6.0
 boto3==1.26.160
-python-dotenv==1.0.0
+python-dotenv==1.0.1
 pgvector==0.3.6
 
 # AI assistant (Claude / Anthropic)
@@ -33,5 +34,16 @@ prometheus-client==0.20.0
 # google-cloud-documentai==2.29.2
 
 # testing
-pytest==7.4.0
+pytest==8.3.5
 pytest-asyncio==0.22.0
+
+# ---------------------------------------------------------------------------
+# DETTE DE SÉCURITÉ CONNUE (pip-audit) — chantier dédié, à faire ensuite :
+#   starlette 0.27.0  : 8 avis de sécurité — couche HTTP de CHAQUE requête
+#   fastapi   0.100.0 : PYSEC-2024-38 ; ne peut monter qu'avec starlette
+#   pydantic  1.10.9  : PYSEC-2026-1812 ; couplé à fastapi
+#   urllib3   1.26.20 : 4 avis (transitif de requests/boto3)
+# Ces 4 paquets sont couplés : les monter change le comportement de validation
+# et de sérialisation partout. À traiter en une passe isolée, vérifiée par la CI,
+# PAS en même temps que des correctifs de sécurité applicatifs.
+# ---------------------------------------------------------------------------

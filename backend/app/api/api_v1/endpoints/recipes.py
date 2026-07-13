@@ -1,10 +1,11 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query, File, UploadFile
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.uploads import validate_upload
 from app.db.session import get_db
-from app.api.deps import get_current_tenant_id, require_writer
+from app.api.deps import get_current_tenant_id, require_writer, quota
 from app.schemas.schemas import (
     RecipeCreate,
     RecipeUpdate,
@@ -45,7 +46,7 @@ def api_create_recipe(
 @router.get("/", response_model=List[RecipeRead])
 def api_list_recipes(
     skip: int = 0,
-    limit: int = 50,
+    limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant_id),
 ):
@@ -55,7 +56,7 @@ def api_list_recipes(
 @router.get("/enriched")
 def api_list_recipes_enriched(
     skip: int = 0,
-    limit: int = 200,
+    limit: int = Query(200, ge=1, le=500),
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant_id),
 ):
@@ -101,13 +102,13 @@ async def api_import_recipe_pdf(
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant_id),
     _: list = Depends(require_writer),
+    _q: None = Depends(quota("pdf_import", "PDF_IMPORT_PER_MIN", 10)),
 ):
     """Upload a recipe PDF -> OCR -> AI extraction -> product matching -> cost
     preview. Returns a job with status + an editable preview (nothing is saved as
     a recipe yet — validate via POST /recipes/import-save)."""
     content = await file.read()
-    if not content:
-        raise HTTPException(status_code=400, detail="Fichier vide")
+    validate_upload(content, file.content_type)
     job = recipe_import_service.process_import(
         db, tenant_id, content, file.content_type, file.filename
     )

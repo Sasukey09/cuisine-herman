@@ -3,7 +3,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 
-import { getMe, login as loginApi, register as registerApi } from "@/services/auth-service";
+import {
+  getMe,
+  login as loginApi,
+  logout as logoutApi,
+  register as registerApi,
+} from "@/services/auth-service";
 import { useAuthStore } from "@/stores/auth-store";
 import type { RegisterPayload } from "@/services/types";
 
@@ -48,6 +53,11 @@ export function useLogout() {
   const queryClient = useQueryClient();
 
   return () => {
+    // Revoke the tokens server-side first. Clearing local state alone left a
+    // stolen refresh token minting access tokens for its full 14-day life.
+    // Best-effort: a network failure must never trap the user in the app.
+    void logoutApi().catch(() => undefined);
+
     logout();
     queryClient.clear();
     router.replace("/login");

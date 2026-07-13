@@ -1,5 +1,5 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -50,7 +50,7 @@ def api_create_supplier(
 @router.get("/", response_model=List[SupplierRead])
 def api_list_suppliers(
     skip: int = 0,
-    limit: int = 50,
+    limit: int = Query(50, ge=1, le=200),
     q: Optional[str] = None,
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant_id),
@@ -61,7 +61,7 @@ def api_list_suppliers(
 @router.get("/enriched")
 def api_list_suppliers_enriched(
     skip: int = 0,
-    limit: int = 50,
+    limit: int = Query(50, ge=1, le=200),
     q: Optional[str] = None,
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant_id),
