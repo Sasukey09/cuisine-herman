@@ -26,4 +26,4 @@ EXPOSE 8000
 # Invoked via `sh` so it works even when the host bind-mount drops the +x bit.
 ENTRYPOINT ["sh", "/app/entrypoint.sh"]
 # Production server: gunicorn + uvicorn workers. PORT/WEB_CONCURRENCY come from env.
-CMD ["sh", "-c", "gunicorn app.main:app -k uvicorn.workers.UvicornWorker -b 0.0.0.0:${PORT:-8000} -w ${WEB_CONCURRENCY:-2} --timeout 120 --access-logfile -"]
+CMD ["sh", "-c", "gunicorn app.main:app -k uvicorn_worker.UvicornWorker -b 0.0.0.0:${PORT:-8000} -w ${WEB_CONCURRENCY:-2} --timeout 120 --access-logfile -"]

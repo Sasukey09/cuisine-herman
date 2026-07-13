@@ -67,6 +67,36 @@ jobs:
         working-directory: backend
         run: alembic upgrade head
 
+      # The tests import the app directly, so they never exercise the command
+      # that actually runs in production. That blind spot shipped a broken
+      # deploy: bumping uvicorn removed `uvicorn.workers.UvicornWorker`, the
+      # worker class gunicorn loads — the container died on boot and CI was
+      # green. Boot the real thing and talk to it.
+      - name: Boot with the production command (gunicorn + uvicorn worker)
+        working-directory: backend
+        env:
+          PORT: "8123"
+          WEB_CONCURRENCY: "1"
+        run: |
+          gunicorn app.main:app -k uvicorn_worker.UvicornWorker \
+            -b 0.0.0.0:8123 -w 1 --timeout 30 --access-logfile - &
+          GUNICORN_PID=$!
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8123/health > /dev/null; then
+              echo "OK: the production command boots and serves /health."
+              kill $GUNICORN_PID
+              exit 0
+            fi
+            if ! kill -0 $GUNICORN_PID 2>/dev/null; then
+              echo "::error::the production command died on boot"
+              exit 1
+            fi
+            sleep 2
+          done
+          echo "::error::/health never answered — the app did not come up"
+          kill $GUNICORN_PID 2>/dev/null || true
+          exit 1
+
   # ------------------------------------------------------ dependency audit --
   audit:
     name: Backend — dependency audit
