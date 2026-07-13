@@ -14,6 +14,7 @@ written to, nor read. It is now the register.
 import uuid
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Session
 
 from app.models.models import (
@@ -78,16 +79,41 @@ def list_audit(db: Session, tenant_id: str, limit: int = 200) -> List[AuditLog]:
     )
 
 
-def _rows(db: Session, model, tenant_id: str) -> List[Dict[str, Any]]:
-    out = []
-    for row in db.query(model).filter(model.tenant_id == tenant_id).all():
-        out.append(
-            {
-                c.name: (str(v) if isinstance(v := getattr(row, c.name), uuid.UUID) else v)
-                for c in model.__table__.columns
-            }
-        )
+def _fields(model) -> List[tuple]:
+    """(python attribute, database column name) for every column of `model`.
+
+    Not `__table__.columns` alone. Ten of our tables have a column named
+    `metadata` — a name SQLAlchemy reserves — so it is mapped to the attribute
+    `meta`:
+
+        meta = Column("metadata", JSONB)
+
+    `getattr(row, "metadata")` therefore does not return the cell. It returns
+    SQLAlchemy's `MetaData` object: the entire schema, tables pointing at columns
+    pointing back at tables. FastAPI walked into it and never came back —
+    `RecursionError`, HTTP 500, on every single export, because every exported
+    table has that column.
+
+    The key we emit stays the database name, so the export still matches the
+    schema the customer is being handed. Only the *read* goes through the mapper.
+    """
+    return [(a.key, a.columns[0].name) for a in sa_inspect(model).mapper.column_attrs]
+
+
+def _row(row, fields: List[tuple]) -> Dict[str, Any]:
+    out = {}
+    for attr, column in fields:
+        value = getattr(row, attr)
+        out[column] = str(value) if isinstance(value, uuid.UUID) else value
     return out
+
+
+def _rows(db: Session, model, tenant_id: str) -> List[Dict[str, Any]]:
+    fields = _fields(model)
+    return [
+        _row(row, fields)
+        for row in db.query(model).filter(model.tenant_id == tenant_id).all()
+    ]
 
 
 def export_organization(db: Session, tenant_id: str) -> Dict[str, Any]:
@@ -128,10 +154,8 @@ def export_organization(db: Session, tenant_id: str) -> Dict[str, Any]:
     def _by_ids(model, column, ids):
         if not ids:
             return []
-        return [
-            {c.name: getattr(row, c.name) for c in model.__table__.columns}
-            for row in db.query(model).filter(column.in_(ids)).all()
-        ]
+        fields = _fields(model)
+        return [_row(row, fields) for row in db.query(model).filter(column.in_(ids)).all()]
 
     return {
         "organization": {"id": str(org.id), "name": org.name} if org else None,

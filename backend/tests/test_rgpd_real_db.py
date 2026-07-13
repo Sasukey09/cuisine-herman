@@ -89,6 +89,13 @@ def test_the_export_is_actually_serialisable(db, seeded_tenant):
     assert "FAC-2026-001" in text
     assert "8.51" in text, "the Decimal price must survive the trip"
 
+    # The 500 was a RecursionError: `getattr(row, "metadata")` handed back
+    # SQLAlchemy's MetaData — the whole schema — instead of the cell.
+    for table in ("products", "invoices", "suppliers"):
+        for row in payload[table]:
+            assert "metadata" in row, "the JSONB column must be exported, under its real name"
+            assert not hasattr(row["metadata"], "tables"), "the ORM schema leaked into the export"
+
 
 def test_the_export_holds_the_restaurants_real_data(db, seeded_tenant):
     payload = rgpd.export_organization(db, seeded_tenant)
