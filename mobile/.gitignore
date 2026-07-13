@@ -4,7 +4,8 @@
 build/
 .flutter-plugins
 .flutter-plugins-dependencies
-pubspec.lock
+# pubspec.lock IS tracked: this is an application, not a library. Flutter's own
+# guidance is to commit it so every machine and CI resolve identical versions.
 *.iml
 .idea/
 

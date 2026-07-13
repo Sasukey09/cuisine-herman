@@ -121,7 +121,13 @@ jobs:
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: "17" }
       - uses: subosito/flutter-action@v2
-        with: { channel: stable }
+        with:
+          channel: stable
+          # Pinned to the dev machine's version. The action's rolling "stable"
+          # resolved an older Flutter (compileSdk 34, no built-in Kotlin), which
+          # does not reproduce what we actually build against.
+          flutter-version: 3.44.1
+          cache: true
 
       # The native folders are gitignored and regenerated here. `flutter create`
       # never overwrites an existing file, so our tracked AndroidManifest.xml
