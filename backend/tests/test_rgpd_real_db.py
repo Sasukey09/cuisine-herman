@@ -10,7 +10,7 @@ Skips when no DATABASE_URL is set, so a laptop without Postgres stays usable.
 """
 import json
 import uuid
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -25,7 +25,12 @@ def seeded_tenant(db):
     """A restaurant with exactly the types that broke in production."""
     tenant_id = str(uuid.uuid4())
 
+    # Committed first: no relationship is declared between these models, so
+    # SQLAlchemy has no idea invoices depend on organizations and happily inserts
+    # them in the wrong order.
     db.add(Organization(id=tenant_id, name="Restaurant de Test"))
+    db.commit()
+
     db.add(
         User(
             id=str(uuid.uuid4()),
@@ -66,10 +71,9 @@ def seeded_tenant(db):
 
     yield tenant_id
 
-    # Deleting the organization cascades everything — which also exercises the
-    # right-to-erasure path for free.
-    db.query(Organization).filter(Organization.id == tenant_id).delete()
-    db.commit()
+    # Tearing down through the erasure path: the cleanup and the feature are the
+    # same operation, so a broken cascade cannot hide behind a tidy test.
+    rgpd.delete_organization(db, tenant_id)
 
 
 def test_the_export_is_actually_serialisable(db, seeded_tenant):
@@ -110,7 +114,11 @@ def test_erasure_really_erases(db):
     """Art. 17 — and the cascade must be real, not a hope."""
     tenant_id = str(uuid.uuid4())
     db.add(Organization(id=tenant_id, name="À Supprimer"))
+    db.commit()
     db.add(Product(id=str(uuid.uuid4()), tenant_id=tenant_id, name="Produit condamné"))
+    # The audit rows are what used to BLOCK the deletion: log in, and you can
+    # never be forgotten.
+    rgpd.record(db, tenant_id, None, rgpd.ACTION_LOGIN, {"ip": "1.2.3.4"})
     db.commit()
 
     assert db.query(Product).filter(Product.tenant_id == tenant_id).count() == 1
@@ -139,5 +147,4 @@ def test_the_audit_register_is_written_and_readable(db):
         # Most recent first: an operator reading the register wants today, not 2024.
         assert entries[0].action == rgpd.ACTION_DATA_EXPORTED
     finally:
-        db.query(Organization).filter(Organization.id == tenant_id).delete()
-        db.commit()
+        rgpd.delete_organization(db, tenant_id)

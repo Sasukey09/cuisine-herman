@@ -155,15 +155,31 @@ def export_organization(db: Session, tenant_id: str) -> Dict[str, Any]:
 
 
 def delete_organization(db: Session, tenant_id: str) -> bool:
-    """Right to erasure. Deletes the organization; every table cascades from it.
+    """Right to erasure (art. 17). Deletes the organization; the rest cascades.
 
-    The audit line is written BEFORE the deletion, because afterwards there is no
-    organization left to attach it to — and "we deleted everything" is precisely
-    the event you must still be able to prove a year later.
+    The audit rows have to go FIRST, for two reasons that point the same way:
+
+    * their foreign keys (`tenant_id` → organizations, `user_id` → users) have no
+      ON DELETE CASCADE, so they would simply **block** the deletion. This is not
+      theoretical: the very act of logging in writes an audit row, so every real
+      organization has some — the erasure endpoint could never have succeeded.
+      A real-database test caught it; every mocked test had been green.
+    * they are personal data themselves (who logged in, from which IP). Erasing
+      the restaurant while keeping a log of its staff's connections would be a
+      strange idea of erasure.
+
+    The proof that the erasure happened is written afterwards by the caller, with
+    a NULL tenant: there is no organization left to attach it to, yet "we erased
+    everything, on this date, at this person's request" is exactly what you must
+    still be able to show a year later.
     """
     org = db.query(Organization).filter(Organization.id == tenant_id).first()
     if org is None:
         return False
+
+    db.query(AuditLog).filter(AuditLog.tenant_id == tenant_id).delete(
+        synchronize_session=False
+    )
     db.delete(org)
     db.commit()
     return True

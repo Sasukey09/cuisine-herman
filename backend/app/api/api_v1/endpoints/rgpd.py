@@ -83,11 +83,14 @@ def api_delete_organization(
             ),
         )
 
-    # Written BEFORE: afterwards there is no organization left to attach it to,
-    # and "we erased everything" is exactly the event you must still be able to
-    # prove a year later.
-    rgpd.record(
-        db, tenant_id, str(current_user.id), rgpd.ACTION_ORG_DELETED,
-        {"organization": org.name, "requested_by": current_user.email},
-    )
+    name, email = org.name, current_user.email
     rgpd.delete_organization(db, tenant_id)
+
+    # The proof, written AFTER and with a NULL tenant: there is no organization
+    # left to point at, and an audit row pointing at one would have blocked the
+    # deletion it was meant to record. It carries no personal data of the erased
+    # users — only that the erasure happened, when, and at whose request.
+    rgpd.record(
+        db, None, None, rgpd.ACTION_ORG_DELETED,
+        {"organization": name, "tenant_id": tenant_id, "requested_by": email},
+    )
