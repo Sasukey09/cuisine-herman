@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../main.dart' show kMuted, kBad;
+import '../main.dart' show kMuted;
 
 /// Card-style async list matching the mobile mockup: an always-visible [header]
 /// (search pill, drop-zone…) on top, then spaced cards. Pull-to-refresh.
@@ -30,10 +30,7 @@ Widget asyncCardList({
             Padding(padding: EdgeInsets.only(top: 40), child: Center(child: CircularProgressIndicator())),
           ],
           error: (e, _) => [
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Text('Erreur de chargement.\n$e', style: const TextStyle(color: kBad)),
-            ),
+            ErrorState(onRetry: () => ref.invalidate(provider)),
           ],
           data: (rows) {
             if (rows.isEmpty) {
@@ -75,13 +72,7 @@ Widget asyncListView({
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => ListView(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(
-              'Erreur de chargement.\n${e.toString()}',
-              style: const TextStyle(color: Colors.redAccent),
-            ),
-          ),
+          ErrorState(onRetry: () => ref.invalidate(provider)),
         ],
       ),
       data: (rows) {
@@ -103,4 +94,41 @@ Widget asyncListView({
       },
     ),
   );
+}
+
+
+/// An error the user can act on. The list used to print the raw exception with
+/// no way out — the only escape was to kill the app.
+class ErrorState extends StatelessWidget {
+  const ErrorState({super.key, required this.onRetry});
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 20),
+      child: Column(
+        children: [
+          const Icon(Icons.cloud_off, size: 32, color: kMuted),
+          const SizedBox(height: 10),
+          const Text(
+            'Chargement impossible',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Vérifiez votre connexion, puis réessayez.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 13, color: kMuted),
+          ),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh, size: 18),
+            label: const Text('Réessayer'),
+          ),
+        ],
+      ),
+    );
+  }
 }

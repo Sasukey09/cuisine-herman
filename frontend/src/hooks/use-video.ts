@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { extractVideo, extractVideoFile, saveVideoRecipe } from "@/services/video-service";
 import type { VideoIngredientDraft } from "@/services/types";
@@ -14,6 +14,8 @@ export function useExtractVideoFile() {
 }
 
 export function useSaveVideoRecipe() {
+  const queryClient = useQueryClient();
+
   return useMutation({
     mutationFn: (payload: {
       name: string;
@@ -21,5 +23,11 @@ export function useSaveVideoRecipe() {
       ingredients: VideoIngredientDraft[];
       steps: string[];
     }) => saveVideoRecipe(payload),
+    // Without this, the recipe was created server-side but did not appear on
+    // /recettes until the cache went stale — the user thought the import failed
+    // and imported it again. (The PDF-import flow already did this.)
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["recipes"] });
+    },
   });
 }

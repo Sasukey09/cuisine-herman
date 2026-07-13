@@ -30,3 +30,8 @@ export async function getMe(): Promise<Me> {
 export async function logout(): Promise<void> {
   await api.post("/auth/logout");
 }
+
+/** Admin-only: set a new password for a user of the organization. */
+export async function resetUserPassword(userId: string, password: string): Promise<void> {
+  await api.post(`/auth/users/${userId}/reset-password`, { password });
+}

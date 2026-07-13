@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../common/async_list.dart';
 import '../../core/providers.dart';
 import '../../main.dart' show kCard, kBorder, kMuted, kBad, kGood, kWarn;
 
@@ -38,7 +39,7 @@ class PriceScreen extends ConsumerWidget {
         children: [
           dash.when(
             loading: () => const _Loading(),
-            error: (e, _) => const _ErrorText(),
+            error: (e, _) => ErrorState(onRetry: () => ref.invalidate(_priceDashProvider)),
             data: (d) {
               final up = (d['most_increased'] as List?) ?? const [];
               final down = (d['most_decreased'] as List?) ?? const [];
@@ -54,7 +55,7 @@ class PriceScreen extends ConsumerWidget {
           const SizedBox(height: 13),
           alerts.when(
             loading: () => const _Loading(),
-            error: (e, _) => const _ErrorText(),
+            error: (e, _) => ErrorState(onRetry: () => ref.invalidate(_priceAlertsProvider)),
             data: (rows) => _Card(
               icon: '⚠',
               iconColor: kWarn,
@@ -173,12 +174,6 @@ class _Loading extends StatelessWidget {
       padding: EdgeInsets.all(28), child: Center(child: CircularProgressIndicator()));
 }
 
-class _ErrorText extends StatelessWidget {
-  const _ErrorText();
-  @override
-  Widget build(BuildContext context) => const Padding(
-      padding: EdgeInsets.all(12), child: Text('Erreur de chargement', style: TextStyle(color: kBad)));
-}
 
 class _EmptyLine extends StatelessWidget {
   const _EmptyLine(this.text);

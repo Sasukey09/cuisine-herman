@@ -12,6 +12,7 @@ from app.schemas.schemas import (
     RefreshRequest,
     RegisterRequest,
     CreateUserRequest,
+    ResetPasswordRequest,
     UserRead,
     MeRead,
 )
@@ -196,3 +197,42 @@ def create_user(
     )
     crud_rbac.assign_role(db, str(user.id), str(roles[payload.role].id))
     return user
+
+
+@router.post("/users/{user_id}/reset-password", status_code=204)
+def reset_user_password(
+    user_id: str,
+    payload: ResetPasswordRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: list = Depends(require_admin),
+):
+    """Admin-only: set a new password for a user of the caller's organization.
+
+    There is no email-based reset (no mail provider), and the "mot de passe
+    oublié" screen used to *pretend* one had been sent. This makes the honest
+    answer — "ask your administrator" — an actual way out instead of a dead end.
+
+    Bumping token_version logs the user out everywhere: whoever knew the old
+    password (or held a stolen token) is cut off immediately.
+    """
+    # Validate the input before touching the database: a weak password is
+    # rejected whether or not the user exists (which also avoids confirming that
+    # an id exists, and keeps the check free of a query).
+    if len(payload.password or "") < 8:
+        raise HTTPException(
+            status_code=400, detail="Le mot de passe doit faire au moins 8 caractères."
+        )
+
+    target = (
+        db.query(User)
+        .filter(User.id == user_id, User.tenant_id == current_user.tenant_id)
+        .first()
+    )
+    if target is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    target.password_hash = security.get_password_hash(payload.password)
+    target.token_version = int(target.token_version or 0) + 1
+    db.add(target)
+    db.commit()
