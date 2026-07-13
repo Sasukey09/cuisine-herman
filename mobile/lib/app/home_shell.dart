@@ -68,6 +68,12 @@ class HomeShell extends ConsumerStatefulWidget {
 class _HomeShellState extends ConsumerState<HomeShell> {
   int _index = 0; // index into _modules
 
+  /// Screens actually visited. IndexedStack builds ALL its children eagerly, so
+  /// logging in used to mount the 12 modules at once and fire ~15 requests —
+  /// including GET /auth/users for non-admins (a guaranteed 403) and the same
+  /// /dashboard/price-variations twice (Accueil + Variations de prix).
+  final Set<int> _built = {0};
+
   String _initials(Map<String, dynamic>? user) {
     final name = (user?['name'] as String?)?.trim();
     final base = (name != null && name.isNotEmpty) ? name : (user?['email'] as String? ?? '?');
@@ -126,7 +132,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                       borderRadius: BorderRadius.circular(14),
                       onTap: () {
                         Navigator.of(ctx).pop();
-                        setState(() => _index = _modules.indexOf(m));
+                        _open(_modules.indexOf(m));
                       },
                       child: Container(
                         padding: const EdgeInsets.all(13),
@@ -157,9 +163,16 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     );
   }
 
+  void _open(int i) {
+    setState(() {
+      _index = i;
+      _built.add(i);
+    });
+  }
+
   void _onTab(int i) {
     if (i < _primaryCount) {
-      setState(() => _index = i);
+      _open(i);
     } else {
       _openMore();
     }
@@ -224,7 +237,10 @@ class _HomeShellState extends ConsumerState<HomeShell> {
             Expanded(
               child: IndexedStack(
                 index: _index,
-                children: _modules.map((m) => m.screen).toList(),
+                children: [
+                  for (var i = 0; i < _modules.length; i++)
+                    if (_built.contains(i)) _modules[i].screen else const SizedBox.shrink(),
+                ],
               ),
             ),
           ],

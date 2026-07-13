@@ -71,3 +71,36 @@ def create_price(
     db.commit()
     db.refresh(row)
     return row
+
+
+def get_latest_prices(
+    db: Session, tenant_id: str, product_ids, as_of: Optional[date] = None
+) -> dict:
+    """Latest price for MANY products, in a single query.
+
+    The per-product :func:`get_latest_price` was being called once per recipe
+    ingredient inside a loop over recipes — with 500 recipes of 10 ingredients
+    that is 5 000 round trips for one page. Postgres' DISTINCT ON gives the same
+    answer in one. Ordering is identical, so the winning row is the same.
+    """
+    ids = [str(p) for p in product_ids if p]
+    if not ids:
+        return {}
+
+    q = db.query(ProductPrice).filter(
+        ProductPrice.tenant_id == tenant_id,
+        ProductPrice.product_id.in_(ids),
+    )
+    if as_of is not None:
+        q = q.filter(ProductPrice.effective_date <= as_of)
+
+    rows = (
+        q.distinct(ProductPrice.product_id)
+        .order_by(
+            ProductPrice.product_id,
+            ProductPrice.effective_date.desc(),
+            ProductPrice.created_at.desc(),
+        )
+        .all()
+    )
+    return {str(r.product_id): r for r in rows}

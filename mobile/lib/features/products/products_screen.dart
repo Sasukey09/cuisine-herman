@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -93,9 +95,30 @@ class ProductsScreen extends ConsumerWidget {
   }
 }
 
-class _SearchPill extends StatelessWidget {
+/// Debounced: without it, typing "beurre" fired six `GET /products/enriched?q=`
+/// requests — one per keystroke — on the user's mobile data and the backend.
+class _SearchPill extends StatefulWidget {
   const _SearchPill({required this.onChanged});
   final ValueChanged<String> onChanged;
+
+  @override
+  State<_SearchPill> createState() => _SearchPillState();
+}
+
+class _SearchPillState extends State<_SearchPill> {
+  static const _debounce = Duration(milliseconds: 350);
+  Timer? _timer;
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _onChanged(String value) {
+    _timer?.cancel();
+    _timer = Timer(_debounce, () => widget.onChanged(value));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -112,7 +135,7 @@ class _SearchPill extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: TextField(
-              onChanged: onChanged,
+              onChanged: _onChanged,
               style: const TextStyle(fontSize: 13),
               decoration: const InputDecoration(
                 isCollapsed: true,

@@ -155,8 +155,7 @@ def compute_recipe_version_cost(
         .all()
     )
 
-    # Unit ratios come from the canonical unit service.
-    units = UnitConversionService.from_db(db).ratio_map()
+    units = unit_ratios(db)
 
     # local import avoids a circular import (crud_price -> models -> ...)
     from app.crud import crud_price
@@ -225,3 +224,75 @@ def recompute_for_product(
 
         metrics.RECIPES_RECALCULATED.inc(len(recomputed))
     return recomputed
+
+
+# --------------------------------------------------------------------------- #
+# Units are reference data (seeded by a migration, never written at runtime), yet
+# `UnitConversionService.from_db` reloaded EVERY unit and EVERY conversion on
+# every single cost computation — twice per recipe, inside a loop over recipes.
+# Cached per process. `reset_unit_cache()` exists for tests and for the day a
+# unit is ever added.
+# --------------------------------------------------------------------------- #
+_UNIT_RATIOS = None
+
+
+def unit_ratios(db: Session) -> dict:
+    global _UNIT_RATIOS
+    if _UNIT_RATIOS is None:
+        _UNIT_RATIOS = UnitConversionService.from_db(db).ratio_map()
+    return _UNIT_RATIOS
+
+
+def reset_unit_cache() -> None:
+    global _UNIT_RATIOS
+    _UNIT_RATIOS = None
+
+
+def compute_costs_for_recipes(
+    db: Session, tenant_id: str, recipes: list, as_of: Optional[date] = None
+) -> dict:
+    """Cost every recipe of a list in a constant number of queries.
+
+    The listing endpoint used to call `compute_recipe_version_cost` per recipe.
+    Each call re-queried the version, the recipe, its ingredients, ALL units, ALL
+    conversions, then one price per ingredient: with 500 recipes x 10 ingredients
+    that is roughly 7 500 queries for a single page.
+
+    Here: 1 query for the ingredients of every version, 1 for the latest price of
+    every product referenced, units from cache. The costing itself is the same
+    pure function, so the numbers are identical.
+    """
+    from app.crud import crud_price, crud_recipe_version
+
+    version_ids = [str(r.current_version_id) for r in recipes if r.current_version_id]
+    if not version_ids:
+        return {}
+
+    ingredients_by_version = crud_recipe_version.list_ingredients_for_versions(db, version_ids)
+
+    product_ids = {
+        str(i.product_id)
+        for ings in ingredients_by_version.values()
+        for i in ings
+        if i.product_id
+    }
+    prices = crud_price.get_latest_prices(db, tenant_id, product_ids, as_of)
+    units = unit_ratios(db)
+
+    out = {}
+    for recipe in recipes:
+        version_id = str(recipe.current_version_id) if recipe.current_version_id else None
+        if not version_id:
+            continue
+        selling = float(recipe.selling_price) if recipe.selling_price is not None else None
+        computed = compute_cost_breakdown(
+            ingredients_by_version.get(version_id, []),
+            lambda pid: prices.get(str(pid)),
+            units,
+            recipe.yield_qty,
+            selling,
+        )
+        computed.pop("_price_ids", None)
+        computed.pop("_missing_prices", None)
+        out[version_id] = computed
+    return out
