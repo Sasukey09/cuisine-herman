@@ -45,6 +45,8 @@ def seeded_tenant(db):
 
     product_id = str(uuid.uuid4())
     db.add(Product(id=product_id, tenant_id=tenant_id, name="Beurre doux AOP"))
+    db.commit()  # same reason: prices and invoices point at these
+
     db.add(
         ProductPrice(
             id=str(uuid.uuid4()),
