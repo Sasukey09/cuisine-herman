@@ -2,6 +2,11 @@
 # CHAQUE requete). Monter fastapi impose pydantic v2 (fastapi>=0.139 exige >=2.9).
 fastapi==0.139.0
 uvicorn[standard]==0.34.0
+# uvicorn >= 0.30 a SUPPRIME uvicorn.workers.UvicornWorker (la classe que gunicorn
+# charge en prod). Elle vit desormais dans ce paquet. Sans lui, le conteneur meurt
+# au demarrage avec 'class uri invalid or not found' — et la CI ne le voyait pas,
+# car elle ne lancait jamais la vraie commande de production.
+uvicorn-worker==0.4.0
 gunicorn==23.0.0
 SQLAlchemy==2.0.36
 psycopg2-binary==2.9.10
