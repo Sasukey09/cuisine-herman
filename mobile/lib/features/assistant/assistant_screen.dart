@@ -23,6 +23,9 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
   final _scroll = ScrollController();
   final List<_Msg> _messages = [];
   bool _sending = false;
+  // The thread lives on the server now: killing the app no longer erases it.
+  String? _conversationId;
+  bool _restoring = true;
 
   @override
   void dispose() {
@@ -31,11 +34,42 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
     super.dispose();
   }
 
+  @override
+  void initState() {
+    super.initState();
+    _restoreLastConversation();
+  }
+
+  /// Reopen the most recent thread instead of a blank screen.
+  Future<void> _restoreLastConversation() async {
+    try {
+      final api = ref.read(apiClientProvider);
+      final list = await api.dio.get('/ai/conversations');
+      final rows = (list.data as List);
+      if (rows.isNotEmpty) {
+        final id = '${(rows.first as Map)['id']}';
+        final detail = await api.dio.get('/ai/conversations/$id');
+        final msgs = ((detail.data as Map)['messages'] as List?) ?? [];
+        if (mounted) {
+          setState(() {
+            _conversationId = id;
+            _messages
+              ..clear()
+              ..addAll(msgs.map((m) => _Msg('${(m as Map)['role']}', '${m['content']}')));
+          });
+          _scrollToEnd();
+        }
+      }
+    } catch (_) {
+      // offline or empty: start fresh rather than block the screen
+    } finally {
+      if (mounted) setState(() => _restoring = false);
+    }
+  }
+
   Future<void> _send() async {
     final text = _input.text.trim();
     if (text.isEmpty || _sending) return;
-
-    final history = _messages.map((m) => {'role': m.role, 'content': m.content}).toList();
 
     setState(() {
       _messages.add(_Msg('user', text));
@@ -46,9 +80,15 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
 
     try {
       final api = ref.read(apiClientProvider);
-      final resp = await api.dio.post('/ai/chat', data: {'message': text, 'history': history});
-      final reply = (resp.data as Map<String, dynamic>)['reply'] as String? ?? '';
-      setState(() => _messages.add(_Msg('assistant', reply)));
+      final resp = await api.dio.post('/ai/chat', data: {
+        'message': text,
+        'conversation_id': _conversationId,
+      });
+      final data = resp.data as Map<String, dynamic>;
+      setState(() {
+        _conversationId = data['conversation_id'] as String? ?? _conversationId;
+        _messages.add(_Msg('assistant', data['reply'] as String? ?? ''));
+      });
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(apiErrorMessage(e))));
@@ -76,7 +116,9 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
     return Column(
       children: [
         Expanded(
-          child: _messages.isEmpty
+          child: _restoring
+              ? const Center(child: CircularProgressIndicator())
+              : _messages.isEmpty
               ? const Center(
                   child: Padding(
                     padding: EdgeInsets.all(28),

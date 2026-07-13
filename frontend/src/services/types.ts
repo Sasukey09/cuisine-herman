@@ -307,6 +307,23 @@ export interface AIChatResponse {
   reply: string;
   tool_calls: AIToolCall[];
   usage: { input_tokens: number; output_tokens: number } | null;
+  conversation_id: string | null;
+}
+
+export interface AIConversation {
+  id: string;
+  title: string | null;
+  updated_at: string | null;
+}
+
+export interface AIStoredMessage {
+  role: "user" | "assistant";
+  content: string;
+  created_at: string | null;
+}
+
+export interface AIConversationDetail extends AIConversation {
+  messages: AIStoredMessage[];
 }
 
 export interface VideoIngredientDraft {
