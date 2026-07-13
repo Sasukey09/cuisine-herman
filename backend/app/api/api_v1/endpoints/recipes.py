@@ -2,6 +2,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, File, UploadFile
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.core.uploads import validate_upload
 import logging
@@ -120,11 +121,14 @@ async def api_import_recipe_pdf(
     a recipe yet — validate via POST /recipes/import-save)."""
     content = await file.read()
     validate_upload(content, file.content_type)
-    job = recipe_import_service.process_import(
-        db, tenant_id, content, file.content_type, file.filename
-    )
-    status = recipe_import_service.get_status(db, tenant_id, str(job.id))
-    return status
+    filename, ctype = file.filename, file.content_type
+
+    def _work():
+        # OCR + an AI extraction: tens of seconds of blocking network calls.
+        job = recipe_import_service.process_import(db, tenant_id, content, ctype, filename)
+        return recipe_import_service.get_status(db, tenant_id, str(job.id))
+
+    return await run_in_threadpool(_work)
 
 
 @router.get("/import-status/{job_id}", response_model=RecipeImportStatus)

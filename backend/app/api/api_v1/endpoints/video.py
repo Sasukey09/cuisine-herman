@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.db.session import get_db
 from app.api.deps import get_current_tenant_id, require_writer, quota
@@ -59,6 +60,9 @@ async def api_video_extract_file(
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant_id),
     _: list = Depends(require_writer),
+    # Whisper bills per minute of audio: this route was the one expensive video
+    # path left without a ceiling.
+    _q: None = Depends(quota("video", "VIDEO_IMPORT_PER_MIN", 10)),
 ):
     """Upload a video/audio file → audio (ffmpeg) → Whisper → editable recipe
     draft. Reliable alternative to URL import (no YouTube IP blocking)."""
@@ -67,9 +71,17 @@ async def api_video_extract_file(
         raise HTTPException(status_code=400, detail="Fichier vide")
     if len(content) > 300 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Fichier trop volumineux (max 300 Mo).")
+    # ffmpeg + Whisper: minutes of blocking work. From an `async def` it would
+    # freeze the worker's event loop for every other tenant.
+    return await run_in_threadpool(
+        _extract_file, db, tenant_id, content, file.filename, file.content_type
+    )
+
+
+def _extract_file(db, tenant_id, content, filename, content_type):
     try:
         return video_service.extract_recipe_from_file(
-            db, tenant_id, content, file.filename, file.content_type
+            db, tenant_id, content, filename, content_type
         )
     except STTNotConfiguredError as exc:
         raise HTTPException(status_code=503, detail=str(exc))

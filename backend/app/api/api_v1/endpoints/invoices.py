@@ -1,6 +1,7 @@
 from typing import List
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, Query
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.core.tenancy import assert_product_in_tenant
 from app.core.uploads import validate_upload
@@ -45,6 +46,20 @@ router = APIRouter()
 _OCR_UNAVAILABLE = "Service OCR indisponible : impossible d'analyser la facture pour le moment."
 
 
+def _celery_worker_available() -> bool:
+    """Is anyone actually consuming the queue?
+
+    On Render's free plan the worker service cannot run at all, so enqueueing
+    would strand the invoice in "queued" forever.
+    """
+    try:
+        from app.celery_app import celery_app
+
+        return bool(celery_app.control.ping(timeout=0.5))
+    except Exception:
+        return False
+
+
 @router.post("/upload", response_model=InvoiceCreateResp)
 async def api_upload_invoice(
     file: UploadFile = File(...),
@@ -55,11 +70,18 @@ async def api_upload_invoice(
 ):
     content = await file.read()
     validate_upload(content, file.content_type)
-    invoice = create_invoice_from_upload(db, file, tenant_id)
-    key = s3_storage.upload_invoice(tenant_id, invoice["id"], file.filename, content, file.content_type)
-    if key:
-        set_invoice_file_url(db, invoice["id"], tenant_id, key)
-    return invoice
+    filename, ctype = file.filename, file.content_type
+
+    def _work():
+        invoice = create_invoice_from_upload(db, file, tenant_id)
+        key = s3_storage.upload_invoice(tenant_id, invoice["id"], filename, content, ctype)
+        if key:
+            set_invoice_file_url(db, invoice["id"], tenant_id, key)
+        return invoice
+
+    # Off the event loop: the storage upload is a blocking network call, and in
+    # an `async def` it would freeze every other request served by this worker.
+    return await run_in_threadpool(_work)
 
 
 @router.post("/ingest", response_model=InvoiceIngestResult)
@@ -74,19 +96,29 @@ async def api_ingest_invoice(
     create price history -> recompute affected recipe costs."""
     content = await file.read()
     validate_upload(content, file.content_type)
-    invoice = create_invoice_from_upload(db, file, tenant_id)
-    invoice_id = invoice["id"]
-    # persist the original file (non-blocking if storage is unavailable)
-    key = s3_storage.upload_invoice(tenant_id, invoice_id, file.filename, content, file.content_type)
-    if key:
-        set_invoice_file_url(db, invoice_id, tenant_id, key)
-    try:
-        extraction = extract_invoice(content, file.content_type)
-    except OcrError:
-        raise HTTPException(status_code=502, detail=_OCR_UNAVAILABLE)
-    invoice_pricing.persist_extraction(db, tenant_id, invoice_id, extraction)
-    summary = invoice_pricing.process_invoice(db, tenant_id, invoice_id)
-    return {"invoice_id": invoice_id, "summary": summary}
+    filename, ctype = file.filename, file.content_type
+
+    def _work():
+        invoice = create_invoice_from_upload(db, file, tenant_id)
+        invoice_id = invoice["id"]
+        # persist the original file (non-blocking if storage is unavailable)
+        key = s3_storage.upload_invoice(tenant_id, invoice_id, filename, content, ctype)
+        if key:
+            set_invoice_file_url(db, invoice_id, tenant_id, key)
+        try:
+            extraction = extract_invoice(content, ctype)
+        except OcrError:
+            raise HTTPException(status_code=502, detail=_OCR_UNAVAILABLE)
+        invoice_pricing.persist_extraction(db, tenant_id, invoice_id, extraction)
+        summary = invoice_pricing.process_invoice(db, tenant_id, invoice_id)
+        return {"invoice_id": invoice_id, "summary": summary}
+
+    # THE scalability wall this fixes: OCR is a blocking network call of 15-30s.
+    # Called straight from an `async def`, it froze the worker's whole event loop
+    # — every other tenant's requests on that worker waited for it. With
+    # WEB_CONCURRENCY=2, two simultaneous invoice imports stalled the entire API.
+    # In a thread, the worker keeps serving everyone else.
+    return await run_in_threadpool(_work)
 
 
 @router.post("/ingest-async", response_model=InvoiceQueuedResp)
@@ -105,35 +137,49 @@ async def api_ingest_invoice_async(
     """
     content = await file.read()
     validate_upload(content, file.content_type)
-    invoice = create_invoice_from_upload(db, file, tenant_id)
-    invoice_id = invoice["id"]
-    key = s3_storage.upload_invoice(tenant_id, invoice_id, file.filename, content, file.content_type)
+    filename, ctype = file.filename, file.content_type
 
-    def _process_inline() -> str:
+    def _work():
+        invoice = create_invoice_from_upload(db, file, tenant_id)
+        invoice_id = invoice["id"]
+        key = s3_storage.upload_invoice(tenant_id, invoice_id, filename, content, ctype)
+
+        def _process_inline() -> str:
+            try:
+                extraction = extract_invoice(content, ctype)
+            except OcrError:
+                set_invoice_ocr_status(db, invoice_id, tenant_id, "error")
+                raise HTTPException(status_code=502, detail=_OCR_UNAVAILABLE)
+            invoice_pricing.persist_extraction(db, tenant_id, invoice_id, extraction)
+            invoice_pricing.process_invoice(db, tenant_id, invoice_id)
+            set_invoice_ocr_status(db, invoice_id, tenant_id, "done")
+            return "done"
+
+        # No object storage -> the worker can't fetch the file, so process inline.
+        if not key:
+            return {"invoice_id": invoice_id, "status": _process_inline()}
+
+        set_invoice_file_url(db, invoice_id, tenant_id, key)
+
+        # `.delay()` SUCCEEDS with no worker running — the broker happily accepts
+        # the message and nobody ever consumes it. The old try/except therefore
+        # guarded nothing, and the invoice stayed "queued" forever, with no
+        # timeout and no error the user could see. Ask whether anyone is actually
+        # listening before handing the job over.
+        if not _celery_worker_available():
+            return {"invoice_id": invoice_id, "status": _process_inline()}
+
         try:
-            extraction = extract_invoice(content, file.content_type)
-        except OcrError:
-            set_invoice_ocr_status(db, invoice_id, tenant_id, "error")
-            raise HTTPException(status_code=502, detail=_OCR_UNAVAILABLE)
-        invoice_pricing.persist_extraction(db, tenant_id, invoice_id, extraction)
-        invoice_pricing.process_invoice(db, tenant_id, invoice_id)
-        set_invoice_ocr_status(db, invoice_id, tenant_id, "done")
-        return "done"
+            from app.tasks import process_invoice_ocr
 
-    # No object storage -> the worker can't fetch the file, so process inline.
-    if not key:
-        return {"invoice_id": invoice_id, "status": _process_inline()}
+            process_invoice_ocr.delay(invoice_id, tenant_id, key, ctype)
+            set_invoice_ocr_status(db, invoice_id, tenant_id, "queued")
+            return {"invoice_id": invoice_id, "status": "queued"}
+        except Exception:
+            # broker unreachable -> degrade gracefully to inline processing
+            return {"invoice_id": invoice_id, "status": _process_inline()}
 
-    set_invoice_file_url(db, invoice_id, tenant_id, key)
-    try:
-        from app.tasks import process_invoice_ocr
-
-        process_invoice_ocr.delay(invoice_id, tenant_id, key, file.content_type)
-        set_invoice_ocr_status(db, invoice_id, tenant_id, "queued")
-        return {"invoice_id": invoice_id, "status": "queued"}
-    except Exception:
-        # broker unavailable -> degrade gracefully to inline processing
-        return {"invoice_id": invoice_id, "status": _process_inline()}
+    return await run_in_threadpool(_work)
 
 
 @router.get("/", response_model=List[InvoiceRead])
@@ -375,7 +421,12 @@ async def api_extract_invoice(
 ):
     content = await file.read()
     validate_upload(content, file.content_type)
-    try:
-        return extract_invoice(content, file.content_type)
-    except OcrError:
-        raise HTTPException(status_code=502, detail=_OCR_UNAVAILABLE)
+    ctype = file.content_type
+
+    def _work():
+        try:
+            return extract_invoice(content, ctype)
+        except OcrError:
+            raise HTTPException(status_code=502, detail=_OCR_UNAVAILABLE)
+
+    return await run_in_threadpool(_work)
