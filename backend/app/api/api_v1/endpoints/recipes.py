@@ -39,7 +39,7 @@ router = APIRouter()
 logger = get_logger(__name__)
 
 
-@router.post("/", response_model=RecipeRead)
+@router.post("/", response_model=RecipeRead, status_code=201)
 def api_create_recipe(
     payload: RecipeCreate,
     db: Session = Depends(get_db),

@@ -76,7 +76,7 @@ export default function DashboardPage() {
           accentClassName="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
         />
         <StatCard
-          title="Plats vendus à perte"
+          title="Plats à perte"
           value={String(losing.length)}
           icon={TrendingDown}
           loading={lossMaking.isLoading}
