@@ -54,6 +54,11 @@ class UnitConversionService:
         """unit_id -> ratio_to_base (Decimal), consumed by the cost engine."""
         return {u.id: _dec(u.ratio_to_base) for u in self._by_id.values()}
 
+    def category_map(self) -> Dict[int, str]:
+        """unit_id -> category (mass/volume/count/...), consumed by the cost engine
+        to refuse multiplying a quantity by a price expressed in another dimension."""
+        return {u.id: str(u.category) for u in self._by_id.values()}
+
     def _resolve(self, unit):
         if isinstance(unit, int):
             u = self._by_id.get(unit)
