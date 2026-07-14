@@ -27,6 +27,7 @@ from app.models.models import (
     PriceAlert,
     Product,
     ProductPrice,
+    Purchase,
     PurchaseHistory,
     Recipe,
     RecipeIngredient,
@@ -179,18 +180,19 @@ def export_organization(db: Session, tenant_id: str) -> Dict[str, Any]:
 
 
 def delete_organization(db: Session, tenant_id: str) -> bool:
-    """Right to erasure (art. 17). Deletes the organization; the rest cascades.
+    """Right to erasure (art. 17).
 
-    The audit rows have to go FIRST, for two reasons that point the same way:
+    Deleting the organization row was supposed to cascade the restaurant away.
+    It did not: six foreign keys in the schema carry no ON DELETE, and every one
+    of them refused. Erasure therefore only ever succeeded for a tenant with no
+    recipes, no purchases, and no login history — which is to say, for no
+    customer. A real-database test found this; the mocked ones were all green,
+    because a `Mock` has no foreign keys to violate.
 
-    * their foreign keys (`tenant_id` → organizations, `user_id` → users) have no
-      ON DELETE CASCADE, so they would simply **block** the deletion. This is not
-      theoretical: the very act of logging in writes an audit row, so every real
-      organization has some — the erasure endpoint could never have succeeded.
-      A real-database test caught it; every mocked test had been green.
-    * they are personal data themselves (who logged in, from which IP). Erasing
-      the restaurant while keeping a log of its staff's connections would be a
-      strange idea of erasure.
+    Those six are not an oversight, so they are not "fixed" by loosening them:
+    they are exactly what makes `DELETE /products/{id}` answer 409 rather than
+    silently tearing an ingredient out of a recipe. The rows that block are
+    cleared by hand instead, in dependency order, and the cascade does the rest.
 
     The proof that the erasure happened is written afterwards by the caller, with
     a NULL tenant: there is no organization left to attach it to, yet "we erased
@@ -201,9 +203,51 @@ def delete_organization(db: Session, tenant_id: str) -> bool:
     if org is None:
         return False
 
-    db.query(AuditLog).filter(AuditLog.tenant_id == tenant_id).delete(
-        synchronize_session=False
+    # Six foreign keys in the schema have no ON DELETE, and every one of them is
+    # deliberate — they are what makes `DELETE /products/{id}` answer 409 instead
+    # of quietly tearing an ingredient out of a recipe. But "you cannot delete a
+    # product a recipe uses" also means Postgres refuses to cascade the products
+    # away when the whole organization goes: it reaches the product rows before
+    # the recipe lines that point at them.
+    #
+    # So the blockers are cleared by hand, in order, and the cascade does the
+    # rest. Nothing here weakens the guarantees the FKs exist for.
+    #
+    # Without this, erasure only ever worked for a restaurant that had no
+    # recipes, no purchases and had never logged in — that is, for no real
+    # restaurant at all.
+    recipe_ids = [r.id for r in db.query(Recipe.id).filter(Recipe.tenant_id == tenant_id)]
+    version_ids = (
+        [
+            v.id
+            for v in db.query(RecipeVersion.id).filter(RecipeVersion.recipe_id.in_(recipe_ids))
+        ]
+        if recipe_ids
+        else []
     )
+
+    if version_ids:
+        # recipe_ingredients.product_id → products (no cascade)
+        db.query(RecipeIngredient).filter(
+            RecipeIngredient.recipe_version_id.in_(version_ids)
+        ).delete(synchronize_session=False)
+
+    # purchases.product_id → products, purchases.supplier_id → suppliers
+    db.query(Purchase).filter(Purchase.tenant_id == tenant_id).delete(synchronize_session=False)
+
+    if recipe_ids:
+        # recipe_versions.author_id → users
+        db.query(RecipeVersion).filter(RecipeVersion.recipe_id.in_(recipe_ids)).delete(
+            synchronize_session=False
+        )
+
+    # audit_logs.tenant_id → organizations, audit_logs.user_id → users.
+    # They are personal data in their own right anyway (who logged in, from which
+    # IP): erasing the restaurant while keeping a log of its staff's connections
+    # would be a strange idea of erasure.
+    db.query(AuditLog).filter(AuditLog.tenant_id == tenant_id).delete(synchronize_session=False)
+
+    db.flush()
     db.delete(org)
     db.commit()
     return True

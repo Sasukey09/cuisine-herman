@@ -16,7 +16,18 @@ from decimal import Decimal
 import pytest
 from fastapi.encoders import jsonable_encoder
 
-from app.models.models import Invoice, Organization, Product, ProductPrice, Recipe, Supplier, User
+from app.models.models import (
+    Invoice,
+    Organization,
+    Product,
+    ProductPrice,
+    Purchase,
+    Recipe,
+    RecipeIngredient,
+    RecipeVersion,
+    Supplier,
+    User,
+)
 from app.services.rgpd import service as rgpd
 
 
@@ -68,7 +79,37 @@ def seeded_tenant(db):
             date=date(2026, 7, 12),
         )
     )
-    db.add(Recipe(id=str(uuid.uuid4()), tenant_id=tenant_id, name="Risotto", yield_qty=4))
+    recipe_id = str(uuid.uuid4())
+    db.add(Recipe(id=recipe_id, tenant_id=tenant_id, name="Risotto", yield_qty=4))
+    db.commit()
+
+    # What makes this restaurant real — and what used to make it un-erasable.
+    # Six foreign keys in the schema have no ON DELETE (they are what makes
+    # "you cannot delete a product a recipe uses" true), and each one blocked the
+    # organization's own cascade. A seed without recipes, ingredients or purchases
+    # is exactly the seed that fails to notice.
+    version_id = str(uuid.uuid4())
+    db.add(RecipeVersion(id=version_id, recipe_id=recipe_id, version_number=1))
+    db.commit()
+    db.add(
+        RecipeIngredient(
+            id=str(uuid.uuid4()),
+            recipe_version_id=version_id,     # → recipe_versions
+            product_id=product_id,            # → products, NO cascade
+            ingredient_name="Beurre doux AOP",
+            qty=Decimal("0.2"),
+        )
+    )
+    db.add(
+        Purchase(
+            id=str(uuid.uuid4()),
+            tenant_id=tenant_id,
+            product_id=product_id,            # → products, NO cascade
+            supplier_id=supplier_id,          # → suppliers, NO cascade
+            qty=Decimal("10"),
+        )
+    )
+    rgpd.record(db, tenant_id, None, rgpd.ACTION_LOGIN, {"ip": "1.2.3.4"})
     db.commit()
 
     yield tenant_id
@@ -119,25 +160,32 @@ def test_the_export_never_carries_a_password_hash(db, seeded_tenant):
     assert "$2b$12$" not in dumped
 
 
-def test_erasure_really_erases(db):
-    """Art. 17 — and the cascade must be real, not a hope."""
-    tenant_id = str(uuid.uuid4())
-    db.add(Organization(id=tenant_id, name="À Supprimer"))
-    db.commit()
-    db.add(Product(id=str(uuid.uuid4()), tenant_id=tenant_id, name="Produit condamné"))
-    # The audit rows are what used to BLOCK the deletion: log in, and you can
-    # never be forgotten.
-    rgpd.record(db, tenant_id, None, rgpd.ACTION_LOGIN, {"ip": "1.2.3.4"})
-    db.commit()
+def test_erasure_really_erases_a_restaurant_that_has_actually_been_used(db, seeded_tenant):
+    """Art. 17, on a restaurant with recipes, ingredients, purchases and a login
+    history — i.e. on a restaurant, rather than on an empty shell.
 
+    Erasure used to succeed only for a tenant that had none of those. That is not
+    a customer; it is a test fixture.
+    """
+    tenant_id = seeded_tenant
     assert db.query(Product).filter(Product.tenant_id == tenant_id).count() == 1
+    assert db.query(Purchase).filter(Purchase.tenant_id == tenant_id).count() == 1
 
     assert rgpd.delete_organization(db, tenant_id) is True
 
     assert db.query(Organization).filter(Organization.id == tenant_id).first() is None
-    assert db.query(Product).filter(Product.tenant_id == tenant_id).count() == 0, (
-        "the products of a deleted restaurant must not survive it"
-    )
+    for model, what in (
+        (Product, "products"),
+        (Supplier, "suppliers"),
+        (Invoice, "invoices"),
+        (Recipe, "recipes"),
+        (Purchase, "purchases"),
+        (User, "staff accounts"),
+    ):
+        assert db.query(model).filter(model.tenant_id == tenant_id).count() == 0, (
+            f"the {what} of an erased restaurant must not survive it"
+        )
+    assert rgpd.list_audit(db, tenant_id) == [], "nor its connection log"
 
 
 def test_the_audit_register_is_written_and_readable(db):
