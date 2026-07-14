@@ -7,6 +7,7 @@ from app.db.session import get_db
 from app.api.deps import get_current_tenant_id, require_writer, quota
 from app.schemas.schemas import (
     ProductCreate,
+    ProductPriceCreate,
     ProductUpdate,
     ProductRead,
     ProductMatchRequest,
@@ -20,6 +21,9 @@ from app.crud.crud_product import (
     update_product,
     delete_product,
 )
+from app.core.tenancy import assert_product_in_tenant
+from app.crud import crud_price
+from app.services.costing import cost_engine
 from app.services.matching.product_matcher import match_product
 from app.services.purchasing import purchase_service
 
@@ -149,3 +153,52 @@ def api_delete_product(
     if not deleted:
         raise HTTPException(status_code=404, detail="Product not found")
     return None
+
+
+@router.post("/{product_id}/prices", status_code=201)
+def api_create_price(
+    product_id: str,
+    payload: ProductPriceCreate,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+    _: list = Depends(require_writer),
+):
+    """Enter a supplier price by hand.
+
+    Until now a price could only enter the system through an OCR'd invoice. So a
+    chef who knew perfectly well that butter is 8.50 €/kg at Metro could not say
+    so — every recipe using it stayed uncostable until an invoice happened to
+    arrive and happened to be read correctly. That is a strange thing to ask of
+    someone whose entire question is "what does this dish cost me".
+
+    It records a **price**, not a purchase: nothing is added to the purchase
+    history, because nothing was bought. Inventing a purchase to carry a price
+    would corrupt the very history the price alerts are computed from.
+
+    Every recipe using this product is recosted immediately — a price nobody
+    acts on is just a number in a table.
+    """
+    assert_product_in_tenant(db, product_id, tenant_id)
+
+    row = crud_price.create_price(
+        db,
+        tenant_id=tenant_id,
+        product_id=product_id,
+        price=payload.price,
+        unit_id=payload.unit_id,
+        supplier_id=payload.supplier_id,
+        currency=payload.currency,
+        effective_date=payload.effective_date,
+    )
+    recosted = cost_engine.recompute_for_product(db, product_id, tenant_id)
+
+    return {
+        "id": str(row.id),
+        "product_id": product_id,
+        "price": float(row.price),
+        "unit_id": row.unit_id,
+        "supplier_id": str(row.supplier_id) if row.supplier_id else None,
+        "currency": row.currency,
+        "effective_date": row.effective_date,
+        "recipes_recosted": len(recosted),
+    }

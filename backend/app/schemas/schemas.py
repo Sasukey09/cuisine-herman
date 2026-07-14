@@ -1,5 +1,5 @@
 from typing import Optional, List
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from datetime import date, datetime
 # Alias for fields literally named ``date``: the field name shadows the ``date``
 # type in the class namespace, which makes some pydantic versions resolve
@@ -40,6 +40,16 @@ class SupplierPriceRead(BaseModel):
     unit_id: Optional[int] = None
     effective_date: Optional[date] = None
     source_invoice_line_id: Optional[str] = None
+
+
+class ProductPriceCreate(BaseModel):
+    """A price a human types in, rather than one an invoice brought."""
+
+    price: float = Field(gt=0, description="Prix pour UNE unité (ex. 8.50 pour 8,50 €/kg)")
+    unit_id: int = Field(description="L'unité à laquelle ce prix s'applique (kg, L, pièce…)")
+    supplier_id: Optional[str] = None
+    currency: str = "EUR"
+    effective_date: Optional[DateType] = None
 
 
 class ProductBase(BaseModel):
