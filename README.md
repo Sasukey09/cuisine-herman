@@ -59,10 +59,16 @@ flutter run          # pointe par défaut sur l'API de production
 ## Tests
 
 ```bash
-cd backend  && pytest              # ~200 tests
+cd backend  && pytest              # ~240 tests
 cd frontend && npm run lint && npx tsc --noEmit
 cd mobile   && flutter test && flutter analyze
 ```
+
+**Tout code qui touche la base est testé contre une vraie base.** Les tests `*_real_db.py` sont
+ignorés (`skip`) sans `DATABASE_URL` — un poste sans Postgres reste utilisable — et tournent en CI
+contre un vrai Postgres. Ce n'est pas une préférence de style : trois bugs de production sont passés
+à travers une suite verte parce que chaque test mockait la session, et un `Mock` n'a pas de clés
+étrangères à violer. L'histoire est dans [`docs/tests.md`](docs/tests.md).
 
 ## Contribuer
 
@@ -75,9 +81,10 @@ branche → push → CI verte (4 jobs) → merge dans main
 
 La CI (`.github/workflows/ci.yml`) vérifie :
 
-- **Backend** — Postgres réel, migrations rejouées depuis zéro, ~200 tests, **et le démarrage
-  avec la commande exacte de production** (gunicorn). Cette dernière étape existe parce qu'un
-  jour la CI était verte pendant que le conteneur de production était incapable de démarrer.
+- **Backend** — Postgres réel (que les tests **utilisent** vraiment), migrations rejouées depuis
+  zéro **avant** la suite, ~240 tests, **et le démarrage avec la commande exacte de production**
+  (gunicorn). Cette dernière étape existe parce qu'un jour la CI était verte pendant que le
+  conteneur de production était incapable de démarrer.
 - **Web** — lint, types, build
 - **Mobile** — analyze, tests, **APK release**, et une assertion que la permission `INTERNET`
   est bien dans le manifeste fusionné (sans elle, l'app n'a aucun réseau en release)
@@ -88,6 +95,7 @@ La CI (`.github/workflows/ci.yml`) vérifie :
 | Fichier | Contenu |
 |---|---|
 | [`docs/architecture.md`](docs/architecture.md) | Ce qui existe réellement, et ce qui n'existe pas |
+| [`docs/tests.md`](docs/tests.md) | Pourquoi on teste contre une vraie base — et les trois bugs qui l'ont prouvé |
 | [`docs/MIGRATION-FRANKFURT.md`](docs/MIGRATION-FRANKFURT.md) | Déplacer l'infra en Europe sans perdre les données |
 | [`DEPLOYMENT.md`](DEPLOYMENT.md) | Render + Vercel |
 | [`MONITORING.md`](MONITORING.md) | Prometheus / Grafana |

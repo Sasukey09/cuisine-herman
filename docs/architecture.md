@@ -48,8 +48,8 @@ ingrédient…) sont **vérifiés** contre le tenant appelant (`app/core/tenancy
 pouvait référencer le produit d'un autre restaurant et déclencher un recalcul chez lui.
 
 Rôles : `admin`, `manager`, `viewer`. Les écritures exigent `admin` ou `manager`. Il n'y a **pas**
-de permissions fines (les tables `permissions` / `role_permissions` existent mais ne sont jamais
-lues).
+de permissions fines. Les tables `permissions` / `role_permissions` **ont été supprimées** : une
+table qui décrit une fonctionnalité qu'on n'a pas finit toujours par être crue.
 
 ## Le pipeline qui fait le produit
 
@@ -69,11 +69,37 @@ en 502. Le fournisseur « stub » ne peut plus rejoindre la chaîne dès qu'un v
 configuré : une facture inventée serait prixée, historisée, et propagée dans le coût de toutes les
 recettes qui en dépendent.
 
+## Les prix
+
+Un prix entre par **deux** portes, et deux seulement :
+
+- l'**import d'une facture** (OCR → rapprochement produit → historique) ;
+- la **saisie manuelle** — `POST /products/{id}/prices`.
+
+La seconde a longtemps manqué, et c'était un trou béant : un chef qui savait parfaitement que le
+beurre est à 8,50 €/kg chez Metro n'avait **aucun moyen de le dire**. Toute recette qui l'utilisait
+restait non chiffrable jusqu'à ce qu'une facture arrive *et* soit correctement lue. Pour un outil
+dont la question entière est « combien me coûte ce plat », c'est une exigence étrange.
+
+Une saisie manuelle enregistre un **prix**, pas un **achat** : rien n'entre dans l'historique
+d'achats, parce que rien n'a été acheté. Inventer un achat pour porter un prix corromprait
+l'historique même à partir duquel les alertes de prix sont calculées. En revanche, **toutes les
+recettes utilisant ce produit sont recalculées immédiatement** : un prix sur lequel personne n'agit
+n'est qu'un nombre dans une table.
+
 ## Le moteur de coût
 
 `app/services/costing/cost_engine.py` — calcul en `Decimal`, gère les pertes (`loss_pct`), les
 rendements (`yield_pct`) et les conversions d'unités. Un prix manquant est **signalé**
 (`has_missing_prices`), jamais deviné : un coût sous-estimé en silence, c'est un plat vendu à perte.
+
+`GET /dashboard/loss-making` répond à la seule question pour laquelle cet outil existe : **quels
+plats me font perdre de l'argent ?** `margin_estimated` était calculé pour chaque recette depuis la
+première version du moteur, et stocké — et **jamais comparé à zéro**. La plateforme savait, et ne le
+disait à personne. Ce n'est pas un seuil à régler : un plat dont la portion coûte plus que son prix
+de vente perd de l'argent à chaque assiette. Les plats **sans prix de vente** et ceux dont un
+ingrédient **n'a pas de prix** sont listés à part : ils ne sont pas « bons », ils sont *inconnus*, et
+un plat qu'on ne peut pas évaluer est exactement là où la perte se cache.
 
 Le listing des recettes calcule tous les coûts **en un lot** : 1 requête pour les ingrédients de
 toutes les versions, 1 pour le dernier prix de tous les produits, les unités en cache. Avant,
@@ -124,12 +150,30 @@ silencieusement.
 - `POST /rgpd/delete-organization` — effacement définitif (art. 17). Il faut **retaper le nom exact**
   de l'organisation : c'est la seule chose entre un mauvais clic et toutes les factures, recettes et
   prix jamais enregistrés.
-- `GET /rgpd/audit` — registre : qui a fait quoi, quand (art. 30).
+  Six clés étrangères du schéma n'ont **pas** de `ON DELETE` — et c'est voulu : ce sont elles qui
+  font que `DELETE /products/{id}` répond 409 au lieu d'arracher un ingrédient d'une recette. Mais
+  elles bloquaient aussi la cascade de l'organisation, si bien que l'effacement ne réussissait que
+  pour un restaurant **qui n'avait jamais rien fait**. Les lignes bloquantes sont retirées à la
+  main, dans l'ordre des dépendances, sans affaiblir aucune des garanties que ces clés protègent.
+- `GET /rgpd/audit` — registre : qui a fait quoi, quand (art. 30). Les lignes d'audit d'un
+  restaurant effacé partent **avec lui** : ce sont des données personnelles (qui s'est connecté,
+  depuis quelle IP). La preuve de l'effacement, elle, est écrite **après**, avec un tenant `NULL` —
+  il n'y a plus d'organisation à laquelle l'attacher, et une ligne qui pointait vers elle bloquait
+  précisément la suppression qu'elle était censée consigner.
 - **Aucun cookie** → **pas de bandeau de consentement** : l'authentification passe par un en-tête.
+
+## Comment on teste
+
+**Tout code qui touche la base est testé contre une vraie base.** Cette règle a coûté trois bugs de
+production livrés sous une suite verte — voir [`tests.md`](tests.md), qui raconte lesquels et
+pourquoi les mocks ne pouvaient pas les voir.
 
 ## Ce qui n'existe pas (et qu'on ne prétend pas avoir)
 
 GraphQL · WebSockets / temps réel · OAuth Google / SSO · Kubernetes · réplicas de lecture ·
-permissions fines · notifications push · mode hors connexion sur le **web** · édition et
-suppression depuis le **mobile** · réinitialisation de mot de passe par email · stockage objet
-configuré en production (les fichiers de factures ne sont pas conservés).
+permissions fines · **aucun fournisseur d'email** (donc : pas de réinitialisation de mot de passe en
+self-service, pas d'alerte par email — un admin remet le mot de passe depuis l'écran Administration)
+· notifications push · export PDF ou Excel côté serveur (le CSV est généré dans le navigateur) ·
+prévision de coût · gestion de stock et réapprovisionnement (« quoi acheter, et quand ») · mode hors
+connexion sur le **web** · édition et suppression depuis le **mobile** · stockage objet configuré en
+production (les fichiers de factures ne sont pas conservés).
