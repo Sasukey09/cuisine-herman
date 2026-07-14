@@ -19,7 +19,11 @@ databases:
   - name: cuisine-db
     databaseName: cuisine
     user: cuisine
-    plan: free
+    # SAUVEGARDES (B3): le plan `free` n'a AUCUNE sauvegarde. Un plan payant active
+    # les backups quotidiens geres par Render + la restauration point-in-time (PITR).
+    # C'est la strategie de sauvegarde primaire. Voir docs/BACKUP-RESTORE.md pour la
+    # retention, la procedure de restauration et le drill de verification.
+    plan: basic-1gb
     region: frankfurt      # cf. l'entete : les services actuels sont en Oregon
 
 services:
