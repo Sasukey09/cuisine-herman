@@ -13,6 +13,9 @@ class FakeQuery:
     def join(self, *a, **k):
         return self
 
+    def delete(self, *a, **k):
+        return 0
+
     def first(self):
         return self._result
 
@@ -146,3 +149,39 @@ def test_ingestion_with_no_extracted_supplier_leaves_id_none(monkeypatch):
 
     assert invoice.supplier_id is None   # nothing to resolve; never fabricated
     assert calls == []
+
+
+# --------------------------------------------------------------------------- #
+# B5 — re-processing an invoice must be idempotent: every price creation is
+# preceded by a delete of that line's prior price rows, so replaying /process
+# never stacks a second ProductPrice. Purchase history already deletes-then-inserts.
+# --------------------------------------------------------------------------- #
+def test_reprocessing_is_idempotent_deletes_before_each_price(monkeypatch):
+    invoice = N(id="inv1", tenant_id="t1", supplier_id=None, currency="EUR", date=None)
+    lines = [N(id="l1", invoice_id="inv1", product_id="p1",
+               description="Tomates", unit_price=2.0, unit_id=1)]
+
+    ops = []  # ordered log of (action, line_id)
+    monkeypatch.setattr(invoice_pricing.crud_invoice_line, "list_lines", lambda db, iid: lines)
+    monkeypatch.setattr(
+        invoice_pricing.crud_price, "delete_prices_for_line",
+        lambda db, t, lid: ops.append(("delete", lid)),
+    )
+    monkeypatch.setattr(
+        invoice_pricing.crud_price, "create_price",
+        lambda db, tenant_id, product_id, price, **k: ops.append(("create", k["source_invoice_line_id"])) or N(id="pr"),
+    )
+    monkeypatch.setattr(invoice_pricing.cost_engine, "recompute_for_product", lambda *a, **k: [])
+    from app.services.purchasing import purchase_service
+    monkeypatch.setattr(purchase_service, "record_purchase", lambda *a, **k: {})
+    monkeypatch.setattr(purchase_service, "detect_margin_alerts", lambda *a, **k: None)
+
+    # Run the pipeline twice, as a user clicking "retraiter" would.
+    invoice_pricing.process_invoice(FakeDB(invoice), "t1", "inv1", auto_match=False)
+    invoice_pricing.process_invoice(FakeDB(invoice), "t1", "inv1", auto_match=False)
+
+    # Each of the two runs: delete THEN create for l1. Never two creates in a row.
+    assert ops == [
+        ("delete", "l1"), ("create", "l1"),
+        ("delete", "l1"), ("create", "l1"),
+    ]

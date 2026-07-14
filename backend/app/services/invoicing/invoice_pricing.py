@@ -74,6 +74,13 @@ def _price_and_recompute(
     """
     if not line.product_id or line.unit_price is None:
         return None
+    # Idempotent by construction: drop any price row previously derived from THIS
+    # line before recreating it. Without this, re-running /process (or re-mapping a
+    # line) stacked a second ProductPrice per line, skewing price history and the
+    # two-snapshot margin comparison. The purchase-history and margin-alert paths
+    # below already delete-then-insert per line, so the whole pipeline is now safe
+    # to replay: no duplicate price, no duplicate history, no duplicate alert.
+    crud_price.delete_prices_for_line(db, tenant_id, str(line.id))
     price = crud_price.create_price(
         db,
         tenant_id=tenant_id,
@@ -176,7 +183,8 @@ def reprice_line(db: Session, tenant_id: str, line: InvoiceLine) -> Optional[str
     invoice = db.query(Invoice).filter(Invoice.id == line.invoice_id).first()
     if invoice is None:
         return None
-    crud_price.delete_prices_for_line(db, tenant_id, str(line.id))
+    # _price_and_recompute now deletes the line's prior price rows itself, so the
+    # explicit delete that used to live here is redundant.
     return _price_and_recompute(db, tenant_id, line, invoice)
 
 
