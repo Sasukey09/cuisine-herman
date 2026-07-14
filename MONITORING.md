@@ -45,7 +45,7 @@ Services exposés :
 | Grafana     | http://localhost:3001        | login `admin` / `admin`        |
 
 Grafana provisionne automatiquement le datasource Prometheus et le dashboard
-« Cuisine Herman — Observabilité » (dossier *Cuisine Herman*).
+« FoodGad — Observabilité » (dossier *FoodGad*).
 
 > Le paquet `prometheus-client` est dans `backend/requirements.txt`. En local
 > sans Docker : `pip install -r requirements.txt`.
@@ -120,7 +120,7 @@ DOWN. S3 et OCR sont non-critiques (dégradation) — réponse JSON détaillée 
 
 ## Dashboards Grafana
 
-Dashboard unique avec 5 sections (`monitoring/grafana/dashboards/cuisine-herman.json`) :
+Dashboard unique avec 5 sections (`monitoring/grafana/dashboards/foodgad.json`) :
 
 - **OCR** : débit par provider, succès/échecs, durée p95, fallback/timeout/circuit
 - **Factures** : factures traitées, lignes/s, changements de prix

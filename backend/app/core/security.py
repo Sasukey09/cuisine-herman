@@ -58,7 +58,7 @@ def verify_password(plain_password: str, hashed_password: Optional[str]) -> bool
 
 @lru_cache(maxsize=1)
 def _dummy_hash() -> str:
-    return get_password_hash("cuisine-herman-nonexistent-account")
+    return get_password_hash("foodgad-nonexistent-account")
 
 
 def verify_password_constant_time(plain_password: str, hashed_password: Optional[str]) -> bool:

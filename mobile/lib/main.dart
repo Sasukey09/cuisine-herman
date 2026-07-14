@@ -6,19 +6,19 @@ import 'features/auth/auth_controller.dart';
 import 'features/auth/login_screen.dart';
 
 void main() {
-  runApp(const ProviderScope(child: CuisineHermanApp()));
+  runApp(const ProviderScope(child: FoodGadApp()));
 }
 
-class CuisineHermanApp extends StatelessWidget {
-  const CuisineHermanApp({super.key});
+class FoodGadApp extends StatelessWidget {
+  const FoodGadApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Cuisine Herman',
+      title: 'FoodGad',
       debugShowCheckedModeBanner: false,
-      theme: hermanTheme(),
-      darkTheme: hermanTheme(),
+      theme: foodGadTheme(),
+      darkTheme: foodGadTheme(),
       themeMode: ThemeMode.light,
       home: const _AuthGate(),
     );
@@ -38,7 +38,7 @@ const kGood = Color(0xFF5C7A4A); // green (down)
 const kBad = Color(0xFFB23A2E); // red (up)
 const kWarn = Color(0xFFB8763A); // amber
 
-ThemeData hermanTheme() {
+ThemeData foodGadTheme() {
   final scheme = ColorScheme.fromSeed(
     seedColor: kTerracotta,
     brightness: Brightness.light,

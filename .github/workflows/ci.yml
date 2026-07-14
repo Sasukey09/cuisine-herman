@@ -167,7 +167,7 @@ jobs:
         working-directory: mobile
         run: |
           flutter create --platforms=android \
-            --org com.cuisineherman --project-name cuisine_herman_mobile .
+            --org com.foodgad --project-name foodgad_mobile .
           flutter pub get
 
       - name: Analyze

@@ -61,7 +61,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     const Icon(Icons.restaurant_menu, size: 48),
                     const SizedBox(height: 8),
                     Text(
-                      'Cuisine Herman',
+                      'FoodGad',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.headlineSmall,
                     ),

@@ -2,8 +2,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:cuisine_herman_mobile/core/offline_cache.dart';
-import 'package:cuisine_herman_mobile/core/outbox.dart';
+import 'package:foodgad_mobile/core/offline_cache.dart';
+import 'package:foodgad_mobile/core/outbox.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));

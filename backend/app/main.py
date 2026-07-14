@@ -13,7 +13,7 @@ from app.core.uploads import UnsupportedUploadError
 from app.core.url_guard import UnsafeURLError
 from app.core import metrics
 
-APP_NAME = "CuisineHerman API"
+APP_NAME = "FoodGad API"
 
 logger = get_logger(__name__)
 

@@ -52,7 +52,7 @@ export function LoginForm() {
     <Card>
       <CardHeader>
         <CardTitle>Connexion</CardTitle>
-        <CardDescription>Accédez à votre espace Cuisine Herman.</CardDescription>
+        <CardDescription>Accédez à votre espace FoodGad.</CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit(onSubmit)} noValidate>
         <CardContent className="space-y-4">

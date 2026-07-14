@@ -39,7 +39,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
           H
         </div>
         <div className="leading-tight">
-          <div className="font-serif text-lg text-[#f4efe6]">Herman</div>
+          <div className="font-serif text-lg text-[#f4efe6]">FoodGad</div>
           <div className="text-[11px] tracking-wide text-sidebar-muted">Coûts cuisine</div>
         </div>
       </div>

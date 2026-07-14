@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.cuisineherman.cuisine_herman_mobile"
+    namespace = "com.foodgad.foodgad_mobile"
     // Pinned rather than inherited from `flutter.compileSdkVersion`: modern
     // plugin AARs demand 36 and the release build dies in
     // `checkReleaseAarMetadata` otherwise. compileSdk only widens the APIs
@@ -21,7 +21,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.cuisineherman.cuisine_herman_mobile"
+        applicationId = "com.foodgad.foodgad_mobile"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
