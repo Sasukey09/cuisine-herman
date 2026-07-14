@@ -6,7 +6,7 @@ import '../../common/create_dialog.dart';
 import '../../common/format.dart';
 import '../../core/api_error.dart';
 import '../../core/providers.dart';
-import '../../main.dart' show kMuted, kBorder, kCard, kGood;
+import '../../main.dart' show kMuted, kBorder, kCard, kGood, kBad;
 
 final _recipesProvider = FutureProvider.autoDispose<Loaded>((ref) async {
   return fetchWithCache(ref, cacheKey: 'recipes', request: () async {
@@ -61,48 +61,69 @@ class RecipesScreen extends ConsumerWidget {
               border: Border.all(color: kBorder),
               borderRadius: BorderRadius.circular(14),
             ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Container(
-                  width: 74,
-                  height: 74,
-                  alignment: Alignment.center,
-                  color: const Color(0xFFEFE1D3),
-                  child: Text(emoji, style: const TextStyle(fontSize: 30)),
-                ),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(name,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                      fontFamily: 'serif', fontSize: 15.5, fontWeight: FontWeight.w600)),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(margin == null ? '—' : pctRound(margin),
-                                style: const TextStyle(
-                                    fontSize: 12, fontWeight: FontWeight.w600, color: kGood)),
-                          ],
-                        ),
-                        const SizedBox(height: 3),
-                        Text('${eur(cost)}/portion · vente ${eur(price)}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 12, color: kMuted)),
-                      ],
+            // IntrinsicHeight n'est pas décoratif : sans lui, cet écran est BLANC.
+            //
+            // Une ListView donne à ses enfants une hauteur non bornée, et
+            // `CrossAxisAlignment.stretch` demande justement aux enfants de la
+            // remplir — donc l'infini. Flutter lève une erreur de mise en page, et
+            // en release une erreur de mise en page ne s'affiche pas : elle ne
+            // rend RIEN. Pas de message, pas d'écran rouge. Juste des recettes
+            // invisibles, alors que l'API les renvoyait toutes.
+            //
+            // IntrinsicHeight borne la hauteur sur celle du plus grand enfant (la
+            // tuile emoji, 74), ce qui rend `stretch` calculable et garde
+            // l'intention d'origine : le carré de couleur monte jusqu'aux bords
+            // de la carte.
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    width: 74,
+                    height: 74,
+                    alignment: Alignment.center,
+                    color: const Color(0xFFEFE1D3),
+                    child: Text(emoji, style: const TextStyle(fontSize: 30)),
+                  ),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                        fontFamily: 'serif',
+                                        fontSize: 15.5,
+                                        fontWeight: FontWeight.w600)),
+                              ),
+                              const SizedBox(width: 8),
+                              // Une marge négative n'est pas une bonne nouvelle : la
+                              // peindre en vert comme les autres serait un mensonge.
+                              Text(margin == null ? '—' : pctRound(margin),
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: (margin != null && margin < 0) ? kBad : kGood)),
+                            ],
+                          ),
+                          const SizedBox(height: 3),
+                          Text('${eur(cost)}/portion · vente ${eur(price)}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 12, color: kMuted)),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           );
         },
