@@ -81,3 +81,65 @@ workflows:
         # deja cree dans App Store Connect (decommente + mets le nom exact).
         # beta_groups:
         #   - Testeurs internes
+
+  # -------------------------------------------------------------------------
+  # Android -> test interne Google Play.
+  #
+  # PREREQUIS (cote toi, hors depot) :
+  #  1. Generer l'upload key : sh scripts/android/generate_upload_keystore.sh
+  #     (voir docs/ANDROID-RELEASE.md).
+  #  2. Televerser le keystore dans Codemagic : Teams -> Code signing identities
+  #     -> Android keystores. Lui donner un nom de reference (defaut : foodgad_upload).
+  #  3. Ajouter le compte de service Google Play : Teams -> Integrations ->
+  #     Google Play (JSON de compte de service GCP), reference par la variable
+  #     GCLOUD_SERVICE_ACCOUNT_CREDENTIALS (groupe google_play).
+  #  4. L'app doit exister dans la Google Play Console avec l'applicationId
+  #     com.foodgad.foodgad_mobile.
+  # -------------------------------------------------------------------------
+  android-internal:
+    name: FoodGad Android — Test interne Google Play
+    instance_type: linux_x2
+    max_build_duration: 60
+
+    environment:
+      flutter: 3.44.1
+      groups:
+        - google_play        # <-- doit contenir GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+      android_signing:
+        - foodgad_upload     # <-- nom de reference du keystore dans Codemagic
+
+    scripts:
+      - name: Regenerer le scaffolding Android (android/ partiellement gitignore)
+        script: |
+          cd mobile
+          flutter create --platforms=android --org com.foodgad --project-name foodgad_mobile .
+
+      - name: Recuperer les dependances Flutter
+        script: |
+          cd mobile
+          flutter pub get
+
+      - name: Ecrire key.properties depuis le keystore Codemagic
+        script: |
+          cd mobile/android
+          cat > key.properties <<EOF
+          storePassword=$CM_KEYSTORE_PASSWORD
+          keyPassword=$CM_KEY_PASSWORD
+          keyAlias=$CM_KEY_ALIAS
+          storeFile=$CM_KEYSTORE_PATH
+          EOF
+
+      - name: Build App Bundle (release, numero de build auto-incremente)
+        script: |
+          cd mobile
+          flutter build appbundle --release --build-number=$PROJECT_BUILD_NUMBER
+
+    artifacts:
+      - mobile/build/app/outputs/bundle/release/*.aab
+      - mobile/build/app/outputs/**/mapping.txt
+
+    publishing:
+      google_play:
+        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+        track: internal
+        submit_as_draft: false

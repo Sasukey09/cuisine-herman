@@ -48,8 +48,23 @@ l'app **TestFlight** sur leur iPhone.
 - Le backend de prod visé par l'app mobile est défini par `API_BASE_URL`
   ([mobile/lib/core/config.dart](../mobile/lib/core/config.dart)). Pour pointer la
   bêta ailleurs, ajoute `--dart-define=API_BASE_URL=...` à l'étape *Build IPA*.
-- Android : je peux ajouter un second workflow `android-internal` (Google Play test
-  interne) sur le même modèle si tu veux — demande-le.
+## Android → test interne Google Play (workflow `android-internal`)
+
+Ajouté dans le même `codemagic.yaml`. Prérequis côté toi (hors dépôt) :
+
+1. **Générer l'upload key** : `sh scripts/android/generate_upload_keystore.sh`
+   (voir [ANDROID-RELEASE.md](ANDROID-RELEASE.md)).
+2. **Téléverser le keystore** dans Codemagic → *Teams → Code signing identities →
+   Android keystores*, nom de référence `foodgad_upload` (à aligner avec
+   `environment.android_signing` dans le YAML).
+3. **Compte de service Google Play** : *Teams → Integrations → Google Play* (JSON
+   de compte de service GCP) → exposé via la variable
+   `GCLOUD_SERVICE_ACCOUNT_CREDENTIALS` dans un groupe `google_play`.
+4. **App créée** dans la Google Play Console avec l'applicationId
+   `com.foodgad.foodgad_mobile`.
+
+Le workflow régénère `android/`, écrit `key.properties` depuis le keystore
+Codemagic, build l'`.aab` release et le publie sur le track **internal**.
 
 ## Ce que je ne fais pas
 
