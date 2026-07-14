@@ -271,27 +271,6 @@ class Transcription(Base):
     created_at = Column(TIMESTAMP, server_default=func.now())
 
 
-class AISuggestion(Base):
-    __tablename__ = "ai_suggestions"
-    id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
-    tenant_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"))
-    target_type = Column(Text)
-    target_id = Column(UUID(as_uuid=False))
-    suggestion = Column(JSONB)
-    score = Column(Numeric)
-    created_at = Column(TIMESTAMP, server_default=func.now())
-
-
-class Alert(Base):
-    __tablename__ = "alerts"
-    id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
-    tenant_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"))
-    type = Column(Text)
-    payload = Column(JSONB)
-    read = Column(Boolean, default=False)
-    created_at = Column(TIMESTAMP, server_default=func.now())
-
-
 class AuditLog(Base):
     __tablename__ = "audit_logs"
     id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
@@ -308,20 +287,6 @@ class Role(Base):
     tenant_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"))
     name = Column(Text, nullable=False)
     description = Column(Text)
-
-
-class Permission(Base):
-    __tablename__ = "permissions"
-    id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
-    code = Column(Text, unique=True)
-    description = Column(Text)
-
-
-class RolePermission(Base):
-    __tablename__ = "role_permissions"
-    id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
-    role_id = Column(UUID(as_uuid=False), ForeignKey("roles.id", ondelete="CASCADE"))
-    permission_id = Column(UUID(as_uuid=False), ForeignKey("permissions.id", ondelete="CASCADE"))
 
 
 class UserRole(Base):
@@ -357,16 +322,6 @@ class CustomReport(Base):
     tenant_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"))
     name = Column(Text, nullable=False)
     definition = Column(JSONB, nullable=False)
-    created_at = Column(TIMESTAMP, server_default=func.now())
-
-
-class CustomFormula(Base):
-    __tablename__ = "custom_formulas"
-    id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
-    tenant_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"))
-    name = Column(Text, nullable=False)
-    expression = Column(Text, nullable=False)
-    meta = Column("metadata", JSONB)
     created_at = Column(TIMESTAMP, server_default=func.now())
 
 
