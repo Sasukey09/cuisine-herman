@@ -3,6 +3,7 @@ import type {
   CostTrendPoint,
   TopProduct,
   PriceTrendPoint,
+  LossReport,
   MarginAlert,
   PriceAlert,
   DashboardFilters,
@@ -45,5 +46,10 @@ export async function getPriceAlerts(minIncreasePct = 10): Promise<PriceAlert[]>
   const { data } = await api.get<PriceAlert[]>("/dashboard/price-alerts", {
     params: { min_increase_pct: minIncreasePct },
   });
+  return data;
+}
+
+export async function getLossMaking(): Promise<LossReport> {
+  const { data } = await api.get<LossReport>("/dashboard/loss-making");
   return data;
 }

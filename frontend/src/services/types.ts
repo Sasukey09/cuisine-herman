@@ -268,6 +268,22 @@ export interface PriceTrendPoint {
   supplier_id: string | null;
 }
 
+export interface LossMakingDish {
+  recipe_id: string;
+  name: string;
+  cost_per_portion: number | null;
+  selling_price: number | null;
+  loss_per_portion?: number;
+  food_cost_pct?: number | null;
+}
+
+export interface LossReport {
+  losing_money: LossMakingDish[];
+  loss_per_portion_total: number;
+  no_selling_price: LossMakingDish[];
+  not_costable: LossMakingDish[];
+}
+
 export interface MarginAlert {
   recipe_id: string;
   recipe_name: string | null;

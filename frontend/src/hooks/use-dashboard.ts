@@ -8,6 +8,7 @@ import {
   getMarginAlerts,
   getPriceAlerts,
   getPriceTrends,
+  getLossMaking,
 } from "@/services/dashboard-service";
 import type { DashboardFilters } from "@/services/types";
 
@@ -44,5 +45,12 @@ export function usePriceTrends(productId?: string, filters: DashboardFilters = {
     queryKey: ["dashboard", "price-trends", productId, filters],
     queryFn: () => getPriceTrends(productId as string, filters),
     enabled: Boolean(productId),
+  });
+}
+
+export function useLossMaking() {
+  return useQuery({
+    queryKey: ["dashboard", "loss-making"],
+    queryFn: getLossMaking,
   });
 }

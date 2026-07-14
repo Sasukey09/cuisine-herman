@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Wallet, Percent, ShoppingCart, AlertTriangle } from "lucide-react";
+import { Wallet, Percent, ShoppingCart, TrendingDown } from "lucide-react";
 
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/features/dashboard/stat-card";
@@ -9,11 +9,13 @@ import { CostTrendChart } from "@/features/dashboard/cost-trend-chart";
 import { TopProductsCard } from "@/features/dashboard/top-products-card";
 import { MarginAlertsCard } from "@/features/dashboard/margin-alerts-card";
 import { PriceAlertsCard } from "@/features/dashboard/price-alerts-card";
+import { LossMakingCard } from "@/features/dashboard/loss-making-card";
 import {
   useCostTrends,
   useTopProducts,
   useMarginAlerts,
   usePriceAlerts,
+  useLossMaking,
 } from "@/hooks/use-dashboard";
 import {
   aggregateByDay,
@@ -27,6 +29,7 @@ export default function DashboardPage() {
   const topProducts = useTopProducts({ limit: 100 });
   const marginAlerts = useMarginAlerts(35);
   const priceAlerts = usePriceAlerts(10);
+  const lossMaking = useLossMaking();
 
   const points = costTrends.data ?? [];
   const products = topProducts.data ?? [];
@@ -38,6 +41,7 @@ export default function DashboardPage() {
   const avgCostPerPortion = average(latest.map((p) => p.cost_per_portion));
   const avgFoodCost = average(latest.map((p) => p.food_cost_pct));
   const totalSpend = products.reduce((sum, p) => sum + (p.total_spend ?? 0), 0);
+  const losing = lossMaking.data?.losing_money ?? [];
 
   return (
     <>
@@ -70,13 +74,25 @@ export default function DashboardPage() {
           accentClassName="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
         />
         <StatCard
-          title="Alertes marges"
-          value={String(alerts.length)}
-          icon={AlertTriangle}
-          loading={marginAlerts.isLoading}
-          hint="Food cost > 35 %"
-          accentClassName="bg-destructive/10 text-destructive"
+          title="Plats vendus à perte"
+          value={String(losing.length)}
+          icon={TrendingDown}
+          loading={lossMaking.isLoading}
+          hint={
+            losing.length > 0
+              ? `${formatCurrency(lossMaking.data?.loss_per_portion_total)} perdus par tournée`
+              : "Aucun plat sous son coût"
+          }
+          accentClassName={
+            losing.length > 0
+              ? "bg-destructive/10 text-destructive"
+              : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+          }
         />
+      </div>
+
+      <div className="mt-4">
+        <LossMakingCard report={lossMaking.data} loading={lossMaking.isLoading} />
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
