@@ -8,7 +8,7 @@ from typing import Optional, Dict, Any, List
 from sqlalchemy.orm import Session
 
 from app.models.models import Invoice, InvoiceLine
-from app.crud import crud_invoice_line, crud_price, crud_match
+from app.crud import crud_invoice_line, crud_price, crud_match, crud_supplier
 from app.services.matching.product_matcher import match_product
 from app.services.costing import cost_engine
 from app.core import metrics
@@ -33,6 +33,19 @@ def persist_extraction(db: Session, tenant_id: str, invoice_id: str, extraction)
         invoice.total_amount = extraction.total_amount
     invoice.ocr_status = "parsed"
     invoice.parsed = True
+
+    # Link the supplier. Without this, every price/purchase row derived from an
+    # OCR-ingested invoice carried supplier_id=NULL: supplier comparison and
+    # per-supplier price alerts silently collapsed. Resolve the extracted name to
+    # a real supplier (creating it if new); never overwrite a supplier the user
+    # already set at upload time.
+    supplier_name = getattr(extraction, "supplier", None)
+    if invoice.supplier_id is None and supplier_name:
+        supplier = crud_supplier.get_or_create_supplier_by_name(
+            db, tenant_id, supplier_name
+        )
+        if supplier is not None:
+            invoice.supplier_id = supplier.id
 
     units_by_code = crud_price.get_units_by_code(db)
     created: List[InvoiceLine] = []

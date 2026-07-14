@@ -1,8 +1,44 @@
 from typing import Optional
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.models.models import Supplier, ProductPrice, Product
 from app.schemas.schemas import SupplierCreate, SupplierUpdate
 import uuid
+
+
+def get_supplier_by_name(db: Session, tenant_id: str, name: str) -> Optional[Supplier]:
+    norm = (name or "").strip()
+    if not norm:
+        return None
+    return (
+        db.query(Supplier)
+        .filter(
+            Supplier.tenant_id == tenant_id,
+            func.lower(Supplier.name) == norm.lower(),
+        )
+        .first()
+    )
+
+
+def get_or_create_supplier_by_name(
+    db: Session, tenant_id: str, name: str
+) -> Optional[Supplier]:
+    """Resolve a supplier by name within the tenant, creating it if absent.
+
+    Used by invoice ingestion so an OCR-extracted supplier name always resolves to
+    a real ``supplier_id``. Flushes (not commits) so it joins the caller's
+    transaction. Returns ``None`` only when there is no usable name to resolve.
+    """
+    norm = (name or "").strip()
+    if not norm:
+        return None
+    existing = get_supplier_by_name(db, tenant_id, norm)
+    if existing is not None:
+        return existing
+    obj = Supplier(id=str(uuid.uuid4()), tenant_id=tenant_id, name=norm)
+    db.add(obj)
+    db.flush()  # make obj.id available; the caller owns the commit
+    return obj
 
 
 def create_supplier(db: Session, payload: SupplierCreate, tenant_id: str) -> Supplier:

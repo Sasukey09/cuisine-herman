@@ -76,3 +76,73 @@ def test_process_invoice_orchestration(monkeypatch):
     assert created_prices == ["p1"]
     # recompute triggered for the priced product, scoped to the caller's tenant
     assert recomputed == [("p1", "t1")]
+
+
+# --------------------------------------------------------------------------- #
+# B2 — invoice ingestion must always resolve supplier_id. Before, persist_extraction
+# set number/date/total but never the supplier, so every derived price/purchase row
+# was orphaned (supplier_id=NULL) and supplier comparison collapsed.
+# --------------------------------------------------------------------------- #
+def _extraction(supplier):
+    return N(
+        supplier=supplier,
+        invoice_number="F-2026-001",
+        date=None,
+        total_amount=42.0,
+        lines=[],
+    )
+
+
+def _patch_persist(monkeypatch, resolved_supplier, calls):
+    monkeypatch.setattr(invoice_pricing.crud_price, "get_units_by_code", lambda db: {})
+    monkeypatch.setattr(
+        invoice_pricing.crud_invoice_line, "create_invoice_line",
+        lambda *a, **k: N(id="line"),
+    )
+
+    def fake_get_or_create(db, tenant_id, name):
+        calls.append(name)
+        return resolved_supplier
+
+    monkeypatch.setattr(
+        invoice_pricing.crud_supplier, "get_or_create_supplier_by_name", fake_get_or_create
+    )
+
+
+def test_ingestion_resolves_and_sets_supplier_id(monkeypatch):
+    invoice = N(id="inv1", tenant_id="t1", supplier_id=None,
+                invoice_number=None, date=None, total_amount=None,
+                ocr_status=None, parsed=False)
+    calls = []
+    _patch_persist(monkeypatch, N(id="sup-metro", name="Metro"), calls)
+
+    invoice_pricing.persist_extraction(FakeDB(invoice), "t1", "inv1", _extraction("Metro"))
+
+    assert invoice.supplier_id == "sup-metro"   # always set, never NULL
+    assert calls == ["Metro"]
+
+
+def test_ingestion_does_not_overwrite_an_existing_supplier(monkeypatch):
+    invoice = N(id="inv1", tenant_id="t1", supplier_id="already-set",
+                invoice_number=None, date=None, total_amount=None,
+                ocr_status=None, parsed=False)
+    calls = []
+    _patch_persist(monkeypatch, N(id="sup-metro", name="Metro"), calls)
+
+    invoice_pricing.persist_extraction(FakeDB(invoice), "t1", "inv1", _extraction("Metro"))
+
+    assert invoice.supplier_id == "already-set"  # a supplier chosen at upload wins
+    assert calls == []                           # resolution not even attempted
+
+
+def test_ingestion_with_no_extracted_supplier_leaves_id_none(monkeypatch):
+    invoice = N(id="inv1", tenant_id="t1", supplier_id=None,
+                invoice_number=None, date=None, total_amount=None,
+                ocr_status=None, parsed=False)
+    calls = []
+    _patch_persist(monkeypatch, None, calls)
+
+    invoice_pricing.persist_extraction(FakeDB(invoice), "t1", "inv1", _extraction(None))
+
+    assert invoice.supplier_id is None   # nothing to resolve; never fabricated
+    assert calls == []
