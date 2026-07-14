@@ -1,5 +1,6 @@
 from typing import Optional, List
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from app.core import security as _security
 from datetime import date, datetime
 # Alias for fields literally named ``date``: the field name shadows the ``date``
 # type in the class namespace, which makes some pydantic versions resolve
@@ -294,7 +295,28 @@ class ProductMatchResultRead(BaseModel):
     matched_alias: Optional[str] = None
 
 
-class RegisterRequest(BaseModel):
+class _EmailPasswordMixin:
+    """Shared registration/creation input hardening (I2): validated email format
+    (normalized to lowercase) and a strong password. Raises 422 on violation."""
+
+    @field_validator("email")
+    @classmethod
+    def _validate_email(cls, v):
+        err = _security.email_error(v)
+        if err:
+            raise ValueError(err)
+        return _security.normalize_email(v)
+
+    @field_validator("password")
+    @classmethod
+    def _validate_password(cls, v):
+        err = _security.password_error(v)
+        if err:
+            raise ValueError(err)
+        return v
+
+
+class RegisterRequest(_EmailPasswordMixin, BaseModel):
     email: str
     password: str
     org_name: str
@@ -302,10 +324,12 @@ class RegisterRequest(BaseModel):
 
 
 class ResetPasswordRequest(BaseModel):
+    # Strength is enforced in the endpoint (400) to keep the existing status
+    # contract; the same security.password_error policy is applied there.
     password: str
 
 
-class CreateUserRequest(BaseModel):
+class CreateUserRequest(_EmailPasswordMixin, BaseModel):
     email: str
     password: str
     name: Optional[str] = None

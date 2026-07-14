@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 from datetime import datetime, timedelta
 from functools import lru_cache
@@ -44,6 +45,39 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60")
 REFRESH_TOKEN_EXPIRE_MINUTES = int(os.getenv("REFRESH_TOKEN_EXPIRE_MINUTES", str(60 * 24 * 14)))
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# --- Input hardening (I2) --------------------------------------------------- #
+# Applied at registration and admin user-creation (and password reset). Kept as
+# plain helpers (no external email-validator dependency) so schemas and endpoints
+# share one policy.
+PASSWORD_MIN_LENGTH = 8
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def normalize_email(email: Optional[str]) -> str:
+    return (email or "").strip().lower()
+
+
+def email_error(email: Optional[str]) -> Optional[str]:
+    """Return an error message when the email is not a plausible address, else None."""
+    if not _EMAIL_RE.match(normalize_email(email)):
+        return "Adresse e-mail invalide."
+    return None
+
+
+def password_error(password: Optional[str]) -> Optional[str]:
+    """Return an error message when the password is too weak, else None.
+
+    Policy: at least 8 characters, with at least one letter and one digit. Strong
+    enough to stop empty/1-char passwords from undermining every downstream auth
+    control, without being draconian.
+    """
+    pw = password or ""
+    if len(pw) < PASSWORD_MIN_LENGTH:
+        return f"Le mot de passe doit contenir au moins {PASSWORD_MIN_LENGTH} caractères."
+    if not any(c.isalpha() for c in pw) or not any(c.isdigit() for c in pw):
+        return "Le mot de passe doit contenir au moins une lettre et un chiffre."
+    return None
 
 
 def get_password_hash(password: str) -> str:
