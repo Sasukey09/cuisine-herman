@@ -506,7 +506,7 @@ class RecipeImportSaveRequest(BaseModel):
 # --------------------------------------------------------------------------- #
 class CustomMetricCreate(BaseModel):
     name: str
-    formula: str
+    formula: str = Field(max_length=500)  # I4: bound formula size (DoS)
     target: str = "recipe"
     format: str = "number"  # number | currency | percent
     description: Optional[str] = None
@@ -514,7 +514,7 @@ class CustomMetricCreate(BaseModel):
 
 class CustomMetricUpdate(BaseModel):
     name: Optional[str] = None
-    formula: Optional[str] = None
+    formula: Optional[str] = Field(default=None, max_length=500)
     format: Optional[str] = None
     description: Optional[str] = None
 
