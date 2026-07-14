@@ -28,3 +28,11 @@ macos/
 #       module too; without it file_picker still compiles against 34 and the
 #       release APK dies in checkReleaseAarMetadata.
 # Do NOT track android/local.properties: it holds a machine-specific SDK path.
+
+# --- Release signing secrets (B4) — NEVER commit, NEVER git add -f ---
+# android/ is already ignored above, but these are called out explicitly so a
+# keystore placed anywhere in the tree can never be committed by accident.
+**/key.properties
+*.jks
+*.keystore
+upload-keystore.*
