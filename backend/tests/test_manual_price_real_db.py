@@ -162,12 +162,22 @@ def test_the_latest_hand_typed_price_wins(db, restaurant):
 
 def test_you_cannot_price_another_restaurants_product(db, restaurant):
     """The product id comes from the client. Without this check, one restaurant
-    could price a competitor's butter — and silently recost their whole menu."""
+    could price a competitor's butter — and silently recost their whole menu.
+
+    Both halves are asserted, and the first one is the point. An earlier version
+    of this test only checked that the intruder was refused — and it passed while
+    the endpoint had its arguments swapped, refusing *everyone*, owner included.
+    A guard that says no to everything is not a guard; it is an outage. Testing
+    only the unhappy path agrees with that bug instead of catching it.
+    """
+    # The owner can price their own product.
+    assert_product_in_tenant(db, restaurant["tenant_id"], restaurant["product_id"])
+
     intruder = str(uuid.uuid4())
     db.add(Organization(id=intruder, name="Le voisin"))
     db.commit()
     try:
         with pytest.raises(CrossTenantReferenceError):
-            assert_product_in_tenant(db, restaurant["product_id"], intruder)
+            assert_product_in_tenant(db, intruder, restaurant["product_id"])
     finally:
         rgpd.delete_organization(db, intruder)

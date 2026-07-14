@@ -178,7 +178,7 @@ def api_create_price(
     Every recipe using this product is recosted immediately — a price nobody
     acts on is just a number in a table.
     """
-    assert_product_in_tenant(db, product_id, tenant_id)
+    assert_product_in_tenant(db, tenant_id, product_id)
 
     row = crud_price.create_price(
         db,
