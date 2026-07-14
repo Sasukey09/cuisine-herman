@@ -149,6 +149,26 @@ def compute_recipe_version_cost(
     if recipe is None:
         raise ValueError("recipe_not_found")
 
+    # The recipe knows what it sells for. Asking the caller to tell it again is how
+    # you end up with nothing.
+    #
+    # Until now this function used ONLY the selling price it was handed. The cost
+    # panel offers an empty box labelled "(optionnel)", so a chef who simply clicks
+    # "Calculer" — the obvious thing to do — persisted a snapshot with
+    # `food_cost_pct = NULL` and `margin = NULL`. The dashboard's margin alerts read
+    # those snapshots and keep the ones above 35 %; NULL is not above 35 %. So **no
+    # margin alert could ever fire**, and nobody would notice, because an alert that
+    # never fires looks exactly like a restaurant with healthy margins.
+    #
+    # The batch path (`compute_costs_for_recipes`, used by the listing) already fell
+    # back to `recipe.selling_price`. The two disagreed: the list showed a food cost,
+    # the detail panel showed nothing, for the same recipe.
+    #
+    # An explicit price still wins — that is the whole point of the box: simulating
+    # "what if I sold it at 15 €?" without touching the recipe.
+    if selling_price is None and recipe.selling_price is not None:
+        selling_price = float(recipe.selling_price)
+
     ingredients = (
         db.query(RecipeIngredient)
         .filter(RecipeIngredient.recipe_version_id == recipe_version_id)

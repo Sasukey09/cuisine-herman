@@ -31,7 +31,9 @@ export default function DashboardPage() {
   const priceAlerts = usePriceAlerts(10);
   const lossMaking = useLossMaking();
 
-  const points = costTrends.data ?? [];
+  // `?? []` crée un tableau neuf à chaque rendu : les useMemo qui en dépendent
+  // se recalculaient donc à chaque fois, ce qui annule leur seule raison d'être.
+  const points = useMemo(() => costTrends.data ?? [], [costTrends.data]);
   const products = topProducts.data ?? [];
   const alerts = marginAlerts.data ?? [];
 

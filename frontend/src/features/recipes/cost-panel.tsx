@@ -28,12 +28,21 @@ function Metric({ label, value, accent }: { label: string; value: string; accent
 export function CostPanel({
   recipeId,
   versionId,
+  sellingPrice: recipeSellingPrice,
 }: {
   recipeId: string;
   versionId: string;
+  /** Le prix de vente enregistré sur la recette. */
+  sellingPrice?: number | null;
 }) {
   const compute = useComputeCost(recipeId, versionId);
-  const [sellingPrice, setSellingPrice] = useState("");
+
+  // Pré-rempli avec le prix de la recette : le champ servait à *rappeler* au serveur
+  // une information qu'il avait déjà, et le laisser vide enregistrait un food cost
+  // NULL — donc invisible pour les alertes de marge.
+  const [sellingPrice, setSellingPrice] = useState(
+    recipeSellingPrice != null ? String(recipeSellingPrice) : "",
+  );
 
   const run = () => {
     const price = sellingPrice ? Number(sellingPrice) : null;
@@ -47,18 +56,19 @@ export function CostPanel({
       <CardHeader>
         <CardTitle className="text-base">Coût matière</CardTitle>
         <CardDescription>
-          Calcule le coût à partir des derniers prix d&apos;achat connus.
+          Calcule le coût à partir des derniers prix d&apos;achat connus. Modifiez le prix de
+          vente pour simuler une autre carte sans toucher à la recette.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="space-y-2 sm:max-w-xs">
-            <Label htmlFor="selling_price">Prix de vente / portion (optionnel)</Label>
+            <Label htmlFor="selling_price">Prix de vente / portion</Label>
             <Input
               id="selling_price"
               type="number"
               step="any"
-              placeholder="Pour food cost & marge"
+              placeholder="Prix de vente de la recette"
               value={sellingPrice}
               onChange={(e) => setSellingPrice(e.target.value)}
             />

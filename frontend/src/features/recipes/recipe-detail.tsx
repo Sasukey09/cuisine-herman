@@ -166,7 +166,11 @@ export function RecipeDetail({ recipeId }: { recipeId: string }) {
 
       {/* Coûts */}
       {hasVersion && recipe?.current_version_id && (
-        <CostPanel recipeId={recipeId} versionId={recipe.current_version_id} />
+        <CostPanel
+          recipeId={recipeId}
+          versionId={recipe.current_version_id}
+          sellingPrice={recipe.selling_price}
+        />
       )}
 
       <VersionFormDialog open={versionOpen} onOpenChange={setVersionOpen} recipeId={recipeId} />
