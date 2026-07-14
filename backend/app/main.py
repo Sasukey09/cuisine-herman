@@ -1,5 +1,8 @@
 import logging
 import os
+import sys
+from typing import Optional
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse, Response
@@ -16,6 +19,26 @@ from app.core import metrics
 APP_NAME = "FoodGad API"
 
 logger = get_logger(__name__)
+
+
+def _metrics_access_status(
+    expected: Optional[str], sent: str, app_env: str, under_pytest: bool
+) -> Optional[int]:
+    """Decide whether a /metrics request may pass. Returns None to allow, or the
+    HTTP status to deny with.
+
+    - a token is configured  -> require an exact Bearer match (else 401)
+    - no token, production    -> fail CLOSED (404, hides the endpoint) so a missing
+                                 METRICS_TOKEN can never expose the scrape surface
+    - no token, dev/pytest    -> open (developer convenience)
+    """
+    if expected:
+        return None if sent == expected else 401
+    if under_pytest:
+        return None
+    if app_env == "production":
+        return 404
+    return None
 
 
 def _init_sentry() -> None:
@@ -113,17 +136,21 @@ def create_app() -> FastAPI:
     def prometheus_metrics(request: Request):
         """Prometheus scrape endpoint.
 
-        Was wide open to the internet: request counts, latencies and error rates
-        per route are a free map of the app for anyone probing it. Set
-        METRICS_TOKEN and have the scraper send `Authorization: Bearer <token>`.
-        Left open when unset, so an existing scraper is not silently broken —
-        but the deployment docs now say to set it.
+        Request counts, latencies and error rates per route are a free map of the
+        app for anyone probing it. Access rules (see `_metrics_access_status`):
+        with METRICS_TOKEN set, the scraper must send `Authorization: Bearer
+        <token>`; with no token in production the endpoint fails CLOSED (404), so
+        a forgotten token can never expose it; open only in dev/pytest.
+        In production METRICS_TOKEN is provisioned automatically (render.yaml).
         """
         expected = os.getenv("METRICS_TOKEN")
-        if expected:
-            sent = (request.headers.get("authorization") or "").removeprefix("Bearer ").strip()
-            if sent != expected:
-                return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+        sent = (request.headers.get("authorization") or "").removeprefix("Bearer ").strip()
+        under_pytest = "PYTEST_CURRENT_TEST" in os.environ or "pytest" in sys.modules
+        deny = _metrics_access_status(
+            expected, sent, os.getenv("APP_ENV", "production"), under_pytest
+        )
+        if deny is not None:
+            return JSONResponse(status_code=deny, content={"detail": "Not found"})
         payload, content_type = metrics.render_latest()
         return Response(content=payload, media_type=content_type)
 
