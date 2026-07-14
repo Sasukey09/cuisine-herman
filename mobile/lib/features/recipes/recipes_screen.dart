@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../common/async_list.dart';
 import '../../common/create_dialog.dart';
+import '../../common/edit_delete.dart';
 import '../../common/format.dart';
 import '../../core/api_error.dart';
 import '../../core/providers.dart';
@@ -40,6 +41,52 @@ class RecipesScreen extends ConsumerWidget {
     }
   }
 
+  Future<void> _actions(BuildContext context, WidgetRef ref, Map<String, dynamic> r) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final action = await showRowActions(context);
+    if (action == null || !context.mounted) return;
+    if (action == 'edit') {
+      final data = await showEditDialog(
+        context,
+        title: 'Modifier la recette',
+        fields: const [
+          CreateField('name', 'Nom', required: true),
+          CreateField('yield_qty', 'Portions', keyboard: TextInputType.number),
+          CreateField('selling_price', 'Prix de vente (optionnel)', keyboard: TextInputType.number),
+        ],
+        initial: {
+          'name': '${r['name'] ?? ''}',
+          'yield_qty': r['yield_qty'] == null ? '' : '${r['yield_qty']}',
+          'selling_price': r['selling_price'] == null ? '' : '${r['selling_price']}',
+        },
+      );
+      if (data == null) return;
+      await updateEntity(
+        ref,
+        messenger,
+        path: '/recipes/${r['id']}',
+        body: {
+          'name': data['name'],
+          if ((data['yield_qty'] ?? '').isNotEmpty) 'yield_qty': double.tryParse(data['yield_qty']!),
+          if ((data['selling_price'] ?? '').isNotEmpty)
+            'selling_price': double.tryParse(data['selling_price']!),
+        },
+        successMessage: 'Recette modifiée.',
+        onDone: () => ref.invalidate(_recipesProvider),
+      );
+    } else {
+      await confirmAndDelete(
+        context,
+        ref,
+        messenger,
+        path: '/recipes/${r['id']}',
+        name: '${r['name'] ?? ''}',
+        successMessage: 'Recette supprimée.',
+        onDone: () => ref.invalidate(_recipesProvider),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
@@ -54,7 +101,9 @@ class RecipesScreen extends ConsumerWidget {
           final margin = r['margin_pct'] as num?;
           final cost = r['cost_per_portion'] as num?;
           final price = r['selling_price'] as num?;
-          return Container(
+          return GestureDetector(
+            onLongPress: () => _actions(context, ref, r),
+            child: Container(
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
               color: kCard,
@@ -125,7 +174,7 @@ class RecipesScreen extends ConsumerWidget {
                 ],
               ),
             ),
-          );
+          ));
         },
       ),
       floatingActionButton: FloatingActionButton(
