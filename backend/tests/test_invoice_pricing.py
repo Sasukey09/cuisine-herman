@@ -185,3 +185,35 @@ def test_reprocessing_is_idempotent_deletes_before_each_price(monkeypatch):
         ("delete", "l1"), ("create", "l1"),
         ("delete", "l1"), ("create", "l1"),
     ]
+
+
+# --------------------------------------------------------------------------- #
+# I3 — a below-threshold (ambiguous) fuzzy match must NOT be auto-bound or priced.
+# --------------------------------------------------------------------------- #
+def test_ambiguous_match_is_not_bound_or_priced(monkeypatch):
+    invoice = N(id="inv1", tenant_id="t1", supplier_id=None, currency="EUR", date=None)
+    line = N(id="l1", invoice_id="inv1", product_id=None,
+             description="Filet de boeuf", unit_price=20.0, unit_id=1, match_confidence=None)
+
+    monkeypatch.setattr(invoice_pricing.crud_invoice_line, "list_lines", lambda db, iid: [line])
+    # 68 % onto "Filet de poulet": a real product id comes back, but manual_review.
+    monkeypatch.setattr(
+        invoice_pricing, "match_product",
+        lambda db, t, text: {"product_id": "p_poulet", "confidence_score": 68.0,
+                             "manual_review": True},
+    )
+    created = []
+    monkeypatch.setattr(
+        invoice_pricing.crud_price, "create_price",
+        lambda *a, **k: created.append(k.get("product_id")) or N(id="pr"),
+    )
+    monkeypatch.setattr(invoice_pricing.crud_price, "delete_prices_for_line", lambda *a, **k: 0)
+    monkeypatch.setattr(invoice_pricing.cost_engine, "recompute_for_product", lambda *a, **k: [])
+
+    summary = invoice_pricing.process_invoice(FakeDB(invoice), "t1", "inv1")
+
+    assert line.product_id is None            # never bound on an ambiguous match
+    assert created == []                      # never priced
+    assert summary["prices_created"] == 0
+    assert summary["matched"] == 0
+    assert summary["needs_review"] == ["l1"]  # sent to a human instead

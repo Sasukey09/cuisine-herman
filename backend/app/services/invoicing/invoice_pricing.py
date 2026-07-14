@@ -121,14 +121,21 @@ def process_invoice(
     for line in lines:
         if auto_match and not line.product_id and line.description:
             res = match_product(db, tenant_id, line.description)
-            if res["product_id"]:
+            # I3: only a CONFIDENT match (>= review threshold, manual_review False)
+            # is bound and priced automatically. A below-threshold match — however
+            # tempting its score — is ambiguous: it is flagged for human validation
+            # and left UNBOUND and UNPRICED, so a "Filet de bœuf" fuzzily matched to
+            # "Filet de poulet" at 68 % can never quietly give chicken a beef price.
+            if res["product_id"] and not res["manual_review"]:
                 line.product_id = res["product_id"]
                 line.match_confidence = res["confidence_score"]
                 db.add(line)
                 db.commit()
                 matched += 1
-            if res["manual_review"]:
+            else:
+                # no match, or an ambiguous one: needs a human, never auto-priced
                 needs_review.append(str(line.id))
+                continue
 
         if _price_and_recompute(db, tenant_id, line, invoice):
             prices_created += 1
