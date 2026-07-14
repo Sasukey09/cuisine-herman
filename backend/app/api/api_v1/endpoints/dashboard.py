@@ -12,7 +12,7 @@ from app.schemas.schemas import (
     MarginAlert,
     PriceAlert,
 )
-from app.services.dashboard import dashboard_service
+from app.services.dashboard import dashboard_service, loss_service
 from app.services.purchasing import purchase_service
 
 router = APIRouter()
@@ -77,3 +77,22 @@ def api_price_alerts(
     tenant_id: str = Depends(get_current_tenant_id),
 ):
     return dashboard_service.price_alerts(db, tenant_id, min_increase_pct)
+
+
+@router.get("/loss-making")
+def api_loss_making(
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """Dishes sold below what they cost to make.
+
+    `margin_estimated` has been computed for every recipe since the first
+    version of the cost engine, and stored, and never once compared to zero.
+    The platform knew which dishes lost money and told nobody.
+
+    Costs are recomputed live rather than read from the last snapshot: a
+    snapshot goes stale the moment a chef edits a selling price without
+    recosting, and a stale margin is exactly the kind of number that reassures
+    you while you lose money.
+    """
+    return loss_service.loss_report(db, tenant_id)
