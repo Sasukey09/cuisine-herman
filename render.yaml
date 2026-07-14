@@ -100,9 +100,14 @@ services:
       - key: ANTHROPIC_API_KEY
         sync: false                  # required for /ai/chat and video extraction
       - key: AI_MODEL
-        value: claude-opus-4-8
+        value: claude-opus-4-8          # modele par defaut / taches analytiques
       - key: AI_EFFORT
         value: medium
+      # I6 — cout IA: routage vers un modele moins cher pour les questions simples
+      - key: AI_SIMPLE_MODEL
+        value: claude-haiku-4-5
+      - key: AI_MODEL_ROUTING
+        value: "true"
       # --- Video import: Whisper STT for non-YouTube (TikTok/Insta/FB) ---
       - key: OPENAI_API_KEY
         sync: false                  # required only for audio transcription (non-YouTube)
