@@ -55,8 +55,16 @@ workflows:
           cd mobile/ios
           pod install || true
 
-      - name: Appliquer la signature (automatique via App Store Connect)
+      - name: Signature iOS — creer/recuperer certificat + profil, puis appliquer
         script: |
+          # Cree le certificat de distribution ET le profil app_store s'ils
+          # n'existent pas (--create), via la cle App Store Connect. Corrige
+          # "No matching profiles found". Necessite une cle de role App Manager
+          # ou Admin (droit de gerer certificats/profils).
+          keychain initialize
+          app-store-connect fetch-signing-files "foodgad-ios-2026" \
+            --type IOS_APP_STORE --create
+          keychain add-certificates
           cd mobile
           xcode-project use-profiles
 
