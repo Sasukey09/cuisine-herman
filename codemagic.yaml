@@ -18,10 +18,9 @@ workflows:
     max_build_duration: 60
 
     integrations:
-      # <-- Remplace par le NOM que tu as donne a ta cle App Store Connect
-      #     dans Codemagic (Teams -> Integrations). Ce n'est pas la cle, juste
-      #     son etiquette.
-      app_store_connect: FoodGad ASC
+      # NOM de ta cle App Store Connect dans Codemagic (Teams -> Integrations).
+      # Ce n'est pas la cle, juste son etiquette. Doit correspondre EXACTEMENT.
+      app_store_connect: cuisine-herman
 
     environment:
       # Meme version que la CI GitHub du projet, pour des builds reproductibles.
