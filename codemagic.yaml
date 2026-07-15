@@ -29,11 +29,10 @@ workflows:
       cocoapods: default
       ios_signing:
         distribution_type: app_store
-        # >>> A CONFIRMER : doit correspondre EXACTEMENT a l'app dans App Store
-        #     Connect. La valeur derivee du projet (--org com.foodgad +
-        #     project-name foodgad_mobile) est ci-dessous. Si ton enregistrement
-        #     Apple utilise un autre Bundle ID, remplace-le ici.
-        bundle_identifier: com.foodgad.foodgadMobile
+        # Bundle ID de l'app "FoodGad" dans App Store Connect (App ID
+        # "Application Cuisine"). Non-standard mais accepte par Apple; l'app est
+        # deja creee avec, donc le build doit produire EXACTEMENT cet identifiant.
+        bundle_identifier: foodgad-ios-2026
 
     scripts:
       - name: Regenerer le projet iOS (ios/ est gitignore)
