@@ -122,7 +122,7 @@ class _VideoImportScreenState extends ConsumerState<VideoImportScreen> {
                 const Text('Importez une vidéo',
                     style: TextStyle(fontFamily: 'serif', fontSize: 16, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 4),
-                const Text("Lien YouTube / Instagram. L'IA extrait les ingrédients.",
+                const Text("Lien YouTube / Instagram / TikTok / Facebook. L'IA extrait les ingrédients.",
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 12, color: kMuted)),
                 const SizedBox(height: 12),

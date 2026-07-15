@@ -130,7 +130,7 @@ export function VideoImportView() {
     <>
       <PageHeader
         title="Import depuis une vidéo"
-        description="Collez un lien (YouTube, TikTok, Instagram…) OU importez un fichier vidéo. L'IA en extrait une fiche recette modifiable, puis la chiffre avec vos prix."
+        description="Collez un lien (YouTube, TikTok, Instagram, Facebook…) OU importez un fichier vidéo. L'IA en extrait une fiche recette modifiable, puis la chiffre avec vos prix."
       />
 
       <form onSubmit={onExtract} className="flex flex-col gap-2 sm:flex-row">
