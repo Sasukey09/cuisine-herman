@@ -42,6 +42,11 @@ workflows:
           cd mobile
           flutter create --platforms=ios --org com.foodgad --project-name foodgad_mobile .
 
+      - name: Fixer le nom affiche de l'app a FoodGad
+        script: |
+          plutil -replace CFBundleDisplayName -string "FoodGad" \
+            "$CM_BUILD_DIR/mobile/ios/Runner/Info.plist"
+
       - name: Recuperer les dependances Flutter
         script: |
           cd mobile
