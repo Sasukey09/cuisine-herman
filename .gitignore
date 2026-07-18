@@ -36,3 +36,7 @@ Thumbs.db
 .idea/
 .vscode/
 dist/
+
+# --- Cles de signature Apple (App Store Connect) — NE JAMAIS committer ---
+*.p8
+AuthKey_*.p8
