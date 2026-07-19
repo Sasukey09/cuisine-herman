@@ -18,16 +18,17 @@ workflows:
     instance_type: mac_mini_m2
     max_build_duration: 60
 
-    integrations:
-      # NOM de ta cle App Store Connect dans Codemagic (Teams -> Integrations).
-      # Ce n'est pas la cle, juste son etiquette. Doit correspondre EXACTEMENT.
-      app_store_connect: cuisine-herman
-
+    # Pas d'integration nommee : les identifiants App Store Connect viennent du
+    # groupe de variables `appstore` (APP_STORE_CONNECT_ISSUER_ID /
+    # _KEY_IDENTIFIER / _PRIVATE_KEY, secure). La CLI app-store-connect les lit
+    # automatiquement, et le bloc `publishing` en bas les reference explicitement.
     environment:
       # Meme version que la CI GitHub du projet, pour des builds reproductibles.
       flutter: 3.44.1
       xcode: latest
       cocoapods: default
+      groups:
+        - appstore
       # PAS de bloc `ios_signing` ici : il declencherait la signature AUTOMATIQUE
       # de Codemagic (qui ne fait que CHERCHER un profil existant -> "No matching
       # profiles found" si le profil n'existe pas encore). On fait la signature
@@ -92,7 +93,10 @@ workflows:
 
     publishing:
       app_store_connect:
-        auth: integration
+        # Auth par cle API (groupe `appstore`) au lieu d'une integration nommee.
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
         # Envoi automatique vers TestFlight (beta). Passe a false si tu veux
         # d'abord recuperer l'IPA et televerser a la main.
         submit_to_testflight: true
