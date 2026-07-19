@@ -8,13 +8,12 @@
 import os
 from typing import Optional, Tuple
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Response
 from sqlalchemy import text
 
 from app.db.session import engine
 from app.core import metrics
 from app.core.logging import get_logger
-from app.core.rate_limit import client_ip
 from app.services.ocr.config import get_ocr_config
 
 logger = get_logger(__name__)
@@ -106,25 +105,6 @@ def live():
 @router.get("/health")
 def health():
     return {"status": "ok"}
-
-
-@router.get("/whoami-debug")
-def whoami_debug(request: Request):
-    """TEMPORARY diagnostic — REMOVE after validating client-IP resolution on
-    Render. Reflects only the caller's OWN forwarding metadata (no cross-user
-    data, no secrets), so we can confirm the proxy chain and that the
-    spoof-resistant resolver picks the real public client, not a private edge
-    hop."""
-    return {
-        "x_forwarded_for": request.headers.get("x-forwarded-for"),
-        "cf_connecting_ip": request.headers.get("cf-connecting-ip"),
-        "true_client_ip": request.headers.get("true-client-ip"),
-        "x_real_ip": request.headers.get("x-real-ip"),
-        "forwarded": request.headers.get("forwarded"),
-        "client_host": request.client.host if request.client else None,
-        "resolved_client_ip": client_ip(request),
-        "all_headers": {k: v for k, v in request.headers.items()},
-    }
 
 
 @router.get("/ready")
