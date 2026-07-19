@@ -17,6 +17,7 @@ If Redis is configured but *errors*, we fail **open** and log it: locking every
 restaurateur out of their own account because of a cache blip is a worse outage
 than the attack we are mitigating.
 """
+import ipaddress
 import logging
 import os
 import threading
@@ -264,29 +265,39 @@ def reset_login_guard() -> None:
     _guard = None
 
 
-def client_ip(request) -> Optional[str]:
-    """Client IP behind Render/Vercel's proxy.
+def _is_public_ip(value: str) -> bool:
+    try:
+        return ipaddress.ip_address(value).is_global
+    except ValueError:
+        return False
 
-    A reverse proxy *appends* the address it saw to ``X-Forwarded-For``, so the
-    right-most entries are written by trusted infrastructure while anything to
-    their left is whatever the caller chose to send. Reading the left-most value
-    therefore lets a caller forge a fresh "IP" on every request and slip past
-    every per-IP counter (the register cap, the credential-stuffing guard). We
-    instead skip ``TRUSTED_PROXY_HOPS`` proxy hops from the right (default 1 =
-    the single Render/Vercel edge) and key on that spoof-resistant entry.
+
+def client_ip(request) -> Optional[str]:
+    """Spoof-resistant client IP behind Render/Vercel's proxy.
+
+    The platform appends its own hop(s) to ``X-Forwarded-For``, and — crucially,
+    as observed on Render — those appended hops are *private* addresses (10.x),
+    while the genuine client is a *public* address sitting to the right of
+    anything the caller supplied and to the left of our infra's private hops.
+
+    So the real client is the RIGHT-MOST PUBLIC address in the chain:
+
+        [ <caller-forged...>, <REAL CLIENT (public)>, <Render 10.x (private)> ]
+
+    Scanning right-to-left for the first global IP therefore:
+      * defeats ``X-Forwarded-For`` spoofing — a forged public IP is always to
+        the *left* of the real client, so it never wins;
+      * ignores Render's private edge hops, which are shared across every tenant
+        and would otherwise collapse the per-IP limit into a global one;
+      * needs no hard-coded proxy-hop count.
+
+    Falls back to the socket peer when the chain carries no public IP (local dev,
+    a fully-private network), so nothing breaks off-platform.
     """
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
         parts = [p.strip() for p in forwarded.split(",") if p.strip()]
-        if parts:
-            try:
-                hops = int(os.getenv("TRUSTED_PROXY_HOPS", "1"))
-            except ValueError:
-                hops = 1
-            # hops=1 -> the right-most entry, i.e. the address the edge proxy
-            # actually observed. Clamp so a misconfigured count can never index
-            # out of range (and never silently returns the spoofable left).
-            idx = len(parts) - hops
-            idx = max(0, min(idx, len(parts) - 1))
-            return parts[idx] or None
+        for ip in reversed(parts):
+            if _is_public_ip(ip):
+                return ip
     return request.client.host if request.client else None
