@@ -125,3 +125,21 @@ def test_too_many_nodes_is_rejected():
     wide = "+".join(["1"] * 300)   # > _MAX_NODES nodes
     with pytest.raises(FormulaError):
         evaluate(wide, {})
+
+
+def test_a_null_byte_in_the_source_is_a_clean_formula_error():
+    # ast.parse raises ValueError (not SyntaxError) on an embedded NUL byte; it
+    # must surface as a FormulaError, not an uncaught 500.
+    with pytest.raises(FormulaError):
+        evaluate("1\x00+1", CTX)
+
+
+def test_a_recursionerror_during_parse_becomes_a_formula_error(monkeypatch):
+    import app.services.customization.formula_eval as fe
+
+    def boom(*_a, **_k):
+        raise RecursionError("maximum recursion depth exceeded")
+
+    monkeypatch.setattr(fe.ast, "parse", boom)
+    with pytest.raises(FormulaError):
+        evaluate("1 + 1", CTX)

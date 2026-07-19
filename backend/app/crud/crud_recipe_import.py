@@ -58,10 +58,16 @@ def save_result(db: Session, job: RecipeImportJob, raw_text: str,
     return result
 
 
-def get_result(db: Session, job_id: str) -> Optional[RecipeImportResult]:
+def get_result(db: Session, tenant_id: str, job_id: str) -> Optional[RecipeImportResult]:
+    # Always tenant-scoped: the job_id arrives from the client (import-save query
+    # param), so without this filter one tenant could re-point another tenant's
+    # import result by guessing its id.
     return (
         db.query(RecipeImportResult)
-        .filter(RecipeImportResult.job_id == job_id)
+        .filter(
+            RecipeImportResult.job_id == job_id,
+            RecipeImportResult.tenant_id == tenant_id,
+        )
         .order_by(RecipeImportResult.created_at.desc())
         .first()
     )

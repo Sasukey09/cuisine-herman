@@ -23,21 +23,36 @@ _PLACEHOLDER_SECRETS = {
 
 _UNDER_PYTEST = "PYTEST_CURRENT_TEST" in os.environ or "pytest" in sys.modules
 
+# A captured HS256 token lets an attacker brute-force a short signing key
+# offline, then forge tokens for any user. Require real entropy in a deployment.
+_MIN_SECRET_KEY_LEN = 32
+
+
+def _resolve_secret_key(secret: str, under_pytest: bool) -> str:
+    secret = (secret or "").strip()
+    if secret.lower() in _PLACEHOLDER_SECRETS:
+        if under_pytest:
+            return "pytest-only-secret-never-used-by-a-deployment"
+        raise RuntimeError(
+            "SECRET_KEY is unset or still a placeholder, so every JWT this "
+            "process issued could be forged by anyone. Refusing to start.\n"
+            "Generate one with:\n"
+            '    python -c "import secrets; print(secrets.token_urlsafe(48))"\n'
+            "then set SECRET_KEY in the environment (Render dashboard, .env, or "
+            "docker-compose)."
+        )
+    if not under_pytest and len(secret) < _MIN_SECRET_KEY_LEN:
+        raise RuntimeError(
+            f"SECRET_KEY is too short (min {_MIN_SECRET_KEY_LEN} chars) to resist "
+            "an offline brute-force of the HS256 signing key. Refusing to start.\n"
+            "Generate one with:\n"
+            '    python -c "import secrets; print(secrets.token_urlsafe(48))"'
+        )
+    return secret
+
 
 def _load_secret_key() -> str:
-    secret = os.getenv("SECRET_KEY", "").strip()
-    if secret.lower() not in _PLACEHOLDER_SECRETS:
-        return secret
-    if _UNDER_PYTEST:
-        return "pytest-only-secret-never-used-by-a-deployment"
-    raise RuntimeError(
-        "SECRET_KEY is unset or still a placeholder, so every JWT this process "
-        "issued could be forged by anyone. Refusing to start.\n"
-        "Generate one with:\n"
-        '    python -c "import secrets; print(secrets.token_urlsafe(48))"\n'
-        "then set SECRET_KEY in the environment (Render dashboard, .env, or "
-        "docker-compose)."
-    )
+    return _resolve_secret_key(os.getenv("SECRET_KEY", ""), _UNDER_PYTEST)
 
 
 SECRET_KEY = _load_secret_key()

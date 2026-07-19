@@ -149,7 +149,7 @@ def get_status(db: Session, tenant_id: str, job_id: str) -> Optional[Dict[str, A
     job = crud_recipe_import.get_job(db, tenant_id, job_id)
     if job is None:
         return None
-    result = crud_recipe_import.get_result(db, job_id)
+    result = crud_recipe_import.get_result(db, tenant_id, job_id)
     return {
         "job_id": str(job.id),
         "status": job.status,
@@ -235,7 +235,7 @@ def save_import(db: Session, tenant_id: str, name: str, servings: Optional[float
     )
 
     if job_id:
-        result = crud_recipe_import.get_result(db, job_id)
+        result = crud_recipe_import.get_result(db, tenant_id, job_id)
         if result is not None:
             crud_recipe_import.attach_recipe(db, result, str(recipe.id))
 

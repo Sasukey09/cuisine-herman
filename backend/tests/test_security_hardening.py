@@ -1,9 +1,43 @@
 """Phase 2 — OWASP hardening: SSRF guard, upload validation, per-tenant quotas."""
 import pytest
+from fastapi.testclient import TestClient
 
 from app.core.rate_limit import QuotaGuard, _MemoryStore
 from app.core.uploads import UnsupportedUploadError, sniff_kind, validate_upload
 from app.core.url_guard import UnsafeURLError, assert_safe_fetch_url
+from app.main import app, _docs_config
+
+
+# --------------------------------------------------------------------------- #
+# Interactive docs / OpenAPI schema must be closed in production
+# --------------------------------------------------------------------------- #
+def test_docs_and_openapi_are_closed_in_production():
+    cfg = _docs_config("production", under_pytest=False)
+    assert cfg == {"docs_url": None, "redoc_url": None, "openapi_url": None}
+
+
+def test_docs_are_open_outside_production():
+    for env in ("development", "staging", "local", ""):
+        cfg = _docs_config(env, under_pytest=False)
+        assert cfg["openapi_url"] == "/openapi.json"
+
+
+def test_docs_stay_open_under_pytest_even_when_env_says_production():
+    # So the test suite (and its OpenAPI-driven tooling) is never starved.
+    cfg = _docs_config("production", under_pytest=True)
+    assert cfg["openapi_url"] == "/openapi.json"
+
+
+# --------------------------------------------------------------------------- #
+# Security headers on every API response (defence in depth)
+# --------------------------------------------------------------------------- #
+def test_security_headers_are_present_on_responses():
+    r = TestClient(app).get("/health")
+    assert r.headers.get("X-Content-Type-Options") == "nosniff"
+    assert r.headers.get("X-Frame-Options") == "DENY"
+    assert "frame-ancestors" in (r.headers.get("Content-Security-Policy") or "")
+    assert "max-age=" in (r.headers.get("Strict-Transport-Security") or "")
+    assert r.headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
 
 
 # --------------------------------------------------------------------------- #

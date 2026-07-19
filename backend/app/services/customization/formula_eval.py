@@ -88,6 +88,11 @@ def _parse(expression: str) -> ast.Expression:
         tree = ast.parse(expression, mode="eval")
     except SyntaxError as exc:
         raise FormulaError(f"Syntaxe invalide : {exc.msg}") from exc
+    except (RecursionError, ValueError) as exc:
+        # ast.parse can bottom out in a RecursionError on a pathologically nested
+        # source, or a ValueError (e.g. an embedded NUL byte), rather than a clean
+        # SyntaxError. Surface those as a controlled FormulaError, never a 500.
+        raise FormulaError("Formule invalide ou trop complexe") from exc
     _check_complexity(tree)
     return tree
 

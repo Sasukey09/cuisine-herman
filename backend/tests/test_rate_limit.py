@@ -120,3 +120,51 @@ def test_guard_fails_open_when_the_store_is_broken():
     assert broken.retry_after("chef@foodgad.fr", "1.2.3.4") == 0
     assert broken.record_failure("chef@foodgad.fr", "1.2.3.4") == 0
     broken.record_success("chef@foodgad.fr", "1.2.3.4")  # must not raise
+
+
+# --- client IP resolution behind a proxy (anti-spoofing, F1) ----------------
+
+class _Peer:
+    def __init__(self, host):
+        self.host = host
+
+
+class _Req:
+    """Minimal stand-in for a Starlette Request for client_ip()."""
+
+    def __init__(self, xff=None, peer="10.0.0.9"):
+        self.headers = {"x-forwarded-for": xff} if xff is not None else {}
+        self.client = _Peer(peer)
+
+
+def test_client_ip_uses_the_trusted_rightmost_hop_not_the_spoofable_left():
+    # The edge proxy appends the address it observed on the right; the value to
+    # its left is whatever the caller sent. We must key on the right one.
+    req = _Req(xff="203.0.113.7, 70.1.2.3")  # attacker-set , edge-observed
+    assert rate_limit.client_ip(req) == "70.1.2.3"
+
+
+def test_rotating_the_forwarded_header_does_not_change_the_rate_limit_key():
+    """The proven bypass: a caller rotating X-Forwarded-For must resolve to the
+    SAME key, so the per-IP counter still bites."""
+    a = _Req(xff="1.1.1.1, 70.1.2.3")
+    b = _Req(xff="2.2.2.2, 70.1.2.3")
+    assert rate_limit.client_ip(a) == rate_limit.client_ip(b) == "70.1.2.3"
+
+
+def test_client_ip_falls_back_to_the_peer_without_a_forwarded_header():
+    assert rate_limit.client_ip(_Req(xff=None, peer="42.42.42.42")) == "42.42.42.42"
+
+
+def test_client_ip_honours_extra_trusted_hops(monkeypatch):
+    monkeypatch.setenv("TRUSTED_PROXY_HOPS", "2")
+    # Two trusted proxies each appended a hop on the right (idx = len - hops):
+    # the resolver returns the entry those two hops wrap, not the spoofable left.
+    req = _Req(xff="1.1.1.1, 70.1.2.3, 9.9.9.9")  # [spoofed, real client, edge]
+    assert rate_limit.client_ip(req) == "70.1.2.3"
+
+
+def test_a_short_chain_never_indexes_out_of_range():
+    """A misconfigured hop count must clamp, never crash or fall back to left."""
+    req = _Req(xff="70.1.2.3")  # single entry, hops default 1
+    assert rate_limit.client_ip(req) == "70.1.2.3"
