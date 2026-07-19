@@ -1,19 +1,26 @@
-import axios from "axios";
-import { api, API_URL } from "@/lib/api";
-import type { AuthTokens, Me, RegisterPayload, User } from "./types";
+import { api } from "@/lib/api";
+import { useAuthStore } from "@/stores/auth-store";
+import type { Me, RegisterPayload, User } from "./types";
 
 /**
- * OAuth2 password flow: the backend expects x-www-form-urlencoded with
- * `username` + `password` at POST /auth/token. Uses bare axios (no auth header).
+ * Logs in through our same-origin session route: it exchanges the credentials
+ * server-side and stows the refresh token in an httpOnly cookie, handing back
+ * only the short-lived access token (kept in memory). No token ever reaches
+ * localStorage.
  */
-export async function login(email: string, password: string): Promise<AuthTokens> {
-  const form = new URLSearchParams();
-  form.append("username", email);
-  form.append("password", password);
-  const { data } = await axios.post<AuthTokens>(`${API_URL}/auth/token`, form, {
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+export async function login(email: string, password: string): Promise<string> {
+  const res = await fetch("/api/session/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ email, password }),
   });
-  return data;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.access_token) {
+    const detail = typeof data?.detail === "string" ? data.detail : "Identifiants incorrects";
+    throw new Error(detail);
+  }
+  return data.access_token as string;
 }
 
 export async function register(payload: RegisterPayload): Promise<User> {
@@ -26,9 +33,15 @@ export async function getMe(): Promise<Me> {
   return data;
 }
 
-/** Revoke every token of the current user (all devices), server-side. */
+/** Revoke every token of the current user (all devices), server-side, and drop
+ *  the httpOnly refresh cookie. */
 export async function logout(): Promise<void> {
-  await api.post("/auth/logout");
+  const token = useAuthStore.getState().accessToken;
+  await fetch("/api/session/logout", {
+    method: "POST",
+    credentials: "include",
+    headers: token ? { authorization: `Bearer ${token}` } : undefined,
+  });
 }
 
 /** Admin-only: set a new password for a user of the organization. */

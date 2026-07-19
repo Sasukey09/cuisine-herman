@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
 
 export interface AuthUser {
   id: string;
@@ -10,31 +9,35 @@ export interface AuthUser {
 }
 
 interface AuthState {
+  /** Short-lived access token — in memory ONLY, never persisted to storage.
+   *  The long-lived refresh token lives in an httpOnly cookie the browser
+   *  cannot read (see /api/session/*), so an XSS cannot exfiltrate a session. */
   accessToken: string | null;
-  refreshToken: string | null;
   user: AuthUser | null;
-  setTokens: (access: string, refresh: string) => void;
+  /** True once the boot-time session restore (/api/session/refresh) has run, so
+   *  guards don't redirect during the initial in-memory-token gap after reload. */
+  bootstrapped: boolean;
+  setAccessToken: (token: string | null) => void;
   setUser: (user: AuthUser | null) => void;
-  logout: () => void;
+  setBootstrapped: (value: boolean) => void;
+  clear: () => void;
   isAuthenticated: () => boolean;
   hasRole: (...roles: string[]) => boolean;
 }
 
-export const useAuthStore = create<AuthState>()(
-  persist(
-    (set, get) => ({
-      accessToken: null,
-      refreshToken: null,
-      user: null,
-      setTokens: (access, refresh) => set({ accessToken: access, refreshToken: refresh }),
-      setUser: (user) => set({ user }),
-      logout: () => set({ accessToken: null, refreshToken: null, user: null }),
-      isAuthenticated: () => Boolean(get().accessToken),
-      hasRole: (...roles) => {
-        const userRoles = get().user?.roles ?? [];
-        return roles.some((r) => userRoles.includes(r));
-      },
-    }),
-    { name: "ch-auth" },
-  ),
-);
+// Deliberately NOT wrapped in `persist`: tokens must never reach localStorage.
+// A reload re-derives the access token from the httpOnly refresh cookie.
+export const useAuthStore = create<AuthState>()((set, get) => ({
+  accessToken: null,
+  user: null,
+  bootstrapped: false,
+  setAccessToken: (token) => set({ accessToken: token }),
+  setUser: (user) => set({ user }),
+  setBootstrapped: (value) => set({ bootstrapped: value }),
+  clear: () => set({ accessToken: null, user: null }),
+  isAuthenticated: () => Boolean(get().accessToken),
+  hasRole: (...roles) => {
+    const userRoles = get().user?.roles ?? [];
+    return roles.some((r) => userRoles.includes(r));
+  },
+}));

@@ -1,27 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import { useAuthStore } from "@/stores/auth-store";
 
 /**
  * Inverse of AuthGuard: redirects already-authenticated users away from
- * guest-only pages (login, register, forgot-password) to the dashboard.
+ * guest-only pages (login, register, forgot-password) to the dashboard. Waits
+ * for the boot-time session restore before deciding.
  */
 export function GuestGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const [mounted, setMounted] = useState(false);
+  const bootstrapped = useAuthStore((s) => s.bootstrapped);
   const accessToken = useAuthStore((s) => s.accessToken);
 
-  useEffect(() => setMounted(true), []);
-
   useEffect(() => {
-    if (mounted && accessToken) {
+    if (bootstrapped && accessToken) {
       router.replace("/dashboard");
     }
-  }, [mounted, accessToken, router]);
+  }, [bootstrapped, accessToken, router]);
 
-  if (mounted && accessToken) return null;
+  if (bootstrapped && accessToken) return null;
   return <>{children}</>;
 }
