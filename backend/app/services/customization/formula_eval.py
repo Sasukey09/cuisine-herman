@@ -21,11 +21,41 @@ import ast
 import operator
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-_MAX_POW = 8  # cap exponent magnitude to prevent CPU/memory blowups
+# --- DoS guards (I4) -------------------------------------------------------- #
+# The per-node exponent cap alone does NOT bound value growth under nesting:
+# ((((2**8)**8)**8)...) keeps every exponent at 8 while the value grows as
+# 2^(8^n). A ~60-char formula could then materialise a multi-gigabyte big-int and
+# OOM the worker — and any tenant member can trigger it via GET /metrics/evaluate.
+# Three layers close it: a formula-length cap, an AST size/depth cap, and — the
+# real fix — a bit-length cap on every integer intermediate, so an exploding
+# power is refused the instant it exceeds what food-cost maths could ever need.
+_MAX_POW = 8            # cap exponent magnitude
+_MAX_FORMULA_LEN = 500  # chars — a real metric formula is short
+_MAX_NODES = 200        # total AST nodes
+_MAX_DEPTH = 40         # AST nesting depth
+_MAX_INT_BITS = 256     # ~10^77; costing values never approach this
 
 
 class FormulaError(Exception):
     pass
+
+
+def _check_complexity(tree: ast.AST) -> None:
+    """Bound the AST size and nesting depth before anything is evaluated."""
+    nodes = 0
+
+    def depth(node: ast.AST, d: int) -> int:
+        nonlocal nodes
+        nodes += 1
+        if nodes > _MAX_NODES:
+            raise FormulaError("Formule trop complexe")
+        children = list(ast.iter_child_nodes(node))
+        if not children:
+            return d
+        return max(depth(c, d + 1) for c in children)
+
+    if depth(tree, 1) > _MAX_DEPTH:
+        raise FormulaError("Formule trop imbriquée")
 
 
 _BIN_OPS = {
@@ -52,10 +82,14 @@ _FUNCS = {"min": min, "max": max, "round": round, "abs": abs}
 def _parse(expression: str) -> ast.Expression:
     if not expression or not expression.strip():
         raise FormulaError("Formule vide")
+    if len(expression) > _MAX_FORMULA_LEN:
+        raise FormulaError(f"Formule trop longue (max {_MAX_FORMULA_LEN} caractères)")
     try:
-        return ast.parse(expression, mode="eval")
+        tree = ast.parse(expression, mode="eval")
     except SyntaxError as exc:
         raise FormulaError(f"Syntaxe invalide : {exc.msg}") from exc
+    _check_complexity(tree)
+    return tree
 
 
 def collect_names(expression: str) -> List[str]:
@@ -136,9 +170,14 @@ def _eval(node: ast.AST, ctx: Dict[str, Any]) -> Any:
         if op_type is ast.Pow and (abs(right) > _MAX_POW):
             raise FormulaError(f"Exposant trop grand (max {_MAX_POW})")
         try:
-            return _BIN_OPS[op_type](left, right)
+            result = _BIN_OPS[op_type](left, right)
         except ZeroDivisionError:
             return None
+        # Refuse a runaway integer before it grows to gigabytes: this is what
+        # stops nested exponentiation, whatever the per-node exponent.
+        if type(result) is int and result.bit_length() > _MAX_INT_BITS:
+            raise FormulaError("Résultat numérique trop grand")
+        return result
 
     if isinstance(node, ast.UnaryOp):
         op_type = type(node.op)

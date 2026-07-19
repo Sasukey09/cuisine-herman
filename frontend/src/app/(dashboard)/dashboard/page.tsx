@@ -59,13 +59,14 @@ export default function DashboardPage() {
           icon={Wallet}
           loading={costTrends.isLoading}
           hint={`${latest.length} recette(s) calculée(s)`}
+          accentClassName="bg-gradient-terracotta text-white"
         />
         <StatCard
           title="Food cost moyen"
           value={formatPercent(avgFoodCost)}
           icon={Percent}
           loading={costTrends.isLoading}
-          accentClassName="bg-amber-500/10 text-amber-600 dark:text-amber-400"
+          accentClassName="bg-gradient-amber text-white"
         />
         <StatCard
           title="Dépense cumulée"
@@ -73,7 +74,7 @@ export default function DashboardPage() {
           icon={ShoppingCart}
           loading={topProducts.isLoading}
           hint={`${products.length} produit(s) acheté(s)`}
-          accentClassName="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+          accentClassName="bg-gradient-teal text-white"
         />
         <StatCard
           title="Plats à perte"
@@ -87,8 +88,8 @@ export default function DashboardPage() {
           }
           accentClassName={
             losing.length > 0
-              ? "bg-destructive/10 text-destructive"
-              : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+              ? "bg-gradient-danger text-white"
+              : "bg-gradient-teal text-white"
           }
         />
       </div>

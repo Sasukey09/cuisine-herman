@@ -1,0 +1,73 @@
+# Publier FoodGad sur TestFlight avec Codemagic
+
+> Le workflow est dans [`codemagic.yaml`](../codemagic.yaml) (racine du dépôt).
+> **Aucun secret n'est dans le dépôt** : tout ce qui est sensible (clé App Store
+> Connect) se configure dans l'interface Codemagic, et n'est jamais partagé ici.
+
+## Ce que tu configures dans Codemagic (une fois)
+
+1. **Connecter le dépôt** : Codemagic → *Add application* → ton repo Git → sélectionner
+   *codemagic.yaml* comme configuration.
+2. **Ajouter la clé App Store Connect API** : Codemagic → *Teams → Integrations →
+   App Store Connect* → coller **Issuer ID**, **Key ID** et le fichier **`.p8`**.
+   Donne-lui un **nom** (étiquette).
+3. **Aligner le nom** : reporter ce nom dans `codemagic.yaml` →
+   `integrations.app_store_connect: <ce nom>` (par défaut `FoodGad ASC`).
+
+## La seule valeur à vérifier dans le YAML
+
+`environment.ios_signing.bundle_identifier` **doit être exactement** le Bundle ID
+de ton app dans App Store Connect. La valeur par défaut est celle dérivée du projet
+Flutter : `com.foodgad.foodgadMobile`. Si ton enregistrement Apple diffère, remplace
+cette ligne (rien d'autre).
+
+## Prérequis côté Apple (déjà en place chez toi)
+
+- Compte **Apple Developer Program** actif.
+- Une **app enregistrée** dans App Store Connect avec ce Bundle ID.
+- La **signature** est gérée automatiquement par Codemagic à partir de la clé App
+  Store Connect (`distribution_type: app_store` + `xcode-project use-profiles`) —
+  rien à téléverser manuellement.
+
+## Lancer une bêta
+
+- Depuis l'interface Codemagic : *Start new build* → workflow **FoodGad iOS —
+  TestFlight**.
+- Ou via l'**API Codemagic** (le token reste chez toi) : `POST /builds` avec l'ID
+  d'app et `workflow_id: ios-testflight`.
+
+Chaque build incrémente automatiquement le numéro (`PROJECT_BUILD_NUMBER`), puis
+l'IPA est envoyé à **TestFlight**. Les testeurs reçoivent la mise à jour via
+l'app **TestFlight** sur leur iPhone.
+
+## Notes propres à FoodGad
+
+- Le dossier `mobile/ios` est **gitignoré et régénéré** par le workflow
+  (`flutter create --platforms=ios`), comme `android/` l'est en CI GitHub. Ne le
+  commite pas.
+- Le backend de prod visé par l'app mobile est défini par `API_BASE_URL`
+  ([mobile/lib/core/config.dart](../mobile/lib/core/config.dart)). Pour pointer la
+  bêta ailleurs, ajoute `--dart-define=API_BASE_URL=...` à l'étape *Build IPA*.
+## Android → test interne Google Play (workflow `android-internal`)
+
+Ajouté dans le même `codemagic.yaml`. Prérequis côté toi (hors dépôt) :
+
+1. **Générer l'upload key** : `sh scripts/android/generate_upload_keystore.sh`
+   (voir [ANDROID-RELEASE.md](ANDROID-RELEASE.md)).
+2. **Téléverser le keystore** dans Codemagic → *Teams → Code signing identities →
+   Android keystores*, nom de référence `foodgad_upload` (à aligner avec
+   `environment.android_signing` dans le YAML).
+3. **Compte de service Google Play** : *Teams → Integrations → Google Play* (JSON
+   de compte de service GCP) → exposé via la variable
+   `GCLOUD_SERVICE_ACCOUNT_CREDENTIALS` dans un groupe `google_play`.
+4. **App créée** dans la Google Play Console avec l'applicationId
+   `com.foodgad.foodgad_mobile`.
+
+Le workflow régénère `android/`, écrit `key.properties` depuis le keystore
+Codemagic, build l'`.aab` release et le publie sur le track **internal**.
+
+## Ce que je ne fais pas
+
+- Je ne déclenche pas le build ni la publication depuis mon environnement.
+- Je ne prends pas ton **API token Codemagic** ni ta **clé App Store Connect** :
+  ils restent chez toi / dans Codemagic. Me les coller les exposerait.

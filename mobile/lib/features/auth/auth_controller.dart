@@ -108,6 +108,16 @@ class AuthController extends Notifier<AuthState> {
       // offline, or the token is already dead — log out locally anyway
     }
     await ref.read(tokenStoreProvider).clear();
+    // Wipe this account's local data so the next user on the same device never
+    // sees it: the offline cache (cached products/invoices/recipes/suppliers)
+    // and the outbox (pending offline writes, which would otherwise replay into
+    // the next user's tenant). Best-effort: a failure here must not trap logout.
+    try {
+      await (await ref.read(offlineCacheProvider.future)).clear();
+      await (await ref.read(outboxProvider.future)).clear();
+    } catch (_) {
+      // storage unavailable — token is already gone, which is the essential part
+    }
     state = const AuthState(status: AuthStatus.unauthenticated);
   }
 }

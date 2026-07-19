@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger, log_event
-from .config import AIConfig, get_ai_config
+from .config import AIConfig, get_ai_config, select_model
 from .errors import AINotConfiguredError, AIProviderError
 from . import context as ai_context
 from . import tools as ai_tools
@@ -23,7 +23,7 @@ from . import tools as ai_tools
 logger = get_logger("ai.assistant")
 
 SYSTEM_PROMPT = (
-    "Tu es l'assistant IA de Cuisine Herman, une plateforme de gestion de "
+    "Tu es l'assistant IA de FoodGad, une plateforme de gestion de "
     "restauration. Tu aides à analyser les recettes, optimiser les coûts "
     "matière, suggérer des remplacements d'ingrédients moins chers, détecter les "
     "erreurs de fiches techniques et répondre aux questions de gestion.\n\n"
@@ -73,12 +73,18 @@ class AIAssistant:
         self._client = anthropic.Anthropic()
         return self._client
 
-    def _create(self, cfg: AIConfig, messages: List[Dict[str, Any]], system_prompt: str):
+    def _create(
+        self,
+        cfg: AIConfig,
+        messages: List[Dict[str, Any]],
+        system: Any,
+        model: str,
+    ):
         client = self._get_client()
         kwargs: Dict[str, Any] = {
-            "model": cfg.model,
+            "model": model,
             "max_tokens": cfg.max_tokens,
-            "system": system_prompt,
+            "system": system,
             "messages": messages,
             "tools": ai_tools.tool_schemas(),
             "thinking": {"type": "adaptive"},
@@ -110,7 +116,22 @@ class AIAssistant:
         # might reveal a price spike. Now it already knows what is going wrong in
         # THIS restaurant before the chef says a word.
         situation = ai_context.build_situation(db, tenant_id)
-        system_prompt = SYSTEM_PROMPT + ai_context.render_briefing(situation)
+        briefing = ai_context.render_briefing(situation)
+        # Prompt caching (I6): the large, stable SYSTEM_PROMPT — and the tool
+        # schemas that render before it — are cached at this breakpoint. The
+        # per-tenant briefing sits AFTER it (no breakpoint) because it changes
+        # every request. The cached prefix is reused across the tool loop and
+        # across requests within the cache TTL, cutting input cost sharply.
+        system: List[Dict[str, Any]] = [
+            {"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}},
+        ]
+        if briefing:
+            system.append({"type": "text", "text": briefing})
+
+        # Pick the model ONCE for the whole conversation: a simple question runs
+        # on Haiku, everything else on Opus. Choosing once keeps the prompt cache
+        # valid (switching models mid-loop would invalidate it).
+        model = select_model(message, cfg)
 
         messages: List[Dict[str, Any]] = []
         for turn in history or []:
@@ -125,7 +146,7 @@ class AIAssistant:
         reply_text = ""
 
         for iteration in range(cfg.max_tool_iterations):
-            response = self._create(cfg, messages, system_prompt)
+            response = self._create(cfg, messages, system, model)
             _accumulate_usage(usage, getattr(response, "usage", None))
 
             content_blocks = list(getattr(response, "content", []) or [])

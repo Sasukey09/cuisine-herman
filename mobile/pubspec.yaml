@@ -1,5 +1,5 @@
-name: cuisine_herman_mobile
-description: Application mobile Cuisine Herman (Flutter) — gestion de restauration.
+name: foodgad_mobile
+description: Application mobile FoodGad (Flutter) — gestion de restauration.
 publish_to: "none"
 version: 0.1.0+1
 
@@ -32,3 +32,13 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # Polices du design FoodGad (Claude Design) — fichiers variables (axe wght ;
+  # Flutter 3.4+ mappe TextStyle.fontWeight sur l'axe wght). Licence OFL incluse.
+  fonts:
+    - family: Public Sans
+      fonts:
+        - asset: assets/fonts/PublicSans.ttf
+    - family: Newsreader
+      fonts:
+        - asset: assets/fonts/Newsreader.ttf

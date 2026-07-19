@@ -130,7 +130,7 @@ export function VideoImportView() {
     <>
       <PageHeader
         title="Import depuis une vidéo"
-        description="Collez un lien (YouTube, TikTok, Instagram…) OU importez un fichier vidéo. L'IA en extrait une fiche recette modifiable, puis la chiffre avec vos prix."
+        description="Collez un lien (YouTube, TikTok, Instagram, Facebook…) OU importez un fichier vidéo. L'IA en extrait une fiche recette modifiable, puis la chiffre avec vos prix."
       />
 
       <form onSubmit={onExtract} className="flex flex-col gap-2 sm:flex-row">
@@ -140,7 +140,7 @@ export function VideoImportView() {
           placeholder="https://www.youtube.com/watch?v=…"
           className="flex-1"
         />
-        <Button type="submit" disabled={extract.isPending || !url.trim()}>
+        <Button type="submit" variant="gradient" disabled={extract.isPending || !url.trim()}>
           {extract.isPending ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (

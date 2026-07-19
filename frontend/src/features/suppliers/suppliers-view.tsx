@@ -48,6 +48,7 @@ export function SuppliersView() {
         </div>
         {canWrite && (
           <Button
+            variant="gradient"
             onClick={() => {
               setEditing(null);
               setFormOpen(true);

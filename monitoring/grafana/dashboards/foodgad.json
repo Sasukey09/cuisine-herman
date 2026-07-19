@@ -1,7 +1,7 @@
 {
-  "uid": "cuisine-herman",
-  "title": "Cuisine Herman — Observabilité",
-  "tags": ["cuisine-herman"],
+  "uid": "foodgad",
+  "title": "FoodGad — Observabilité",
+  "tags": ["foodgad"],
   "timezone": "browser",
   "schemaVersion": 39,
   "version": 1,

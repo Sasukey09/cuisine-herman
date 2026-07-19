@@ -8,7 +8,7 @@ from typing import Optional, Dict, Any, List
 from sqlalchemy.orm import Session
 
 from app.models.models import Invoice, InvoiceLine
-from app.crud import crud_invoice_line, crud_price, crud_match
+from app.crud import crud_invoice_line, crud_price, crud_match, crud_supplier
 from app.services.matching.product_matcher import match_product
 from app.services.costing import cost_engine
 from app.core import metrics
@@ -33,6 +33,19 @@ def persist_extraction(db: Session, tenant_id: str, invoice_id: str, extraction)
         invoice.total_amount = extraction.total_amount
     invoice.ocr_status = "parsed"
     invoice.parsed = True
+
+    # Link the supplier. Without this, every price/purchase row derived from an
+    # OCR-ingested invoice carried supplier_id=NULL: supplier comparison and
+    # per-supplier price alerts silently collapsed. Resolve the extracted name to
+    # a real supplier (creating it if new); never overwrite a supplier the user
+    # already set at upload time.
+    supplier_name = getattr(extraction, "supplier", None)
+    if invoice.supplier_id is None and supplier_name:
+        supplier = crud_supplier.get_or_create_supplier_by_name(
+            db, tenant_id, supplier_name
+        )
+        if supplier is not None:
+            invoice.supplier_id = supplier.id
 
     units_by_code = crud_price.get_units_by_code(db)
     created: List[InvoiceLine] = []
@@ -61,6 +74,13 @@ def _price_and_recompute(
     """
     if not line.product_id or line.unit_price is None:
         return None
+    # Idempotent by construction: drop any price row previously derived from THIS
+    # line before recreating it. Without this, re-running /process (or re-mapping a
+    # line) stacked a second ProductPrice per line, skewing price history and the
+    # two-snapshot margin comparison. The purchase-history and margin-alert paths
+    # below already delete-then-insert per line, so the whole pipeline is now safe
+    # to replay: no duplicate price, no duplicate history, no duplicate alert.
+    crud_price.delete_prices_for_line(db, tenant_id, str(line.id))
     price = crud_price.create_price(
         db,
         tenant_id=tenant_id,
@@ -101,14 +121,21 @@ def process_invoice(
     for line in lines:
         if auto_match and not line.product_id and line.description:
             res = match_product(db, tenant_id, line.description)
-            if res["product_id"]:
+            # I3: only a CONFIDENT match (>= review threshold, manual_review False)
+            # is bound and priced automatically. A below-threshold match — however
+            # tempting its score — is ambiguous: it is flagged for human validation
+            # and left UNBOUND and UNPRICED, so a "Filet de bœuf" fuzzily matched to
+            # "Filet de poulet" at 68 % can never quietly give chicken a beef price.
+            if res["product_id"] and not res["manual_review"]:
                 line.product_id = res["product_id"]
                 line.match_confidence = res["confidence_score"]
                 db.add(line)
                 db.commit()
                 matched += 1
-            if res["manual_review"]:
+            else:
+                # no match, or an ambiguous one: needs a human, never auto-priced
                 needs_review.append(str(line.id))
+                continue
 
         if _price_and_recompute(db, tenant_id, line, invoice):
             prices_created += 1
@@ -163,7 +190,8 @@ def reprice_line(db: Session, tenant_id: str, line: InvoiceLine) -> Optional[str
     invoice = db.query(Invoice).filter(Invoice.id == line.invoice_id).first()
     if invoice is None:
         return None
-    crud_price.delete_prices_for_line(db, tenant_id, str(line.id))
+    # _price_and_recompute now deletes the line's prior price rows itself, so the
+    # explicit delete that used to live here is redundant.
     return _price_and_recompute(db, tenant_id, line, invoice)
 
 

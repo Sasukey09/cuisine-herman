@@ -263,7 +263,7 @@ export function ReportsView() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 pt-1">
-            <Button onClick={onPreview} disabled={runAdhoc.isPending}>
+            <Button variant="gradient" onClick={onPreview} disabled={runAdhoc.isPending}>
               {runAdhoc.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
               <span className="ml-1">Aperçu</span>
             </Button>

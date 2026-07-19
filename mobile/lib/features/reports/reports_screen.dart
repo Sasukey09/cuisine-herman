@@ -96,7 +96,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           padding: const EdgeInsets.fromLTRB(18, 4, 18, 24),
           children: [
             const Text('Modèles',
-                style: TextStyle(fontFamily: 'serif', fontSize: 15.5, fontWeight: FontWeight.w600)),
+                style: TextStyle(fontFamily: 'Newsreader', fontSize: 15.5, fontWeight: FontWeight.w600)),
             const SizedBox(height: 10),
             for (final s in list) ...[
               _sourceCard(s as Map<String, dynamic>, list),
@@ -104,7 +104,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             ],
             const SizedBox(height: 4),
             const Text('Rapport personnalisé',
-                style: TextStyle(fontFamily: 'serif', fontSize: 15.5, fontWeight: FontWeight.w600)),
+                style: TextStyle(fontFamily: 'Newsreader', fontSize: 15.5, fontWeight: FontWeight.w600)),
             const SizedBox(height: 6),
             Row(
               children: [
@@ -248,7 +248,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                   children: [
                     Text('${s['label']}',
                         style: const TextStyle(
-                            fontFamily: 'serif', fontSize: 15.5, fontWeight: FontWeight.w600)),
+                            fontFamily: 'Newsreader', fontSize: 15.5, fontWeight: FontWeight.w600)),
                     const SizedBox(height: 2),
                     Text('$cols colonnes', style: const TextStyle(fontSize: 12, color: kMuted)),
                   ],

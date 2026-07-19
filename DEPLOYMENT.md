@@ -1,4 +1,4 @@
-# Déploiement — Cuisine Herman
+# Déploiement — FoodGad
 
 Objectif : mettre le backend (API) et le frontend en ligne avec une **URL publique HTTPS**,
 prérequis indispensable pour une app mobile.
@@ -28,7 +28,7 @@ git init
 git add .
 git commit -m "Initial commit"
 git branch -M main
-git remote add origin https://github.com/<toi>/cuisine-herman.git
+git remote add origin https://github.com/<toi>/foodgad.git
 git push -u origin main
 ```
 > ⚠️ Vérifie que `.env` et `.env.production` ne sont **pas** poussés (ils sont dans `.gitignore`).
@@ -71,11 +71,11 @@ MinIO est pour le local ; en prod, utilise un S3 managé (R2 a une offre gratuit
 2. **Root Directory** : `frontend`.
 3. **Environment Variables** :
    - `NEXT_PUBLIC_API_URL` = `https://cuisine-backend.onrender.com/api/v1`
-4. **Deploy**. Note l'URL, ex. `https://cuisine-herman.vercel.app`.
+4. **Deploy**. Note l'URL, ex. `https://foodgad.vercel.app`.
 
 ## 5. Relier les deux (CORS)
 Retourne dans Render (backend) → variable `CORS_ORIGINS` = l'URL Vercel **exacte**
-(sans slash final), ex. `https://cuisine-herman.vercel.app`. Render redéploie.
+(sans slash final), ex. `https://foodgad.vercel.app`. Render redéploie.
 
 ## 6. Vérifications finales
 1. Ouvre l'URL Vercel → page de connexion.

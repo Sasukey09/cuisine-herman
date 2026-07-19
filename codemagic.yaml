@@ -1,0 +1,156 @@
+# ---------------------------------------------------------------------------
+# FoodGad — pipeline Codemagic : build iOS + publication TestFlight (beta Apple).
+#
+# AUCUN SECRET ICI. La cle App Store Connect (Issuer ID + Key ID + .p8) se
+# configure dans l'interface Codemagic (Teams -> Integrations -> App Store
+# Connect), puis se reference par son NOM ci-dessous (`integrations`).
+#
+# Le dossier mobile/ios est gitignore et regenere par `flutter create` (comme
+# android/ dans la CI GitHub) : le workflow le regenere avant de builder.
+#
+# A CONFIRMER PAR TOI (une seule valeur critique) : le Bundle ID doit etre
+# EXACTEMENT celui enregistre dans App Store Connect. Voir `bundle_identifier`.
+# ---------------------------------------------------------------------------
+workflows:
+  ios-testflight:
+    name: FoodGad iOS — TestFlight
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+
+    integrations:
+      # NOM de ta cle App Store Connect dans Codemagic (Teams -> Integrations).
+      # Ce n'est pas la cle, juste son etiquette. Doit correspondre EXACTEMENT.
+      app_store_connect: cuisine-herman
+
+    environment:
+      # Meme version que la CI GitHub du projet, pour des builds reproductibles.
+      flutter: 3.44.1
+      xcode: latest
+      cocoapods: default
+      ios_signing:
+        distribution_type: app_store
+        # Bundle ID de l'app "FoodGad" dans App Store Connect (App ID
+        # "Application Cuisine"). Non-standard mais accepte par Apple; l'app est
+        # deja creee avec, donc le build doit produire EXACTEMENT cet identifiant.
+        bundle_identifier: foodgad-ios-2026
+
+    scripts:
+      - name: Regenerer le projet iOS (ios/ est gitignore)
+        script: |
+          cd mobile
+          flutter create --platforms=ios --org com.foodgad --project-name foodgad_mobile .
+
+      - name: Fixer le nom affiche de l'app a FoodGad
+        script: |
+          plutil -replace CFBundleDisplayName -string "FoodGad" \
+            "$CM_BUILD_DIR/mobile/ios/Runner/Info.plist"
+
+      - name: Recuperer les dependances Flutter
+        script: |
+          cd mobile
+          flutter pub get
+
+      - name: Installer les pods
+        script: |
+          cd mobile/ios
+          pod install || true
+
+      - name: Signature iOS — creer/recuperer certificat + profil, puis appliquer
+        script: |
+          # Cree le certificat de distribution ET le profil app_store s'ils
+          # n'existent pas (--create), via la cle App Store Connect. Corrige
+          # "No matching profiles found". Necessite une cle de role App Manager
+          # ou Admin (droit de gerer certificats/profils).
+          keychain initialize
+          app-store-connect fetch-signing-files "foodgad-ios-2026" \
+            --type IOS_APP_STORE --create
+          keychain add-certificates
+          cd mobile
+          xcode-project use-profiles
+
+      - name: Build IPA (release, numero de build auto-incremente)
+        script: |
+          cd mobile
+          # PROJECT_BUILD_NUMBER est fourni par Codemagic et s'incremente a
+          # chaque build : evite l'erreur "build number already used" sur TestFlight.
+          flutter build ipa --release \
+            --build-number=$PROJECT_BUILD_NUMBER \
+            --export-options-plist=/Users/builder/export_options.plist
+
+    artifacts:
+      - mobile/build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - flutter_drive.log
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        # Envoi automatique vers TestFlight (beta). Passe a false si tu veux
+        # d'abord recuperer l'IPA et televerser a la main.
+        submit_to_testflight: true
+        # Optionnel : ajoute automatiquement le build a un groupe de testeurs
+        # deja cree dans App Store Connect (decommente + mets le nom exact).
+        # beta_groups:
+        #   - Testeurs internes
+
+  # -------------------------------------------------------------------------
+  # Android -> test interne Google Play.
+  #
+  # PREREQUIS (cote toi, hors depot) :
+  #  1. Generer l'upload key : sh scripts/android/generate_upload_keystore.sh
+  #     (voir docs/ANDROID-RELEASE.md).
+  #  2. Televerser le keystore dans Codemagic : Teams -> Code signing identities
+  #     -> Android keystores. Lui donner un nom de reference (defaut : foodgad_upload).
+  #  3. Ajouter le compte de service Google Play : Teams -> Integrations ->
+  #     Google Play (JSON de compte de service GCP), reference par la variable
+  #     GCLOUD_SERVICE_ACCOUNT_CREDENTIALS (groupe google_play).
+  #  4. L'app doit exister dans la Google Play Console avec l'applicationId
+  #     com.foodgad.foodgad_mobile.
+  # -------------------------------------------------------------------------
+  android-internal:
+    name: FoodGad Android — Test interne Google Play
+    instance_type: linux_x2
+    max_build_duration: 60
+
+    environment:
+      flutter: 3.44.1
+      groups:
+        - google_play        # <-- doit contenir GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+      android_signing:
+        - foodgad_upload     # <-- nom de reference du keystore dans Codemagic
+
+    scripts:
+      - name: Regenerer le scaffolding Android (android/ partiellement gitignore)
+        script: |
+          cd mobile
+          flutter create --platforms=android --org com.foodgad --project-name foodgad_mobile .
+
+      - name: Recuperer les dependances Flutter
+        script: |
+          cd mobile
+          flutter pub get
+
+      - name: Ecrire key.properties depuis le keystore Codemagic
+        script: |
+          cd mobile/android
+          cat > key.properties <<EOF
+          storePassword=$CM_KEYSTORE_PASSWORD
+          keyPassword=$CM_KEY_PASSWORD
+          keyAlias=$CM_KEY_ALIAS
+          storeFile=$CM_KEYSTORE_PATH
+          EOF
+
+      - name: Build App Bundle (release, numero de build auto-incremente)
+        script: |
+          cd mobile
+          flutter build appbundle --release --build-number=$PROJECT_BUILD_NUMBER
+
+    artifacts:
+      - mobile/build/app/outputs/bundle/release/*.aab
+      - mobile/build/app/outputs/**/mapping.txt
+
+    publishing:
+      google_play:
+        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+        track: internal
+        submit_as_draft: false

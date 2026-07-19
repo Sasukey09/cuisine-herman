@@ -36,7 +36,7 @@ def test_backoff_doubles_then_caps():
 # --- per-account guard ------------------------------------------------------
 
 def test_account_is_locked_after_the_free_attempts(guard):
-    email, ip = "chef@herman.fr", "1.2.3.4"
+    email, ip = "chef@foodgad.fr", "1.2.3.4"
     assert guard.retry_after(email, ip) == 0
 
     for _ in range(FREE_ATTEMPTS):
@@ -51,20 +51,20 @@ def test_account_is_locked_after_the_free_attempts(guard):
 def test_lock_is_scoped_to_the_attacked_account(guard):
     ip = "1.2.3.4"
     for _ in range(FREE_ATTEMPTS + 1):
-        guard.record_failure("victim@herman.fr", ip)
+        guard.record_failure("victim@foodgad.fr", ip)
 
-    assert guard.retry_after("victim@herman.fr", None) > 0
-    assert guard.retry_after("someone-else@herman.fr", None) == 0
+    assert guard.retry_after("victim@foodgad.fr", None) > 0
+    assert guard.retry_after("someone-else@foodgad.fr", None) == 0
 
 
 def test_email_case_and_padding_do_not_bypass_the_lock(guard):
     for _ in range(FREE_ATTEMPTS + 1):
-        guard.record_failure("chef@herman.fr", None)
-    assert guard.retry_after("  CHEF@Herman.FR ", None) > 0
+        guard.record_failure("chef@foodgad.fr", None)
+    assert guard.retry_after("  CHEF@Foodgad.FR ", None) > 0
 
 
 def test_successful_login_clears_the_account_counter(guard):
-    email, ip = "chef@herman.fr", "1.2.3.4"
+    email, ip = "chef@foodgad.fr", "1.2.3.4"
     for _ in range(FREE_ATTEMPTS):
         guard.record_failure(email, ip)
     guard.record_success(email, ip)
@@ -80,22 +80,22 @@ def test_successful_login_clears_the_account_counter(guard):
 def test_ip_is_locked_after_many_failures_across_accounts(guard):
     ip = "9.9.9.9"
     for i in range(IP_FREE_ATTEMPTS + 1):
-        guard.record_failure(f"user{i}@herman.fr", ip)
+        guard.record_failure(f"user{i}@foodgad.fr", ip)
 
     # A brand-new account from that IP is refused too.
-    assert guard.retry_after("fresh@herman.fr", ip) > 0
+    assert guard.retry_after("fresh@foodgad.fr", ip) > 0
     # …but the same account from elsewhere is fine.
-    assert guard.retry_after("fresh@herman.fr", "5.5.5.5") == 0
+    assert guard.retry_after("fresh@foodgad.fr", "5.5.5.5") == 0
 
 
 def test_success_does_not_reset_the_ip_budget(guard):
     """Otherwise an attacker with one valid account resets their IP budget."""
     ip = "9.9.9.9"
     for i in range(IP_FREE_ATTEMPTS + 1):
-        guard.record_failure(f"user{i}@herman.fr", ip)
-    guard.record_success("attacker-own-account@herman.fr", ip)
+        guard.record_failure(f"user{i}@foodgad.fr", ip)
+    guard.record_success("attacker-own-account@foodgad.fr", ip)
 
-    assert guard.retry_after("fresh@herman.fr", ip) > 0
+    assert guard.retry_after("fresh@foodgad.fr", ip) > 0
 
 
 # --- availability -----------------------------------------------------------
@@ -117,6 +117,6 @@ def test_guard_fails_open_when_the_store_is_broken():
             raise ConnectionError("redis down")
 
     broken = LoginGuard(BrokenStore())
-    assert broken.retry_after("chef@herman.fr", "1.2.3.4") == 0
-    assert broken.record_failure("chef@herman.fr", "1.2.3.4") == 0
-    broken.record_success("chef@herman.fr", "1.2.3.4")  # must not raise
+    assert broken.retry_after("chef@foodgad.fr", "1.2.3.4") == 0
+    assert broken.record_failure("chef@foodgad.fr", "1.2.3.4") == 0
+    broken.record_success("chef@foodgad.fr", "1.2.3.4")  # must not raise

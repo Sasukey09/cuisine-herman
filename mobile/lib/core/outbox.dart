@@ -115,6 +115,13 @@ class Outbox {
     await _save(list().where((e) => e.id != id).toList());
   }
 
+  /// Drop every pending write. Called on logout so one account's un-synced
+  /// offline writes are never replayed under whoever logs in next on the same
+  /// device (that would post them into the wrong tenant).
+  Future<void> clear() async {
+    await _prefs.remove(_key);
+  }
+
   /// Replay the queue. Returns how many writes finally landed.
   ///
   /// Stops at the first network failure: if the connection is still down there

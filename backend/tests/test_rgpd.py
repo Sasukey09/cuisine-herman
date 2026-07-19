@@ -14,7 +14,7 @@ from app.main import app
 def _as(role: str, tenant: str = "t1"):
     app.dependency_overrides[get_current_tenant_id] = lambda: tenant
     app.dependency_overrides[get_current_user] = lambda: N(
-        id="u1", tenant_id=tenant, email="chef@herman.fr", token_version=0
+        id="u1", tenant_id=tenant, email="chef@foodgad.fr", token_version=0
     )
     app.dependency_overrides[get_current_roles] = lambda: [role]
 
@@ -34,7 +34,7 @@ def test_deleting_an_organization_requires_retyping_its_exact_name(monkeypatch):
             return self
 
         def first(self):
-            return N(id="t1", name="Restaurant Herman")
+            return N(id="t1", name="Restaurant FoodGad")
 
     class FakeDB:
         def query(self, *a):
@@ -54,13 +54,13 @@ def test_deleting_an_organization_requires_retyping_its_exact_name(monkeypatch):
         client = TestClient(app)
 
         wrong = client.post(
-            "/api/v1/rgpd/delete-organization", json={"confirm_name": "Restaurant Hermann"}
+            "/api/v1/rgpd/delete-organization", json={"confirm_name": "Restaurant FoodGud"}
         )
         assert wrong.status_code == 400
         assert not deleted["called"], "a typo must not erase the restaurant"
 
         right = client.post(
-            "/api/v1/rgpd/delete-organization", json={"confirm_name": "Restaurant Herman"}
+            "/api/v1/rgpd/delete-organization", json={"confirm_name": "Restaurant FoodGad"}
         )
         assert right.status_code == 204
         assert deleted["called"]
@@ -131,7 +131,7 @@ def test_the_export_survives_the_types_the_database_actually_returns():
     from fastapi.encoders import jsonable_encoder
 
     payload = {
-        "organization": {"id": str(uuidlib.uuid4()), "name": "Restaurant Herman"},
+        "organization": {"id": str(uuidlib.uuid4()), "name": "Restaurant FoodGad"},
         "products": [
             {
                 "id": uuidlib.uuid4(),

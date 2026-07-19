@@ -78,3 +78,25 @@ def test_ready_skipped_dependency(monkeypatch):
     r = client.get("/ready")
     assert r.status_code == 200
     assert r.json()["checks"]["s3"]["status"] == "skipped"
+
+
+# --- I1: /metrics access control (fail-closed in production) ----------------
+
+from app.main import _metrics_access_status
+
+
+def test_metrics_requires_matching_token_when_configured():
+    # token set: exact Bearer match required
+    assert _metrics_access_status("s3cr3t", "s3cr3t", "production", False) is None
+    assert _metrics_access_status("s3cr3t", "wrong", "production", False) == 401
+    assert _metrics_access_status("s3cr3t", "", "production", False) == 401
+
+
+def test_metrics_fails_closed_in_production_without_token():
+    # no token + production + not a test -> 404 (endpoint hidden, never exposed)
+    assert _metrics_access_status(None, "", "production", False) == 404
+
+
+def test_metrics_open_in_dev_or_under_pytest_without_token():
+    assert _metrics_access_status(None, "", "development", False) is None
+    assert _metrics_access_status(None, "", "production", True) is None

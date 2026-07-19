@@ -17,7 +17,7 @@ const serif = Newsreader({
 });
 
 export const metadata: Metadata = {
-  title: "Cuisine Herman — Gestion de coûts",
+  title: "FoodGad — Gestion de coûts",
   description:
     "Plateforme SaaS de gestion des achats, factures, recettes et coûts matière.",
 };

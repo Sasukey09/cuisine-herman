@@ -1,4 +1,4 @@
-# Cuisine Herman — App mobile (Flutter)
+# FoodGad — App mobile (Flutter)
 
 App mobile native consommant la même API FastAPI que le web. Cette base couvre
 l'**authentification** (login/inscription, refresh de token, stockage sécurisé),
@@ -16,7 +16,7 @@ de plateforme (android/ios/web) sans toucher au code fourni :
 
 ```bash
 cd mobile
-flutter create --org com.cuisineherman --project-name cuisine_herman_mobile --platforms=android,ios,web .
+flutter create --org com.foodgad --project-name foodgad_mobile --platforms=android,ios,web .
 flutter pub get
 ```
 `flutter create` n'écrase pas les fichiers existants (`pubspec.yaml`, `lib/…`).

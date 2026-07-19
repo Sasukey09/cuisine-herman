@@ -78,7 +78,7 @@ export function RegisterForm() {
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="org_name">Organisation</Label>
-            <Input id="org_name" placeholder="Restaurant Herman" {...register("org_name")} />
+            <Input id="org_name" placeholder="Mon restaurant" {...register("org_name")} />
             {errors.org_name && <p className="text-sm text-destructive">{errors.org_name.message}</p>}
           </div>
           <div className="space-y-2">
@@ -104,7 +104,7 @@ export function RegisterForm() {
           </div>
         </CardContent>
         <CardFooter className="flex flex-col gap-3">
-          <Button type="submit" className="w-full" disabled={submitting}>
+          <Button type="submit" variant="gradient" className="w-full" disabled={submitting}>
             {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
             Créer mon compte
           </Button>

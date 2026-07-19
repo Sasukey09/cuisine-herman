@@ -61,6 +61,16 @@ const config: Config = {
           foreground: "hsl(var(--card-foreground))",
         },
       },
+      backgroundImage: {
+        "gradient-terracotta": "linear-gradient(135deg,#d1703d,#a8532a)",
+        "gradient-brand": "linear-gradient(135deg,#d98c5f,#c2632f)",
+        "gradient-teal": "linear-gradient(135deg,#3c8a7a,#204d43)",
+        "gradient-amber": "linear-gradient(135deg,#e0983f,#c2632f)",
+        "gradient-danger": "linear-gradient(135deg,#c05a4a,#8a2e22)",
+      },
+      boxShadow: {
+        glow: "0 4px 12px rgba(194,99,47,.35)",
+      },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",

@@ -34,6 +34,18 @@ import { useAuthStore } from "@/stores/auth-store";
 import { formatCurrency } from "@/lib/utils";
 import type { Product, ProductRow } from "@/services/types";
 
+/** Couleurs de famille produit (design FoodGad) — dot devant la catégorie. */
+const CATEGORY_COLORS: Record<string, string> = {
+  Viande: "#b23a2e",
+  Poisson: "#2f6f62",
+  Crèmerie: "#d97706",
+  Épicerie: "#8a847a",
+  Légumes: "#4a7c3f",
+};
+function categoryColor(c: string) {
+  return CATEGORY_COLORS[c] ?? "#8a847a";
+}
+
 function Variation({ pct }: { pct?: number | null }) {
   if (pct == null) return <span className="text-muted-foreground">—</span>;
   if (Math.abs(pct) < 0.05) return <Badge variant="secondary">0 %</Badge>;
@@ -99,7 +111,7 @@ export function ProductsView() {
           ))}
         </select>
         {canWrite && (
-          <Button onClick={() => { setEditing(null); setFormOpen(true); }}>
+          <Button variant="gradient" onClick={() => { setEditing(null); setFormOpen(true); }}>
             <Plus className="h-4 w-4" />
             Nouveau produit
           </Button>
@@ -147,7 +159,19 @@ export function ProductsView() {
                       {p.name}
                     </Link>
                   </TableCell>
-                  <TableCell className="text-muted-foreground">{p.category ?? "—"}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {p.category ? (
+                      <span className="inline-flex items-center gap-2">
+                        <span
+                          className="h-2 w-2 shrink-0 rounded-full"
+                          style={{ background: categoryColor(p.category) }}
+                        />
+                        {p.category}
+                      </span>
+                    ) : (
+                      "—"
+                    )}
+                  </TableCell>
                   <TableCell className="text-muted-foreground">{p.unit ?? "—"}</TableCell>
                   <TableCell className="font-semibold tabular-nums">
                     {p.last_cost != null ? formatCurrency(p.last_cost, p.currency ?? "EUR") : "—"}

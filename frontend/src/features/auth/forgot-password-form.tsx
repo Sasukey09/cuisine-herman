@@ -85,7 +85,7 @@ export function ForgotPasswordForm() {
           </div>
         </CardContent>
         <CardFooter className="flex flex-col gap-3">
-          <Button type="submit" className="w-full" disabled={pending}>
+          <Button type="submit" variant="gradient" className="w-full" disabled={pending}>
             {pending && <Loader2 className="h-4 w-4 animate-spin" />}
             Envoyer le lien
           </Button>

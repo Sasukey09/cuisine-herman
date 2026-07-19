@@ -11,7 +11,7 @@ alerting:
         - targets: ["alertmanager:9093"]
 
 scrape_configs:
-  - job_name: cuisine-herman-backend
+  - job_name: foodgad-backend
     metrics_path: /metrics
     static_configs:
       - targets: ["backend:8000"]

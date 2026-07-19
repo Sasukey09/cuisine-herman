@@ -19,7 +19,11 @@ databases:
   - name: cuisine-db
     databaseName: cuisine
     user: cuisine
-    plan: free
+    # SAUVEGARDES (B3): le plan `free` n'a AUCUNE sauvegarde. Un plan payant active
+    # les backups quotidiens geres par Render + la restauration point-in-time (PITR).
+    # C'est la strategie de sauvegarde primaire. Voir docs/BACKUP-RESTORE.md pour la
+    # retention, la procedure de restauration et le drill de verification.
+    plan: basic-1gb
     region: frankfurt      # cf. l'entete : les services actuels sont en Oregon
 
 services:
@@ -56,6 +60,13 @@ services:
           property: connectionString
       - key: SECRET_KEY
         generateValue: true          # Render generates a strong secret
+      # I1 — observabilite:
+      - key: METRICS_TOKEN
+        generateValue: true          # /metrics exige "Authorization: Bearer <ce token>"
+      - key: SENTRY_DSN
+        sync: false                  # <-- coller le DSN Sentry pour activer le reporting
+      - key: APP_ENV
+        value: production
       - key: WEB_CONCURRENCY
         value: "2"
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
@@ -89,9 +100,14 @@ services:
       - key: ANTHROPIC_API_KEY
         sync: false                  # required for /ai/chat and video extraction
       - key: AI_MODEL
-        value: claude-opus-4-8
+        value: claude-opus-4-8          # modele par defaut / taches analytiques
       - key: AI_EFFORT
         value: medium
+      # I6 — cout IA: routage vers un modele moins cher pour les questions simples
+      - key: AI_SIMPLE_MODEL
+        value: claude-haiku-4-5
+      - key: AI_MODEL_ROUTING
+        value: "true"
       # --- Video import: Whisper STT for non-YouTube (TikTok/Insta/FB) ---
       - key: OPENAI_API_KEY
         sync: false                  # required only for audio transcription (non-YouTube)
@@ -110,6 +126,10 @@ services:
     plan: free
     region: frankfurt      # cf. l'entete : les services actuels sont en Oregon
     envVars:
+      - key: SENTRY_DSN
+        sync: false                  # meme DSN que le web: remonter les crashs worker
+      - key: APP_ENV
+        value: production
       - key: DATABASE_URL
         fromDatabase:
           name: cuisine-db

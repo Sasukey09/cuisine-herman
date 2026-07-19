@@ -37,7 +37,7 @@ export function StatCard({
           {loading ? (
             <Skeleton className="h-7 w-24" />
           ) : (
-            <p className="text-2xl font-semibold">{value}</p>
+            <p className="font-serif text-2xl font-semibold">{value}</p>
           )}
           {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
         </div>

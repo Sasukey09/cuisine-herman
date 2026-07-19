@@ -55,12 +55,23 @@ def compute_cost_breakdown(
     units: Dict[int, Any],
     yield_qty: Optional[Any],
     selling_price: Optional[Any] = None,
+    unit_categories: Optional[Dict[int, Any]] = None,
 ) -> Dict[str, Any]:
-    """Pure cost computation (no DB). ``units`` maps unit_id -> ratio_to_base."""
+    """Pure cost computation (no DB). ``units`` maps unit_id -> ratio_to_base.
+
+    ``unit_categories`` maps unit_id -> category (mass/volume/count/...). When
+    supplied, a line whose ingredient unit and price unit belong to *different*
+    categories — or reference an unknown unit id — is **refused**: its cost is
+    ``None``, it is excluded from the total, and the recipe is flagged with
+    ``has_incompatible_units``. This is what stops the engine from silently
+    multiplying "200 g" by a price expressed "per litre" and returning a number
+    that looks plausible and is physically meaningless.
+    """
     total_cost = Decimal("0")
     lines: List[Dict[str, Any]] = []
     price_ids: List[str] = []
     missing_prices: List[str] = []
+    incompatible: List[str] = []
 
     for ing in ingredients:
         product_id = str(ing.product_id) if ing.product_id else None
@@ -84,6 +95,26 @@ def compute_cost_breakdown(
                 "line_cost": None,
                 "price_id": None,
                 "missing_price": True,
+            })
+            continue
+
+        # Dimensional safety: never multiply a quantity by a price whose unit lives
+        # in another category (g vs L vs pièce). Only enforced when the caller
+        # supplies the category map; refuse the line rather than compute nonsense.
+        reason = _unit_incompatibility(
+            unit_categories, ing.unit_id, price_row.unit_id
+        )
+        if reason is not None:
+            incompatible.append(product_id)
+            lines.append({
+                "product_id": product_id,
+                "qty_base": _out(qty_base),
+                "unit_price": _out(price_row.price),
+                "line_cost": None,
+                "price_id": str(price_row.id),
+                "missing_price": False,
+                "incompatible_units": True,
+                "incompatible_reason": reason,
             })
             continue
 
@@ -123,10 +154,40 @@ def compute_cost_breakdown(
         "food_cost_pct": _out(food_cost_pct, 2),
         "margin_estimated": _out(margin),
         "has_missing_prices": bool(missing_prices),
+        "has_incompatible_units": bool(incompatible),
         "breakdown": lines,
         "_price_ids": price_ids,
         "_missing_prices": missing_prices,
+        "_incompatible_units": incompatible,
     }
+
+
+def _unit_incompatibility(
+    unit_categories: Optional[Dict[int, Any]],
+    ingredient_unit_id: Optional[int],
+    price_unit_id: Optional[int],
+) -> Optional[str]:
+    """Return a reason string when the ingredient unit and the price unit cannot be
+    safely combined, else ``None``.
+
+    Enforced only when ``unit_categories`` is supplied and *both* unit ids are set:
+    a null unit id means "no unit / already in base" (legacy data) and is left
+    permissive. A set-but-unknown unit id is refused — reference data says nothing
+    about its dimension, so combining it would be a guess.
+    """
+    if not unit_categories:
+        return None
+    if ingredient_unit_id is None or price_unit_id is None:
+        return None
+    ing_cat = unit_categories.get(ingredient_unit_id)
+    price_cat = unit_categories.get(price_unit_id)
+    if ing_cat is None:
+        return f"unite ingredient inconnue (id={ingredient_unit_id})"
+    if price_cat is None:
+        return f"unite prix inconnue (id={price_unit_id})"
+    if ing_cat != price_cat:
+        return f"unites incompatibles: ingredient en '{ing_cat}', prix en '{price_cat}'"
+    return None
 
 
 def compute_recipe_version_cost(
@@ -176,6 +237,7 @@ def compute_recipe_version_cost(
     )
 
     units = unit_ratios(db)
+    categories = unit_categories(db)
 
     # local import avoids a circular import (crud_price -> models -> ...)
     from app.crud import crud_price
@@ -184,12 +246,14 @@ def compute_recipe_version_cost(
         return crud_price.get_latest_price(db, tenant_id, product_id, as_of)
 
     computed = compute_cost_breakdown(
-        ingredients, price_lookup, units, recipe.yield_qty, selling_price
+        ingredients, price_lookup, units, recipe.yield_qty, selling_price,
+        unit_categories=categories,
     )
 
     snapshot_source = {
         "price_ids": computed.pop("_price_ids"),
         "missing_prices": computed.pop("_missing_prices"),
+        "incompatible_units": computed.pop("_incompatible_units", []),
         "lines": computed["breakdown"],
         "as_of": as_of.isoformat() if as_of else None,
         "selling_price": selling_price,
@@ -253,19 +317,30 @@ def recompute_for_product(
 # Cached per process. `reset_unit_cache()` exists for tests and for the day a
 # unit is ever added.
 # --------------------------------------------------------------------------- #
-_UNIT_RATIOS = None
+_UNIT_SERVICE = None
+
+
+def _unit_service(db: Session) -> UnitConversionService:
+    """The reference data (units + conversions) loaded ONCE per process. Both the
+    ratio map and the category map derive from this single load, so enforcing
+    dimensional safety costs no extra query."""
+    global _UNIT_SERVICE
+    if _UNIT_SERVICE is None:
+        _UNIT_SERVICE = UnitConversionService.from_db(db)
+    return _UNIT_SERVICE
 
 
 def unit_ratios(db: Session) -> dict:
-    global _UNIT_RATIOS
-    if _UNIT_RATIOS is None:
-        _UNIT_RATIOS = UnitConversionService.from_db(db).ratio_map()
-    return _UNIT_RATIOS
+    return _unit_service(db).ratio_map()
+
+
+def unit_categories(db: Session) -> dict:
+    return _unit_service(db).category_map()
 
 
 def reset_unit_cache() -> None:
-    global _UNIT_RATIOS
-    _UNIT_RATIOS = None
+    global _UNIT_SERVICE
+    _UNIT_SERVICE = None
 
 
 def compute_costs_for_recipes(
@@ -298,6 +373,7 @@ def compute_costs_for_recipes(
     }
     prices = crud_price.get_latest_prices(db, tenant_id, product_ids, as_of)
     units = unit_ratios(db)
+    categories = unit_categories(db)
 
     out = {}
     for recipe in recipes:
@@ -311,8 +387,10 @@ def compute_costs_for_recipes(
             units,
             recipe.yield_qty,
             selling,
+            unit_categories=categories,
         )
         computed.pop("_price_ids", None)
         computed.pop("_missing_prices", None)
+        computed.pop("_incompatible_units", None)
         out[version_id] = computed
     return out

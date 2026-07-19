@@ -90,3 +90,38 @@ def test_pow_exponent_capped():
 
 def test_collect_names_excludes_functions():
     assert collect_names("round(cost_per_portion * markup, 2)") == ["cost_per_portion", "markup"]
+
+
+# --- I4: DoS guards -------------------------------------------------------- #
+def test_nested_exponentiation_is_refused_before_it_explodes():
+    # Every per-node exponent is 8 (passes the _MAX_POW check), but the value
+    # grows as 2^(8^n). The bit-length guard must refuse it, fast, not OOM.
+    payload = "((((((2**8)**8)**8)**8)**8)**8)**8"
+    with pytest.raises(FormulaError):
+        evaluate(payload, {})
+
+
+def test_small_powers_still_work():
+    assert evaluate("2 ** 8", {}) == 256
+    assert evaluate("cost_per_portion ** 2", CTX) == 6.25
+
+
+def test_overlong_formula_is_rejected():
+    long_formula = "1+" * 400 + "1"   # > 500 chars
+    with pytest.raises(FormulaError):
+        evaluate(long_formula, {})
+    ok, err = validate(long_formula, [])
+    assert ok is False
+
+
+def test_deeply_nested_formula_is_rejected():
+    # Nested unary minus creates real AST depth (parentheses alone do not).
+    deep = "-" * 60 + "1"   # ------...1  -> 60 nested UnaryOp, depth > _MAX_DEPTH
+    with pytest.raises(FormulaError):
+        evaluate(deep, {})
+
+
+def test_too_many_nodes_is_rejected():
+    wide = "+".join(["1"] * 300)   # > _MAX_NODES nodes
+    with pytest.raises(FormulaError):
+        evaluate(wide, {})

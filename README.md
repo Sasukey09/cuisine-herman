@@ -1,4 +1,4 @@
-# Cuisine Herman
+# FoodGad
 
 Gestion des coûts pour la restauration : on importe une facture, l'OCR en extrait les lignes,
 les prix remontent dans les fiches techniques, et le coût matière de chaque recette se met à jour
@@ -51,7 +51,7 @@ cd frontend && npm install && npm run dev
 
 ```bash
 cd mobile
-flutter create --org com.cuisineherman --project-name cuisine_herman_mobile --platforms=android,ios,web .
+flutter create --org com.foodgad --project-name foodgad_mobile --platforms=android,ios,web .
 flutter pub get
 flutter run          # pointe par défaut sur l'API de production
 ```

@@ -49,7 +49,7 @@ export function UsersTable() {
           </CardTitle>
           <CardDescription>Membres de votre organisation.</CardDescription>
         </div>
-        <Button size="sm" onClick={() => setFormOpen(true)}>
+        <Button size="sm" variant="gradient" onClick={() => setFormOpen(true)}>
           <Plus className="h-4 w-4" />
           Ajouter
         </Button>

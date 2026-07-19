@@ -85,3 +85,74 @@ def test_multiple_ingredients_sum():
     )
     assert res["computed_cost_total"] == 16.0  # 10 + 6
     assert len(res["_price_ids"]) == 2
+
+
+# --------------------------------------------------------------------------- #
+# B1 — dimensional safety: the engine must NEVER combine a quantity with a price
+# expressed in a different unit category. unit_id -> category:
+#   1 = mass (kg), 2 = mass (g), 3 = volume (L), 4 = count (pièce)
+# --------------------------------------------------------------------------- #
+CATEGORIES = {1: "mass", 2: "mass", 3: "volume", 4: "count"}
+
+
+def test_incompatible_units_grams_vs_litres_are_refused_not_computed():
+    # ingredient recorded in grams (mass), price expressed per litre (volume).
+    prices = {"p1": price("p1", 2.0, unit_id=3)}  # 2 € / L
+    res = compute_cost_breakdown(
+        [ing("p1", qty=200, unit_id=2)],  # 200 g
+        lookup_from(prices), UNITS, yield_qty=1, unit_categories=CATEGORIES,
+    )
+    line = res["breakdown"][0]
+    assert line["incompatible_units"] is True
+    assert line["line_cost"] is None                 # never a silent number
+    assert res["has_incompatible_units"] is True
+    assert res["computed_cost_total"] == 0.0         # refused line excluded
+    assert res["_incompatible_units"] == ["p1"]
+    assert "mass" in line["incompatible_reason"] and "volume" in line["incompatible_reason"]
+
+
+def test_same_category_still_computes_with_categories_supplied():
+    # 500 g of a product priced 8 € / kg — same category, must compute normally.
+    prices = {"p1": price("p1", 8.0, unit_id=1)}
+    res = compute_cost_breakdown(
+        [ing("p1", qty=500, unit_id=2)],
+        lookup_from(prices), UNITS, yield_qty=1, unit_categories=CATEGORIES,
+    )
+    assert res["computed_cost_total"] == 4.0
+    assert res["has_incompatible_units"] is False
+
+
+def test_unknown_unit_id_is_refused():
+    prices = {"p1": price("p1", 5.0, unit_id=1)}
+    res = compute_cost_breakdown(
+        [ing("p1", qty=1, unit_id=999)],  # 999 not in reference data
+        lookup_from(prices), UNITS, yield_qty=1, unit_categories=CATEGORIES,
+    )
+    assert res["breakdown"][0]["incompatible_units"] is True
+    assert res["has_incompatible_units"] is True
+    assert res["computed_cost_total"] == 0.0
+
+
+def test_null_unit_id_stays_permissive():
+    # A null unit id means "no unit / already base" (legacy data) — not refused.
+    prices = {"p1": price("p1", 5.0, unit_id=None)}
+    res = compute_cost_breakdown(
+        [ing("p1", qty_normalized=2.0, unit_id=None)],
+        lookup_from(prices), UNITS, yield_qty=1, unit_categories=CATEGORIES,
+    )
+    assert res["has_incompatible_units"] is False
+    assert res["computed_cost_total"] == 10.0
+
+
+def test_mixed_lines_only_good_one_counts_and_flag_is_set():
+    prices = {
+        "good": price("good", 8.0, unit_id=1),   # 8 €/kg
+        "bad": price("bad", 2.0, unit_id=3),     # 2 €/L
+    }
+    res = compute_cost_breakdown(
+        [ing("good", qty=500, unit_id=2), ing("bad", qty=200, unit_id=2)],
+        lookup_from(prices), UNITS, yield_qty=1, unit_categories=CATEGORIES,
+    )
+    assert res["computed_cost_total"] == 4.0     # only the compatible line
+    assert res["has_incompatible_units"] is True
+    assert res["_incompatible_units"] == ["bad"]

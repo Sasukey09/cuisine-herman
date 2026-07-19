@@ -52,7 +52,7 @@ export function LoginForm() {
     <Card>
       <CardHeader>
         <CardTitle>Connexion</CardTitle>
-        <CardDescription>Accédez à votre espace Cuisine Herman.</CardDescription>
+        <CardDescription>Accédez à votre espace FoodGad.</CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit(onSubmit)} noValidate>
         <CardContent className="space-y-4">
@@ -73,7 +73,7 @@ export function LoginForm() {
           </div>
         </CardContent>
         <CardFooter className="flex flex-col gap-3">
-          <Button type="submit" className="w-full" disabled={login.isPending}>
+          <Button type="submit" variant="gradient" className="w-full" disabled={login.isPending}>
             {login.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
             Se connecter
           </Button>

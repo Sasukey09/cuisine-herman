@@ -5,7 +5,9 @@ from fastapi.security import OAuth2PasswordRequestForm
 from jwt import PyJWTError
 from sqlalchemy.orm import Session
 
-from app.core.rate_limit import client_ip, get_login_guard
+import os
+
+from app.core.rate_limit import client_ip, get_login_guard, get_quota_guard
 from app.db.session import get_db
 from app.schemas.schemas import (
     Token,
@@ -41,7 +43,21 @@ def _issue_tokens(user: User) -> dict:
 
 
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
-def register(payload: RegisterRequest, db: Session = Depends(get_db)):
+def register(payload: RegisterRequest, request: Request, db: Session = Depends(get_db)):
+    # Rate-limit account/organization creation per IP: signup is public and
+    # self-bootstraps a new org+admin, so it is an abuse vector without a cap.
+    # Fail-open on a cache outage (the guard returns 0), like the login guard.
+    limit = int(os.getenv("REGISTER_PER_HOUR", "5"))
+    wait = get_quota_guard().check(f"register:{client_ip(request)}", limit, 3600)
+    if wait:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                f"Trop de créations de compte depuis cette adresse "
+                f"({limit}/heure maximum). Réessayez dans {wait} seconde(s)."
+            ),
+            headers={"Retry-After": str(wait)},
+        )
     if crud_user.get_user_by_email(db, payload.email):
         raise HTTPException(status_code=409, detail="Email already registered")
     # First user of a new org bootstraps the organization and becomes admin.
@@ -225,11 +241,10 @@ def reset_user_password(
     """
     # Validate the input before touching the database: a weak password is
     # rejected whether or not the user exists (which also avoids confirming that
-    # an id exists, and keeps the check free of a query).
-    if len(payload.password or "") < 8:
-        raise HTTPException(
-            status_code=400, detail="Le mot de passe doit faire au moins 8 caractères."
-        )
+    # an id exists, and keeps the check free of a query). Same policy as register.
+    pw_err = security.password_error(payload.password)
+    if pw_err:
+        raise HTTPException(status_code=400, detail=pw_err)
 
     target = (
         db.query(User)

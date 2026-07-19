@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../common/async_list.dart';
 import '../../common/create_dialog.dart';
+import '../../common/edit_delete.dart';
 import '../../common/format.dart';
+import '../../common/ui_kit.dart';
 import '../../core/providers.dart';
 import '../../main.dart' show kMuted, kTerracotta, kWarn;
 
@@ -38,6 +40,45 @@ class SuppliersScreen extends ConsumerWidget {
     );
   }
 
+  Future<void> _actions(BuildContext context, WidgetRef ref, Map<String, dynamic> s) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final action = await showRowActions(context);
+    if (action == null || !context.mounted) return;
+    if (action == 'edit') {
+      final data = await showEditDialog(
+        context,
+        title: 'Modifier le fournisseur',
+        fields: const [
+          CreateField('name', 'Nom', required: true),
+          CreateField('code', 'Code (optionnel)'),
+        ],
+        initial: {'name': '${s['name'] ?? ''}', 'code': '${s['code'] ?? ''}'},
+      );
+      if (data == null) return;
+      await updateEntity(
+        ref,
+        messenger,
+        path: '/suppliers/${s['id']}',
+        body: {
+          'name': data['name'],
+          'code': (data['code'] ?? '').isEmpty ? null : data['code'],
+        },
+        successMessage: 'Fournisseur modifié.',
+        onDone: () => ref.invalidate(_suppliersProvider),
+      );
+    } else {
+      await confirmAndDelete(
+        context,
+        ref,
+        messenger,
+        path: '/suppliers/${s['id']}',
+        name: '${s['name'] ?? ''}',
+        successMessage: 'Fournisseur supprimé.',
+        onDone: () => ref.invalidate(_suppliersProvider),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
@@ -52,7 +93,9 @@ class SuppliersScreen extends ConsumerWidget {
           final count = s['product_count'] ?? 0;
           final type = (s['code'] ?? '').toString().isNotEmpty ? '${s['code']}' : 'Fournisseur';
           final rating = s['rating'] as num?;
-          return MockCard(
+          return GestureDetector(
+            onLongPress: () => _actions(context, ref, s),
+            child: MockCard(
             child: Row(
               children: [
                 Container(
@@ -65,7 +108,7 @@ class SuppliersScreen extends ConsumerWidget {
                   ),
                   child: Text(initial,
                       style: const TextStyle(
-                          fontFamily: 'serif', fontSize: 18, fontWeight: FontWeight.w600, color: kTerracotta)),
+                          fontFamily: 'Newsreader', fontSize: 18, fontWeight: FontWeight.w600, color: kTerracotta)),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -84,13 +127,10 @@ class SuppliersScreen extends ConsumerWidget {
                       style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: kWarn)),
               ],
             ),
-          );
+          ));
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _create(context, ref),
-        child: const Icon(Icons.add),
-      ),
+      floatingActionButton: GradientFab(onPressed: () => _create(context, ref)),
     );
   }
 }

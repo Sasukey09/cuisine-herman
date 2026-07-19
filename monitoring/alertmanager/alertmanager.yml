@@ -21,10 +21,10 @@ receivers:
     #     channel: "#alerts"
     #     send_resolved: true
     # email_configs:
-    #   - to: "ops@cuisine-herman.fr"
-    #     from: "alertmanager@cuisine-herman.fr"
+    #   - to: "ops@foodgad.fr"
+    #     from: "alertmanager@foodgad.fr"
     #     smarthost: "smtp.example.com:587"
-    #     auth_username: "alertmanager@cuisine-herman.fr"
+    #     auth_username: "alertmanager@foodgad.fr"
     #     auth_password: "CHANGE_ME"
 
 inhibit_rules:

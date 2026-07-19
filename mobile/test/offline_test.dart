@@ -2,8 +2,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:cuisine_herman_mobile/core/offline_cache.dart';
-import 'package:cuisine_herman_mobile/core/outbox.dart';
+import 'package:foodgad_mobile/core/offline_cache.dart';
+import 'package:foodgad_mobile/core/outbox.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -81,6 +81,45 @@ void main() {
     test('a corrupted queue reads as empty instead of crashing', () async {
       SharedPreferences.setMockInitialValues({'outbox': 'not json at all'});
       final outbox = Outbox(await SharedPreferences.getInstance(), _neverSends);
+      expect(outbox.list(), isEmpty);
+    });
+
+    test('clear() empties the queue', () async {
+      final outbox = Outbox(await SharedPreferences.getInstance(), _neverSends);
+      await outbox.enqueue(path: '/products/', body: {'name': 'A'}, label: 'A');
+      await outbox.enqueue(path: '/products/', body: {'name': 'B'}, label: 'B');
+      await outbox.clear();
+      expect(outbox.list(), isEmpty);
+    });
+  });
+
+  // ------------------------------------------------------------------------ //
+  // Logout must wipe the previous account's local data. On a shared device
+  // (a kitchen tablet), leaving the offline cache would let the next user see
+  // the previous restaurant's products/invoices offline, and leaving the outbox
+  // would replay the previous user's queued write into the NEW user's tenant.
+  // ------------------------------------------------------------------------ //
+  group('logout wipes local data (cross-account isolation)', () {
+    test('offline cache and outbox are both empty after clear', () async {
+      final prefs = await SharedPreferences.getInstance();
+      final cache = OfflineCache(prefs);
+      final outbox = Outbox(prefs, _neverSends);
+
+      // User A leaves behind cached data and a pending offline write.
+      await cache.write('products', [
+        {'name': 'Secret de la maison A'}
+      ]);
+      await outbox.enqueue(
+          path: '/products/', body: {'name': 'Brouillon de A'}, label: 'A');
+      expect(cache.read('products'), isNotNull);
+      expect(outbox.list(), hasLength(1));
+
+      // What logout now does.
+      await cache.clear();
+      await outbox.clear();
+
+      // User B, next on the same device, inherits nothing.
+      expect(cache.read('products'), isNull);
       expect(outbox.list(), isEmpty);
     });
   });

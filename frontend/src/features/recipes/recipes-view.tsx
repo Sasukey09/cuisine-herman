@@ -46,7 +46,7 @@ export function RecipesView() {
                 Importer une recette PDF
               </Link>
             </Button>
-            <Button onClick={() => { setEditing(null); setFormOpen(true); }}>
+            <Button variant="gradient" onClick={() => { setEditing(null); setFormOpen(true); }}>
               <Plus className="h-4 w-4" />
               Nouvelle recette
             </Button>
@@ -67,7 +67,14 @@ export function RecipesView() {
         </div>
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4">
-          {recipes.map((r) => (
+          {recipes.map((r) => {
+            const fc =
+              r.cost_per_portion != null && r.selling_price != null && r.selling_price > 0
+                ? (r.cost_per_portion / r.selling_price) * 100
+                : null;
+            const fcColor =
+              fc == null ? "#8a847a" : fc >= 33 ? "#b23a2e" : fc >= 25 ? "#e0983f" : "#059669";
+            return (
             <div key={r.id} className="overflow-hidden rounded-xl border bg-card">
               <Link
                 href={`/recettes/${r.id}`}
@@ -88,6 +95,23 @@ export function RecipesView() {
                   {formatNumber(r.yield_qty)} portions
                   {r.cost_per_portion != null && ` · coût ${formatCurrency(r.cost_per_portion)}/portion`}
                 </div>
+
+                {fc != null && (
+                  <div className="mt-3">
+                    <div className="mb-1 flex items-center justify-between text-[11px]">
+                      <span className="text-muted-foreground">Food cost</span>
+                      <span className="font-semibold" style={{ color: fcColor }}>
+                        {Math.round(fc)}%
+                      </span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-[#e9dfca]">
+                      <div
+                        className="h-full rounded-full"
+                        style={{ width: `${Math.min(100, fc)}%`, background: fcColor }}
+                      />
+                    </div>
+                  </div>
+                )}
 
                 <div className="mt-3 flex items-center justify-between border-t pt-3">
                   <div>
@@ -126,7 +150,8 @@ export function RecipesView() {
                 )}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
