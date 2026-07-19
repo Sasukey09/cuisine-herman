@@ -35,18 +35,22 @@ workflows:
       # MANUELLE dans les scripts (`fetch-signing-files ... --create`), qui CREE
       # le certificat + le profil app_store pour com.foodgad.foodgadMobile.
       vars:
-        BUNDLE_ID: com.foodgad.foodgadMobile
+        # DOIT correspondre au Bundle ID de l'app FoodGad dans App Store Connect
+        # (appleId 6791293057). Verifie via l'API App Store Connect : l'app
+        # existe avec `foodgad-ios-2026` et AUCUNE app n'a com.foodgad.foodgadMobile.
+        # Un bundle different -> upload "Cannot determine the Apple ID from Bundle ID".
+        BUNDLE_ID: foodgad-ios-2026
 
     scripts:
       - name: Regenerer le projet iOS (ios/ est gitignore) + fixer le Bundle ID
         script: |
           cd mobile
           flutter create --platforms=ios --org com.foodgad --project-name foodgad_mobile .
-          # `flutter create` derive le bundle du project-name, avec une casse qui
-          # varie selon la version (foodgadMobile / foodGadMobile). On force
-          # EXACTEMENT le bundle attendu sur la cible Runner — sans toucher a
-          # `.RunnerTests` — pour qu'il corresponde au profil de signature.
-          sed -i '' -E 's/(PRODUCT_BUNDLE_IDENTIFIER = )com\.foodgad\.[A-Za-z_]*Mobile;/\1com.foodgad.foodgadMobile;/g' \
+          # `flutter create` derive le bundle du project-name (com.foodgad.<...>Mobile).
+          # On FORCE le Bundle ID de la cible Runner sur celui de l'app App Store
+          # Connect (foodgad-ios-2026), sans toucher a `.RunnerTests`, pour que
+          # l'IPA corresponde au profil de signature ET a l'app cible de l'upload.
+          sed -i '' -E 's/(PRODUCT_BUNDLE_IDENTIFIER = )com\.foodgad\.[A-Za-z_]*Mobile;/\1foodgad-ios-2026;/g' \
             ios/Runner.xcodeproj/project.pbxproj
 
       - name: Fixer le nom affiche de l'app a FoodGad
