@@ -58,8 +58,9 @@ def api_ai_suggestions(
 def api_list_conversations(
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant_id),
+    current_user: User = Depends(get_current_user),
 ):
-    return crud_ai_conversation.list_conversations(db, tenant_id)
+    return crud_ai_conversation.list_conversations(db, tenant_id, str(current_user.id))
 
 
 @router.get("/conversations/{conversation_id}", response_model=AIConversationDetail)
@@ -67,8 +68,11 @@ def api_get_conversation(
     conversation_id: str,
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant_id),
+    current_user: User = Depends(get_current_user),
 ):
-    convo = crud_ai_conversation.get_conversation(db, tenant_id, conversation_id)
+    convo = crud_ai_conversation.get_conversation(
+        db, tenant_id, conversation_id, str(current_user.id)
+    )
     if convo is None:
         raise HTTPException(status_code=404, detail="Conversation introuvable")
     messages = crud_ai_conversation.list_messages(db, conversation_id)
@@ -87,9 +91,12 @@ def api_delete_conversation(
     conversation_id: str,
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant_id),
+    current_user: User = Depends(get_current_user),
     _: list = Depends(require_writer),
 ):
-    if not crud_ai_conversation.delete_conversation(db, tenant_id, conversation_id):
+    if not crud_ai_conversation.delete_conversation(
+        db, tenant_id, conversation_id, str(current_user.id)
+    ):
         raise HTTPException(status_code=404, detail="Conversation introuvable")
 
 
@@ -122,7 +129,9 @@ async def api_ai_chat(
 
     def _work():
         if payload.conversation_id:
-            convo = crud_ai_conversation.get_conversation(db, tenant_id, payload.conversation_id)
+            convo = crud_ai_conversation.get_conversation(
+                db, tenant_id, payload.conversation_id, str(current_user.id)
+            )
             if convo is None:
                 raise HTTPException(status_code=404, detail="Conversation introuvable")
         else:
