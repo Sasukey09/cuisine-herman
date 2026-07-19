@@ -71,8 +71,15 @@ workflows:
           # "No matching profiles found". Necessite une cle de role App Manager
           # ou Admin (droit de gerer certificats/profils).
           keychain initialize
+          # --certificate-key : Codemagic cree/associe le certificat de
+          # distribution A PARTIR de notre cle privee (env CERTIFICATE_PRIVATE_KEY),
+          # donc l'identite de signature est TOUJOURS utilisable. Sans ca,
+          # fetch-signing-files reutilise un certificat existant dont la cle privee
+          # n'est plus telechargeable -> "No valid code signing certificates".
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
-            --type IOS_APP_STORE --create
+            --type IOS_APP_STORE \
+            --certificate-key=@env:CERTIFICATE_PRIVATE_KEY \
+            --create
           keychain add-certificates
           cd mobile
           xcode-project use-profiles
