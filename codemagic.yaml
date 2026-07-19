@@ -8,9 +8,10 @@
 # Le dossier mobile/ios est gitignore et regenere par `flutter create` (comme
 # android/ dans la CI GitHub) : le workflow le regenere avant de builder.
 #
-# Bundle ID : com.foodgad.foodgadMobile (reverse-DNS). Il DOIT exister comme
-# App ID (Developer portal) ET comme app dans App Store Connect, a l'identique,
-# sinon l'upload TestFlight est refuse. Voir `bundle_identifier`.
+# Bundle ID : foodgad-ios-2026 = celui de l'app FoodGad dans App Store Connect
+# (appleId 6791293057). Il DOIT etre identique cote App ID (Developer portal),
+# profil de signature ET app App Store Connect, sinon l'upload TestFlight
+# echoue "Cannot determine the Apple ID from Bundle ID". Voir la var BUNDLE_ID.
 # ---------------------------------------------------------------------------
 workflows:
   ios-testflight:
@@ -33,7 +34,7 @@ workflows:
       # de Codemagic (qui ne fait que CHERCHER un profil existant -> "No matching
       # profiles found" si le profil n'existe pas encore). On fait la signature
       # MANUELLE dans les scripts (`fetch-signing-files ... --create`), qui CREE
-      # le certificat + le profil app_store pour com.foodgad.foodgadMobile.
+      # le certificat + le profil app_store pour foodgad-ios-2026.
       vars:
         # DOIT correspondre au Bundle ID de l'app FoodGad dans App Store Connect
         # (appleId 6791293057). Verifie via l'API App Store Connect : l'app
