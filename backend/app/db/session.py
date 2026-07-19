@@ -1,10 +1,29 @@
 import os
+import sys
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL", "postgresql+psycopg2://postgres:password@localhost:5432/cuisine"
+# Local/dev/test default only. In production an unset DATABASE_URL must fail
+# loudly rather than silently connect to a localhost DB with default creds.
+_DEV_FALLBACK = "postgresql+psycopg2://postgres:password@localhost:5432/cuisine"
+_UNDER_PYTEST = "PYTEST_CURRENT_TEST" in os.environ or "pytest" in sys.modules
+
+
+def _resolve_database_url(url: str, app_env: str, under_pytest: bool) -> str:
+    if url:
+        return url
+    if under_pytest or app_env != "production":
+        return _DEV_FALLBACK
+    raise RuntimeError(
+        "DATABASE_URL is required in production but is unset — refusing to start "
+        "rather than connect to an unintended default database. Set DATABASE_URL "
+        "in the environment (Render provisions it automatically)."
+    )
+
+
+DATABASE_URL = _resolve_database_url(
+    os.getenv("DATABASE_URL", ""), os.getenv("APP_ENV", "production"), _UNDER_PYTEST
 )
 
 

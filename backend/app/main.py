@@ -41,6 +41,20 @@ def _metrics_access_status(
     return None
 
 
+def _docs_config(app_env: str, under_pytest: bool) -> dict:
+    """FastAPI docs/redoc/openapi URLs. Interactive docs + the OpenAPI schema map
+    every route/param/schema (auth, RBAC, RGPD erase, invoice ingest) — free
+    reconnaissance in prod — so they are served only outside production (dev or
+    pytest), mirroring the /metrics fail-closed posture."""
+    if under_pytest or app_env != "production":
+        return {
+            "docs_url": "/docs",
+            "redoc_url": "/redoc",
+            "openapi_url": "/openapi.json",
+        }
+    return {"docs_url": None, "redoc_url": None, "openapi_url": None}
+
+
 def _init_sentry() -> None:
     """Error reporting. Inert until SENTRY_DSN is set, so nothing changes for a
     deployment that has not opted in — and `console.error` stops being the only
@@ -67,7 +81,30 @@ def _init_sentry() -> None:
 
 def create_app() -> FastAPI:
     _init_sentry()
-    app = FastAPI(title=APP_NAME)
+
+    under_pytest = "PYTEST_CURRENT_TEST" in os.environ or "pytest" in sys.modules
+    app = FastAPI(
+        title=APP_NAME,
+        **_docs_config(os.getenv("APP_ENV", "production"), under_pytest),
+    )
+
+    @app.middleware("http")
+    async def _security_headers(request: Request, call_next):
+        """Defence-in-depth response headers. This API answers JSON to a
+        Bearer-authenticated SPA/mobile client, so none of these alter a body,
+        status or behaviour — they only harden the browser that receives them."""
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault(
+            "Referrer-Policy", "strict-origin-when-cross-origin"
+        )
+        response.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
+        # The platform terminates TLS in prod; harmless when already HTTPS.
+        response.headers.setdefault(
+            "Strict-Transport-Security", "max-age=63072000; includeSubDomains"
+        )
+        return response
 
     @app.exception_handler(UnsafeURLError)
     async def _unsafe_url(request: Request, exc: UnsafeURLError):

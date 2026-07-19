@@ -265,8 +265,28 @@ def reset_login_guard() -> None:
 
 
 def client_ip(request) -> Optional[str]:
-    """Best-effort client IP behind Render/Vercel's proxy."""
+    """Client IP behind Render/Vercel's proxy.
+
+    A reverse proxy *appends* the address it saw to ``X-Forwarded-For``, so the
+    right-most entries are written by trusted infrastructure while anything to
+    their left is whatever the caller chose to send. Reading the left-most value
+    therefore lets a caller forge a fresh "IP" on every request and slip past
+    every per-IP counter (the register cap, the credential-stuffing guard). We
+    instead skip ``TRUSTED_PROXY_HOPS`` proxy hops from the right (default 1 =
+    the single Render/Vercel edge) and key on that spoof-resistant entry.
+    """
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
-        return forwarded.split(",")[0].strip() or None
+        parts = [p.strip() for p in forwarded.split(",") if p.strip()]
+        if parts:
+            try:
+                hops = int(os.getenv("TRUSTED_PROXY_HOPS", "1"))
+            except ValueError:
+                hops = 1
+            # hops=1 -> the right-most entry, i.e. the address the edge proxy
+            # actually observed. Clamp so a misconfigured count can never index
+            # out of range (and never silently returns the spoofable left).
+            idx = len(parts) - hops
+            idx = max(0, min(idx, len(parts) - 1))
+            return parts[idx] or None
     return request.client.host if request.client else None
