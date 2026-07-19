@@ -8,8 +8,9 @@
 # Le dossier mobile/ios est gitignore et regenere par `flutter create` (comme
 # android/ dans la CI GitHub) : le workflow le regenere avant de builder.
 #
-# A CONFIRMER PAR TOI (une seule valeur critique) : le Bundle ID doit etre
-# EXACTEMENT celui enregistre dans App Store Connect. Voir `bundle_identifier`.
+# Bundle ID : com.foodgad.foodgadMobile (reverse-DNS). Il DOIT exister comme
+# App ID (Developer portal) ET comme app dans App Store Connect, a l'identique,
+# sinon l'upload TestFlight est refuse. Voir `bundle_identifier`.
 # ---------------------------------------------------------------------------
 workflows:
   ios-testflight:
@@ -29,16 +30,22 @@ workflows:
       cocoapods: default
       ios_signing:
         distribution_type: app_store
-        # Bundle ID de l'app "FoodGad" dans App Store Connect (App ID
-        # "Application Cuisine"). Non-standard mais accepte par Apple; l'app est
-        # deja creee avec, donc le build doit produire EXACTEMENT cet identifiant.
-        bundle_identifier: foodgad-ios-2026
+        # Bundle ID reverse-DNS standard, coherent avec --org com.foodgad (et
+        # l'Android com.foodgad.foodgad_mobile). DOIT correspondre EXACTEMENT a
+        # l'App ID enregistre dans App Store Connect.
+        bundle_identifier: com.foodgad.foodgadMobile
 
     scripts:
-      - name: Regenerer le projet iOS (ios/ est gitignore)
+      - name: Regenerer le projet iOS (ios/ est gitignore) + fixer le Bundle ID
         script: |
           cd mobile
           flutter create --platforms=ios --org com.foodgad --project-name foodgad_mobile .
+          # `flutter create` derive le bundle du project-name, avec une casse qui
+          # varie selon la version (foodgadMobile / foodGadMobile). On force
+          # EXACTEMENT le bundle attendu sur la cible Runner — sans toucher a
+          # `.RunnerTests` — pour qu'il corresponde au profil de signature.
+          sed -i '' -E 's/(PRODUCT_BUNDLE_IDENTIFIER = )com\.foodgad\.[A-Za-z_]*Mobile;/\1com.foodgad.foodgadMobile;/g' \
+            ios/Runner.xcodeproj/project.pbxproj
 
       - name: Fixer le nom affiche de l'app a FoodGad
         script: |
@@ -62,7 +69,7 @@ workflows:
           # "No matching profiles found". Necessite une cle de role App Manager
           # ou Admin (droit de gerer certificats/profils).
           keychain initialize
-          app-store-connect fetch-signing-files "foodgad-ios-2026" \
+          app-store-connect fetch-signing-files "com.foodgad.foodgadMobile" \
             --type IOS_APP_STORE --create
           keychain add-certificates
           cd mobile
