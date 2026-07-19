@@ -272,28 +272,36 @@ def _is_public_ip(value: str) -> bool:
         return False
 
 
+# Cloudflare (which fronts this service on Render) sets these to the real client
+# address and OVERWRITES any value the caller tries to inject, so they are the
+# authoritative, unspoofable source of the client IP.
+_TRUSTED_CLIENT_IP_HEADERS = ("cf-connecting-ip", "true-client-ip")
+
+
 def client_ip(request) -> Optional[str]:
-    """Spoof-resistant client IP behind Render/Vercel's proxy.
+    """Spoof-resistant client IP.
 
-    The platform appends its own hop(s) to ``X-Forwarded-For``, and — crucially,
-    as observed on Render — those appended hops are *private* addresses (10.x),
-    while the genuine client is a *public* address sitting to the right of
-    anything the caller supplied and to the left of our infra's private hops.
+    This service runs behind **Cloudflare -> Render**. The observed forwarding
+    chain is::
 
-    So the real client is the RIGHT-MOST PUBLIC address in the chain:
+        [ <caller-forged...>, <REAL CLIENT>, <Cloudflare (public)>, <Render 10.x (private)> ]
 
-        [ <caller-forged...>, <REAL CLIENT (public)>, <Render 10.x (private)> ]
+    Note the genuine client is *not* the right-most public entry — Cloudflare's
+    own (public, rotating) edge IP sits to its right — so an ``X-Forwarded-For``
+    scan alone would key on a value that both rotates (defeating the limit) and
+    isn't the client. Cloudflare therefore hands us the real address in
+    ``CF-Connecting-IP``, which it rewrites on every request; we trust that
+    first.
 
-    Scanning right-to-left for the first global IP therefore:
-      * defeats ``X-Forwarded-For`` spoofing — a forged public IP is always to
-        the *left* of the real client, so it never wins;
-      * ignores Render's private edge hops, which are shared across every tenant
-        and would otherwise collapse the per-IP limit into a global one;
-      * needs no hard-coded proxy-hop count.
-
-    Falls back to the socket peer when the chain carries no public IP (local dev,
-    a fully-private network), so nothing breaks off-platform.
+    Fallbacks (for a non-Cloudflare deployment / local dev): the right-most
+    *public* ``X-Forwarded-For`` entry — which still defeats spoofing because a
+    forged public IP is always to the *left* of what our infra appends and skips
+    the private Render hops — then the socket peer.
     """
+    for header in _TRUSTED_CLIENT_IP_HEADERS:
+        val = (request.headers.get(header) or "").split(",")[0].strip()
+        if _is_public_ip(val):
+            return val
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
         parts = [p.strip() for p in forwarded.split(",") if p.strip()]

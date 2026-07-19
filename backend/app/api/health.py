@@ -117,10 +117,13 @@ def whoami_debug(request: Request):
     hop."""
     return {
         "x_forwarded_for": request.headers.get("x-forwarded-for"),
+        "cf_connecting_ip": request.headers.get("cf-connecting-ip"),
+        "true_client_ip": request.headers.get("true-client-ip"),
         "x_real_ip": request.headers.get("x-real-ip"),
         "forwarded": request.headers.get("forwarded"),
         "client_host": request.client.host if request.client else None,
         "resolved_client_ip": client_ip(request),
+        "all_headers": {k: v for k, v in request.headers.items()},
     }
 
 

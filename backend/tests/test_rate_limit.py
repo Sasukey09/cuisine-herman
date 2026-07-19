@@ -132,9 +132,33 @@ class _Peer:
 class _Req:
     """Minimal stand-in for a Starlette Request for client_ip()."""
 
-    def __init__(self, xff=None, peer="10.0.0.9"):
-        self.headers = {"x-forwarded-for": xff} if xff is not None else {}
+    def __init__(self, xff=None, peer="10.0.0.9", headers=None):
+        h = dict(headers or {})
+        if xff is not None:
+            h["x-forwarded-for"] = xff
+        self.headers = h
         self.client = _Peer(peer)
+
+
+def test_cf_connecting_ip_is_trusted_over_the_forwarded_chain():
+    # Real Cloudflare->Render shape: the real client (37.65.9.209) is NOT the
+    # right-most public entry (Cloudflare's 172.71.x is), so we must trust the
+    # CF-Connecting-IP header Cloudflare sets.
+    req = _Req(
+        xff="8.8.8.8, 37.65.9.209, 172.71.151.232, 10.26.130.4",
+        headers={"cf-connecting-ip": "37.65.9.209"},
+    )
+    assert rate_limit.client_ip(req) == "37.65.9.209"
+
+
+def test_rotating_cloudflare_edge_ip_does_not_change_the_key():
+    # Same client, Cloudflare's edge IP rotates per request: the key must stay
+    # pinned to CF-Connecting-IP, not the rotating 172.71.x / 141.101.x hop.
+    a = _Req(xff="37.65.9.209, 172.71.1.1, 10.0.0.5",
+             headers={"cf-connecting-ip": "37.65.9.209"})
+    b = _Req(xff="37.65.9.209, 141.101.69.30, 10.0.0.9",
+             headers={"cf-connecting-ip": "37.65.9.209"})
+    assert rate_limit.client_ip(a) == rate_limit.client_ip(b) == "37.65.9.209"
 
 
 def test_client_ip_skips_renders_private_trailing_hops():
