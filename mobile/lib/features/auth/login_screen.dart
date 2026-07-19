@@ -32,15 +32,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
     final controller = ref.read(authControllerProvider.notifier);
+    // Normaliser comme le backend (strip + lowercase) : sinon un email tape avec
+    // une majuscule (auto-capitalisation iOS) ne matche pas le compte stocke en
+    // minuscules et la connexion echoue.
+    final email = _email.text.trim().toLowerCase();
     if (_registerMode) {
       controller.register(
-        email: _email.text,
+        email: email,
         password: _password.text,
         orgName: _orgName.text,
         name: _name.text,
       );
     } else {
-      controller.login(_email.text, _password.text);
+      controller.login(email, _password.text);
     }
   }
 
@@ -104,6 +108,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       controller: _email,
                       keyboardType: TextInputType.emailAddress,
                       autocorrect: false,
+                      textCapitalization: TextCapitalization.none,
                       decoration: const InputDecoration(labelText: 'Email'),
                       validator: (v) =>
                           (v == null || !v.contains('@')) ? 'Email invalide' : null,

@@ -82,7 +82,11 @@ def login(
 ):
     guard = get_login_guard()
     ip = client_ip(request)
-    email = form_data.username
+    # Normaliser comme a l'inscription (strip + lowercase) : l'email est stocke
+    # en minuscules au signup, donc un login tape avec une casse/espace differents
+    # (frequent sur iOS) ne matcherait jamais -> "identifiants incorrects" alors
+    # que l'inscription repond "email deja utilise". Meme normalisation des 2 cotes.
+    email = security.normalize_email(form_data.username)
 
     wait = guard.retry_after(email, ip)
     if wait > 0:
