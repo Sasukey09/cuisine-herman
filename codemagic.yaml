@@ -64,19 +64,20 @@ workflows:
           cd mobile/ios
           pod install || true
 
-      - name: Signature iOS — creer certificat de distribution + profil, puis appliquer
+      - name: Signature iOS — certificat de distribution + profil app_store, puis appliquer
         script: |
           set -e   # echoue franchement si une commande de signature plante
           keychain initialize
-          # Certificat de distribution NEUF dont Codemagic conserve la cle privee
-          # (--save) : identite de signature toujours utilisable, SANS dependre
-          # d'une variable d'env. (fetch-signing-files ne fait que RECUPERER un
-          # certificat existant, dont la cle privee n'est pas re-telechargeable
-          # -> "No valid code signing certificates".) Necessite une cle API de
-          # role App Manager/Admin.
-          app-store-connect create-certificate --type IOS_DISTRIBUTION --save
+          # Approche officielle Codemagic (docs.codemagic.io/yaml-code-signing) :
+          # la cle privee RSA 2048 CERTIFICATE_PRIVATE_KEY sert a generer le CSR.
+          # Codemagic recupere le certificat de distribution correspondant OU en
+          # cree un neuf, puis cree le profil app_store (--create). L'identite de
+          # signature est donc toujours valide. Les identifiants App Store Connect
+          # (issuer/key/private) viennent du groupe de variables `appstore`.
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
-            --type IOS_APP_STORE --create
+            --type IOS_APP_STORE \
+            --certificate-key=@env:CERTIFICATE_PRIVATE_KEY \
+            --create
           keychain add-certificates
           cd mobile
           xcode-project use-profiles
