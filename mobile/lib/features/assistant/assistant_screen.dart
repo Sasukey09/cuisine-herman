@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_error.dart';
 import '../../core/providers.dart';
-import '../../main.dart' show kCard, kBorder, kTerracotta, kSidebar, kMuted, kInk;
+import '../../main.dart' show kTerracotta, kSidebar, kMuted;
 
 class _Msg {
   _Msg(this.role, this.content);
@@ -144,8 +144,8 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
             padding: const EdgeInsets.fromLTRB(14, 6, 14, 10),
             child: Container(
               decoration: BoxDecoration(
-                color: kCard,
-                border: Border.all(color: kBorder),
+                color: Theme.of(context).cardColor,
+                border: Border.all(color: Theme.of(context).dividerColor),
                 borderRadius: BorderRadius.circular(14),
               ),
               padding: const EdgeInsets.fromLTRB(14, 5, 5, 5),
@@ -247,8 +247,8 @@ class _Bubble extends StatelessWidget {
               constraints: BoxConstraints(maxWidth: w * 0.8),
               padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
               decoration: BoxDecoration(
-                color: kCard,
-                border: Border.all(color: kBorder),
+                color: Theme.of(context).cardColor,
+                border: Border.all(color: Theme.of(context).dividerColor),
                 borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(14),
                   topRight: Radius.circular(14),
@@ -256,7 +256,7 @@ class _Bubble extends StatelessWidget {
                   bottomLeft: Radius.circular(4),
                 ),
               ),
-              child: Text(msg.content, style: const TextStyle(fontSize: 13, height: 1.5, color: kInk)),
+              child: Text(msg.content, style: const TextStyle(fontSize: 13, height: 1.5)),
             ),
           ),
         ],

@@ -104,7 +104,7 @@ export function RegisterForm() {
           </div>
         </CardContent>
         <CardFooter className="flex flex-col gap-3">
-          <Button type="submit" className="w-full" disabled={submitting}>
+          <Button type="submit" variant="gradient" className="w-full" disabled={submitting}>
             {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
             Créer mon compte
           </Button>

@@ -55,7 +55,7 @@ export function InvoicesView() {
           <div className="mb-3 mt-1 text-[13px] text-muted-foreground">
             PDF, JPG ou PNG — l&apos;OCR extrait automatiquement produits, quantités et prix.
           </div>
-          <span className="inline-flex items-center gap-2 rounded-lg bg-primary px-[18px] py-[9px] text-[13px] font-semibold text-primary-foreground">
+          <span className="inline-flex items-center gap-2 rounded-lg bg-gradient-terracotta px-[18px] py-[9px] text-[13px] font-semibold text-white shadow-glow">
             <Upload className="h-4 w-4" />
             Parcourir les fichiers
           </span>

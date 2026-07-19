@@ -5,9 +5,10 @@ import '../../common/async_list.dart';
 import '../../common/create_dialog.dart';
 import '../../common/edit_delete.dart';
 import '../../common/format.dart';
+import '../../common/ui_kit.dart';
 import '../../core/api_error.dart';
 import '../../core/providers.dart';
-import '../../main.dart' show kMuted, kBorder, kCard, kGood, kBad;
+import '../../main.dart' show kMuted, kGood, kBad;
 
 final _recipesProvider = FutureProvider.autoDispose<Loaded>((ref) async {
   return fetchWithCache(ref, cacheKey: 'recipes', request: () async {
@@ -101,13 +102,16 @@ class RecipesScreen extends ConsumerWidget {
           final margin = r['margin_pct'] as num?;
           final cost = r['cost_per_portion'] as num?;
           final price = r['selling_price'] as num?;
+          final fc = (cost != null && price != null && price > 0)
+              ? cost.toDouble() / price.toDouble() * 100
+              : null;
           return GestureDetector(
             onLongPress: () => _actions(context, ref, r),
             child: Container(
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
-              color: kCard,
-              border: Border.all(color: kBorder),
+              color: Theme.of(context).cardColor,
+              border: Border.all(color: Theme.of(context).dividerColor),
               borderRadius: BorderRadius.circular(14),
             ),
             // IntrinsicHeight n'est pas décoratif : sans lui, cet écran est BLANC.
@@ -148,7 +152,7 @@ class RecipesScreen extends ConsumerWidget {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(
-                                        fontFamily: 'serif',
+                                        fontFamily: 'Newsreader',
                                         fontSize: 15.5,
                                         fontWeight: FontWeight.w600)),
                               ),
@@ -167,6 +171,20 @@ class RecipesScreen extends ConsumerWidget {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(fontSize: 12, color: kMuted)),
+                          if (fc != null) ...[
+                            const SizedBox(height: 7),
+                            Row(
+                              children: [
+                                Expanded(child: FoodCostBar(percent: fc)),
+                                const SizedBox(width: 8),
+                                Text('${fc.round()} %',
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: fc >= 33 ? kBad : kMuted)),
+                              ],
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -177,10 +195,7 @@ class RecipesScreen extends ConsumerWidget {
           ));
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _create(context, ref),
-        child: const Icon(Icons.add),
-      ),
+      floatingActionButton: GradientFab(onPressed: () => _create(context, ref)),
     );
   }
 }

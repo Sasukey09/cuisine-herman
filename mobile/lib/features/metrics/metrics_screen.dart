@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../common/format.dart';
 import '../../core/api_error.dart';
 import '../../core/providers.dart';
-import '../../main.dart' show kBorder, kCream, kMuted, kTerracotta;
+import '../../main.dart' show kMuted, kTerracotta;
 
 final _metricsProvider = FutureProvider.autoDispose<List<dynamic>>((ref) async {
   final r = await ref.read(apiClientProvider).dio.get('/metrics/');
@@ -104,7 +104,7 @@ class _MetricsScreenState extends ConsumerState<MetricsScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text('Nouvel indicateur',
-                  style: TextStyle(fontFamily: 'serif', fontSize: 15.5, fontWeight: FontWeight.w600)),
+                  style: TextStyle(fontFamily: 'Newsreader', fontSize: 15.5, fontWeight: FontWeight.w600)),
               const SizedBox(height: 4),
               const Text('Ex. : cost_per_portion * 3', style: TextStyle(fontSize: 12, color: kMuted)),
               const SizedBox(height: 10),
@@ -203,7 +203,7 @@ class _MetricsScreenState extends ConsumerState<MetricsScreen> {
             return Column(
               children: [
                 for (final m in rows) ...[
-                  _metricCard(m as Map<String, dynamic>),
+                  _metricCard(context, m as Map<String, dynamic>),
                   const SizedBox(height: 11),
                 ],
               ],
@@ -214,7 +214,7 @@ class _MetricsScreenState extends ConsumerState<MetricsScreen> {
     );
   }
 
-  Widget _metricCard(Map<String, dynamic> mm) {
+  Widget _metricCard(BuildContext context, Map<String, dynamic> mm) {
     final id = '${mm['id']}';
     final fmt = '${mm['format'] ?? 'number'}';
     final ev = _evalById[id];
@@ -229,14 +229,14 @@ class _MetricsScreenState extends ConsumerState<MetricsScreen> {
             children: [
               Expanded(
                 child: Text('${mm['name']}',
-                    style: const TextStyle(fontFamily: 'serif', fontSize: 15, fontWeight: FontWeight.w600)),
+                    style: const TextStyle(fontFamily: 'Newsreader', fontSize: 15, fontWeight: FontWeight.w600)),
               ),
               if (hasVal)
                 Padding(
                   padding: const EdgeInsets.only(left: 8),
                   child: Text(_fmtVal(ev['value'] as num?, fmt),
                       style: const TextStyle(
-                          fontFamily: 'serif', fontSize: 20, fontWeight: FontWeight.w600, color: kTerracotta)),
+                          fontFamily: 'Newsreader', fontSize: 20, fontWeight: FontWeight.w600, color: kTerracotta)),
                 ),
               InkWell(
                 onTap: () async {
@@ -263,12 +263,15 @@ class _MetricsScreenState extends ConsumerState<MetricsScreen> {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
             decoration: BoxDecoration(
-              color: kCream,
-              border: Border.all(color: kBorder),
+              color: Theme.of(context).scaffoldBackgroundColor,
+              border: Border.all(color: Theme.of(context).dividerColor),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text('${mm['formula']}',
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 11.5, color: Color(0xFF4A443C))),
+                style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 11.5,
+                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .8))),
           ),
         ],
       ),

@@ -7,8 +7,9 @@ import '../../common/async_list.dart';
 import '../../common/create_dialog.dart';
 import '../../common/edit_delete.dart';
 import '../../common/format.dart';
+import '../../common/ui_kit.dart';
 import '../../core/providers.dart';
-import '../../main.dart' show kMuted, kBorder, kCard;
+import '../../main.dart' show kMuted, kCategoryColors;
 
 final _query = StateProvider.autoDispose<String>((ref) => '');
 
@@ -98,6 +99,9 @@ class ProductsScreen extends ConsumerWidget {
           _SearchPill(onChanged: (v) => ref.read(_query.notifier).state = v),
         ]),
         itemBuilder: (p) {
+          final name = '${p['name'] ?? ''}';
+          final category = '${p['category'] ?? ''}';
+          final chipColor = kCategoryColors[category] ?? kMuted;
           final sub = [p['category'], p['supplier']]
               .where((e) => e != null && '$e'.isNotEmpty)
               .join(' · ');
@@ -106,6 +110,22 @@ class ProductsScreen extends ConsumerWidget {
             child: MockCard(
             child: Row(
               children: [
+                // Pastille d'initiale colorée par famille produit (design).
+                Container(
+                  width: 40,
+                  height: 40,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: chipColor,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    name.isNotEmpty ? name.characters.first.toUpperCase() : '?',
+                    style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15),
+                  ),
+                ),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -135,10 +155,7 @@ class ProductsScreen extends ConsumerWidget {
           ));
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _create(context, ref),
-        child: const Icon(Icons.add),
-      ),
+      floatingActionButton: GradientFab(onPressed: () => _create(context, ref)),
     );
   }
 }
@@ -170,10 +187,11 @@ class _SearchPillState extends State<_SearchPill> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Container(
       decoration: BoxDecoration(
-        color: kCard,
-        border: Border.all(color: kBorder),
+        color: theme.cardColor,
+        border: Border.all(color: theme.dividerColor),
         borderRadius: BorderRadius.circular(11),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -187,6 +205,7 @@ class _SearchPillState extends State<_SearchPill> {
               style: const TextStyle(fontSize: 13),
               decoration: const InputDecoration(
                 isCollapsed: true,
+                filled: false,
                 border: InputBorder.none,
                 hintText: 'Rechercher un produit…',
                 hintStyle: TextStyle(fontSize: 13, color: kMuted),

@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../common/async_list.dart';
 import '../../core/providers.dart';
-import '../../main.dart' show kCard, kBorder, kMuted, kBad, kGood, kWarn;
+import '../../main.dart' show kMuted, kBad, kGood, kWarn;
 
 final _priceDashProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final api = ref.read(apiClientProvider);
@@ -72,7 +72,9 @@ class PriceScreen extends ConsumerWidget {
                               border: Border(left: BorderSide(color: Color(0xFFE0B07A), width: 2)),
                             ),
                             child: Text('${(r as Map)['message'] ?? ''}',
-                                style: const TextStyle(fontSize: 12.5, color: Color(0xFF4A443C))),
+                                style: TextStyle(
+                                    fontSize: 12.5,
+                                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .85))),
                           ),
                       ],
                     ),
@@ -143,12 +145,13 @@ class _Card extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color: kCard,
-        border: Border.all(color: kBorder),
+        color: theme.cardColor,
+        border: Border.all(color: theme.dividerColor),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(

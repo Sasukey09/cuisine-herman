@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../main.dart' show kSerif, kMuted, kTerracotta, kCard, kBorder, kSecondary;
+import '../main.dart' show kSerif, kMuted, kTerracotta;
+import '../core/theme_controller.dart';
 import '../features/admin/admin_screen.dart';
 import '../features/assistant/assistant_screen.dart';
 import '../features/auth/auth_controller.dart';
@@ -82,6 +83,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   }
 
   void _openMore() {
+    final theme = Theme.of(context);
     final auth = ref.read(authControllerProvider);
     final isAdmin =
         ((auth.user?['roles'] as List?)?.cast<String>() ?? const []).contains('admin');
@@ -91,7 +93,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         .toList();
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: const Color(0xFFF4EFE6),
+      backgroundColor: theme.scaffoldBackgroundColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -108,7 +110,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                   height: 5,
                   margin: const EdgeInsets.only(bottom: 14),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFD6CDBD),
+                    color: theme.dividerColor,
                     borderRadius: BorderRadius.circular(3),
                   ),
                 ),
@@ -117,7 +119,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                 padding: EdgeInsets.only(left: 4, bottom: 12),
                 child: Text('Tous les modules',
                     style: TextStyle(
-                        fontFamily: 'serif', fontSize: 19, fontWeight: FontWeight.w600)),
+                        fontFamily: 'Newsreader', fontSize: 19, fontWeight: FontWeight.w600)),
               ),
               GridView.count(
                 crossAxisCount: 2,
@@ -125,7 +127,10 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                 physics: const NeverScrollableScrollPhysics(),
                 mainAxisSpacing: 10,
                 crossAxisSpacing: 10,
-                childAspectRatio: 2.4,
+                // 2.3 (au lieu de 2.4) : la police Public Sans a une hauteur de
+                // ligne un peu plus grande que le défaut, ce qui faisait
+                // déborder la carte de ~0,04 px. Une marge confortable l'évite.
+                childAspectRatio: 2.3,
                 children: [
                   for (final m in mods)
                     InkWell(
@@ -137,8 +142,8 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                       child: Container(
                         padding: const EdgeInsets.all(13),
                         decoration: BoxDecoration(
-                          color: kCard,
-                          border: Border.all(color: kBorder),
+                          color: theme.cardColor,
+                          border: Border.all(color: theme.dividerColor),
                           borderRadius: BorderRadius.circular(14),
                         ),
                         child: Column(
@@ -216,11 +221,30 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                     onSelected: (v) {
                       if (v == 'logout') {
                         ref.read(authControllerProvider.notifier).logout();
+                      } else if (v == 'theme') {
+                        ref.read(themeModeProvider.notifier).toggle();
                       }
                     },
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(value: 'logout', child: Text('Déconnexion')),
-                    ],
+                    itemBuilder: (_) {
+                      final isDark = ref.read(themeModeProvider) == ThemeMode.dark;
+                      return [
+                        PopupMenuItem(
+                          value: 'theme',
+                          child: Row(
+                            children: [
+                              Icon(
+                                  isDark
+                                      ? Icons.light_mode_outlined
+                                      : Icons.dark_mode_outlined,
+                                  size: 18),
+                              const SizedBox(width: 10),
+                              Text(isDark ? 'Thème clair' : 'Thème sombre'),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuItem(value: 'logout', child: Text('Déconnexion')),
+                      ];
+                    },
                     child: CircleAvatar(
                       radius: 19,
                       backgroundColor: kTerracotta,
@@ -250,8 +274,8 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         selectedIndex: navIndex,
         onDestinationSelected: _onTab,
         height: 66,
-        backgroundColor: kCard,
-        indicatorColor: kSecondary,
+        backgroundColor: Theme.of(context).cardColor,
+        indicatorColor: kTerracotta.withValues(alpha: .14),
         surfaceTintColor: Colors.transparent,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         destinations: const [

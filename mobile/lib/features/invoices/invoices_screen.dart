@@ -5,9 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../common/async_list.dart';
 import '../../common/format.dart';
+import '../../common/ui_kit.dart';
 import '../../core/api_error.dart';
 import '../../core/providers.dart';
-import '../../main.dart' show kMuted, kInk, kGood, kWarn;
+import '../../main.dart' show kMuted, kGood, kWarn;
 
 final _invoicesProvider = FutureProvider.autoDispose<Loaded>((ref) async {
   return fetchWithCache(ref, cacheKey: 'invoices', request: () async {
@@ -94,8 +95,8 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFFFAF6EE),
-        border: Border.all(color: const Color(0xFFD6C9B4), width: 2),
+        color: Theme.of(context).cardColor,
+        border: Border.all(color: Theme.of(context).dividerColor, width: 2),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
@@ -103,19 +104,18 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
           const Text('📄', style: TextStyle(fontSize: 26)),
           const SizedBox(height: 4),
           const Text('Déposez une facture',
-              style: TextStyle(fontFamily: 'serif', fontSize: 16, fontWeight: FontWeight.w600)),
+              style: TextStyle(fontFamily: 'Newsreader', fontSize: 16, fontWeight: FontWeight.w600)),
           const SizedBox(height: 3),
           const Text("PDF ou photo — l'OCR extrait tout.",
               style: TextStyle(fontSize: 12, color: kMuted)),
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
-            child: FilledButton(
+            child: GradientButton(
+              label: 'Choisir un fichier',
               onPressed: _uploading ? null : _upload,
-              child: _uploading
-                  ? const SizedBox(
-                      height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Text('Choisir un fichier'),
+              expand: true,
+              loading: _uploading,
             ),
           ),
         ],
@@ -161,7 +161,7 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
                           style: const TextStyle(fontSize: 12.5, color: kMuted)),
                     ),
                     Text(_money(inv),
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: kInk)),
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                   ],
                 ),
               ],

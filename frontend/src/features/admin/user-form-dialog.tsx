@@ -101,7 +101,7 @@ export function UserFormDialog({
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Annuler
             </Button>
-            <Button type="submit" disabled={create.isPending}>
+            <Button type="submit" variant="gradient" disabled={create.isPending}>
               {create.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               Créer l&apos;utilisateur
             </Button>

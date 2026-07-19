@@ -35,8 +35,8 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
     <div className="flex h-full flex-col bg-sidebar p-3.5 text-sidebar-foreground">
       {/* Brand */}
       <div className="flex items-center gap-2.5 px-2 pb-5 pt-1">
-        <div className="flex h-9 w-9 items-center justify-center rounded-[9px] bg-primary font-serif text-[21px] font-semibold text-white">
-          H
+        <div className="flex h-9 w-9 items-center justify-center rounded-[9px] bg-gradient-brand font-serif text-[21px] font-semibold text-white shadow-glow">
+          F
         </div>
         <div className="leading-tight">
           <div className="font-serif text-lg text-[#f4efe6]">FoodGad</div>

@@ -35,25 +35,35 @@
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    /* FoodGad — dark chaud dérivé : brun-noir + terracotta conservé.
+       (Le design de référence ne définit que le clair ; cette variante en
+       garde l'esprit — mêmes accents, surfaces sombres et chaudes.) */
+    --background: 20 10% 11%;          /* #201c1a */
+    --foreground: 40 39% 93%;          /* #f4efe6 */
+    --card: 24 11% 15%;                /* #2a2422 */
+    --card-foreground: 40 39% 93%;
+    --popover: 24 11% 15%;
+    --popover-foreground: 40 39% 93%;
+    --primary: 21 62% 53%;             /* #d1703d — terracotta éclairci */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 22 12% 20%;           /* #3a322e */
+    --secondary-foreground: 40 39% 93%;
+    --muted: 22 12% 20%;
+    --muted-foreground: 37 13% 61%;    /* #a89f90 */
+    --accent: 22 12% 20%;
+    --accent-foreground: 40 39% 93%;
+    --destructive: 6 55% 52%;          /* #c74a3c éclairci */
+    --destructive-foreground: 0 0% 100%;
+    --border: 22 12% 20%;              /* #3a322e */
+    --input: 22 12% 20%;
+    --ring: 21 62% 53%;
+
+    /* Sidebar (déjà sombre en clair) — un cran plus profond en dark */
+    --sidebar: 24 13% 10%;             /* #1e1917 */
+    --sidebar-foreground: 37 23% 80%;  /* #d8cfc1 */
+    --sidebar-active: 22 12% 20%;      /* #3a322e */
+    --sidebar-accent: 22 62% 61%;      /* #d98c5f */
+    --sidebar-muted: 35 11% 55%;       /* #9a8f80 */
   }
 }
 

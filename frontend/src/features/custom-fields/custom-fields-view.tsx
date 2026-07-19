@@ -160,7 +160,7 @@ export function CustomFieldsView() {
                 <input type="checkbox" checked={required} onChange={(e) => setRequired(e.target.checked)} />
                 Champ obligatoire
               </label>
-              <Button type="submit" disabled={create.isPending}>
+              <Button type="submit" variant="gradient" disabled={create.isPending}>
                 {create.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
                 <span className="ml-1">Créer</span>
               </Button>

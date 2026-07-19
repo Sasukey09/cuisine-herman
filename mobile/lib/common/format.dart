@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../main.dart' show kCard, kBorder, kBad, kGood;
+import '../main.dart' show kBad, kGood;
 
 /// French euro formatting: 8.51 -> "8,51 €" ; null -> "—".
 String eur(num? v) {
@@ -53,10 +53,11 @@ class MockCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final card = Container(
       decoration: BoxDecoration(
-        color: kCard,
-        border: Border.all(color: kBorder),
+        color: theme.cardColor,
+        border: Border.all(color: theme.dividerColor),
         borderRadius: BorderRadius.circular(13),
       ),
       padding: padding,

@@ -140,7 +140,7 @@ export function VideoImportView() {
           placeholder="https://www.youtube.com/watch?v=…"
           className="flex-1"
         />
-        <Button type="submit" disabled={extract.isPending || !url.trim()}>
+        <Button type="submit" variant="gradient" disabled={extract.isPending || !url.trim()}>
           {extract.isPending ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (

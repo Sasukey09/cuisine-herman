@@ -4,7 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../common/async_list.dart';
 import '../../common/format.dart';
 import '../../core/providers.dart';
-import '../../main.dart' show kCard, kBorder, kMuted, kBad, kGood, kWarn;
+import '../../main.dart'
+    show kMuted, kBad, kGood, kWarn, kSerif, kGradTeal, kGradAmber, kGradDanger;
 
 final _dashProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final api = ref.read(apiClientProvider);
@@ -78,11 +79,16 @@ class DashboardScreen extends ConsumerWidget {
                     label: 'Plats à perte',
                     value: '${losing.length}',
                     sub: losing.isEmpty ? 'aucun' : '${eur(lost)} / assiette',
-                    subColor: losing.isEmpty ? kGood : kBad,
+                    gradient: losing.isEmpty ? kGradTeal : kGradDanger,
                   ),
                   // La sous-légende disait « prix & marges ». C'était faux : ce
                   // compteur ne voit que les alertes de prix venues des factures.
-                  _Stat(label: 'Alertes de prix', value: '$alertCount', sub: 'sur les achats', subColor: kWarn),
+                  _Stat(
+                    label: 'Alertes de prix',
+                    value: '$alertCount',
+                    sub: 'sur les achats',
+                    gradient: alertCount > 0 ? kGradAmber : kGradTeal,
+                  ),
                   _Stat(label: 'Produits en hausse', value: '${up.length}', sub: 'ce mois', subColor: kBad),
                   _Stat(label: 'Produits en baisse', value: '${down.length}', sub: 'ce mois', subColor: kGood),
                 ],
@@ -161,7 +167,9 @@ class DashboardScreen extends ConsumerWidget {
                               border: Border(left: BorderSide(color: Color(0xFFE0B07A), width: 2)),
                             ),
                             child: Text('${(r as Map)['message'] ?? ''}',
-                                style: const TextStyle(fontSize: 12.5, color: Color(0xFF4A443C))),
+                                style: TextStyle(
+                                    fontSize: 12.5,
+                                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .85))),
                           ),
                       ],
                     ),
@@ -234,29 +242,65 @@ class DashboardScreen extends ConsumerWidget {
   }
 }
 
+/// Tuile de statistique. Deux traitements fidèles au design :
+///  • dégradé (métriques « argent à risque ») — grand chiffre serif blanc, la
+///    couleur du dégradé porte le signal (teal calme / rouge / ambre) ;
+///  • carte crème (métriques de mouvement) — chiffre serif encre + sous-légende
+///    à couleur sémantique (vert/rouge).
 class _Stat extends StatelessWidget {
-  const _Stat({required this.label, required this.value, required this.sub, required this.subColor});
+  const _Stat({
+    required this.label,
+    required this.value,
+    required this.sub,
+    this.subColor,
+    this.gradient,
+  });
   final String label, value, sub;
-  final Color subColor;
+  final Color? subColor;
+  final Gradient? gradient;
 
   @override
   Widget build(BuildContext context) {
+    final onGrad = gradient != null;
+    final theme = Theme.of(context);
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: kCard,
-        border: Border.all(color: kBorder),
+        gradient: gradient,
+        color: onGrad ? null : theme.cardColor,
+        border: onGrad ? null : Border.all(color: theme.dividerColor),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(label, style: const TextStyle(fontSize: 11.5, color: kMuted, fontWeight: FontWeight.w500)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11.5,
+              color: onGrad ? Colors.white.withValues(alpha: .85) : kMuted,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
           const SizedBox(height: 4),
-          Text(value, style: const TextStyle(fontFamily: 'serif', fontSize: 25, fontWeight: FontWeight.w600)),
+          Text(
+            value,
+            style: kSerif.copyWith(
+              fontSize: 25,
+              fontWeight: FontWeight.w700,
+              color: onGrad ? Colors.white : theme.colorScheme.onSurface,
+            ),
+          ),
           const SizedBox(height: 2),
-          Text(sub, style: TextStyle(fontSize: 11, color: subColor, fontWeight: FontWeight.w600)),
+          Text(
+            sub,
+            style: TextStyle(
+              fontSize: 11,
+              color: onGrad ? Colors.white.withValues(alpha: .9) : (subColor ?? kMuted),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ],
       ),
     );
@@ -271,12 +315,13 @@ class _SectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color: kCard,
-        border: Border.all(color: kBorder),
+        color: theme.cardColor,
+        border: Border.all(color: theme.dividerColor),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(

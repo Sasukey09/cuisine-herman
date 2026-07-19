@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../common/format.dart';
+import '../../common/ui_kit.dart';
 import '../../core/api_error.dart';
 import '../../core/providers.dart';
-import '../../main.dart' show kMuted, kGood, kBorder;
+import '../../main.dart' show kMuted, kGood;
 
 class _Ing {
   _Ing(this.name, this.qty, this.unit);
@@ -111,8 +112,8 @@ class _VideoImportScreenState extends ConsumerState<VideoImportScreen> {
           child: Container(
             padding: const EdgeInsets.fromLTRB(16, 22, 16, 16),
             decoration: BoxDecoration(
-              color: const Color(0xFFFAF6EE),
-              border: Border.all(color: const Color(0xFFD6C9B4), width: 2),
+              color: Theme.of(context).scaffoldBackgroundColor,
+              border: Border.all(color: Theme.of(context).dividerColor, width: 2),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Column(
@@ -120,7 +121,7 @@ class _VideoImportScreenState extends ConsumerState<VideoImportScreen> {
                 const Text('🎬', style: TextStyle(fontSize: 30)),
                 const SizedBox(height: 4),
                 const Text('Importez une vidéo',
-                    style: TextStyle(fontFamily: 'serif', fontSize: 16, fontWeight: FontWeight.w600)),
+                    style: TextStyle(fontFamily: 'Newsreader', fontSize: 16, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 4),
                 const Text("Lien YouTube / Instagram / TikTok / Facebook. L'IA extrait les ingrédients.",
                     textAlign: TextAlign.center,
@@ -131,25 +132,21 @@ class _VideoImportScreenState extends ConsumerState<VideoImportScreen> {
                   style: const TextStyle(fontSize: 13),
                   decoration: InputDecoration(
                     isDense: true,
-                    fillColor: Colors.white,
                     hintText: 'https://…',
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(9),
-                      borderSide: const BorderSide(color: kBorder),
+                      borderSide: BorderSide(color: Theme.of(context).dividerColor),
                     ),
                   ),
                 ),
                 const SizedBox(height: 8),
                 SizedBox(
                   width: double.infinity,
-                  child: FilledButton(
+                  child: GradientButton(
+                    label: 'Analyser',
                     onPressed: _extracting ? null : _extract,
-                    child: _extracting
-                        ? const SizedBox(
-                            height: 18,
-                            width: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Text('Analyser'),
+                    expand: true,
+                    loading: _extracting,
                   ),
                 ),
               ],
@@ -166,7 +163,7 @@ class _VideoImportScreenState extends ConsumerState<VideoImportScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text('Recette extraite',
-                    style: TextStyle(fontFamily: 'serif', fontSize: 15.5, fontWeight: FontWeight.w600)),
+                    style: TextStyle(fontFamily: 'Newsreader', fontSize: 15.5, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 2),
                 const Text('Quantités estimées — à valider',
                     style: TextStyle(fontSize: 12, color: kMuted)),
@@ -248,14 +245,11 @@ class _VideoImportScreenState extends ConsumerState<VideoImportScreen> {
                 const SizedBox(height: 6),
                 SizedBox(
                   width: double.infinity,
-                  child: FilledButton(
+                  child: GradientButton(
+                    label: 'Créer la recette',
                     onPressed: _saving ? null : _save,
-                    child: _saving
-                        ? const SizedBox(
-                            height: 18,
-                            width: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Text('Créer la recette'),
+                    expand: true,
+                    loading: _saving,
                   ),
                 ),
                 if (_savedInfo != null)

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../common/ui_kit.dart';
+import '../../main.dart' show kGradBrand, kGlow, kSerif;
 import 'auth_controller.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -58,12 +60,30 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Icon(Icons.restaurant_menu, size: 48),
-                    const SizedBox(height: 8),
+                    Center(
+                      child: Container(
+                        width: 56,
+                        height: 56,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          gradient: kGradBrand,
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: kGlow,
+                        ),
+                        child: const Text('F',
+                            style: TextStyle(
+                                fontFamily: 'Newsreader',
+                                fontSize: 30,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white)),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                     Text(
                       'FoodGad',
                       textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.headlineSmall,
+                      style: kSerif.copyWith(
+                          fontSize: 26, color: Theme.of(context).colorScheme.onSurface),
                     ),
                     const SizedBox(height: 24),
                     if (_registerMode) ...[
@@ -104,15 +124,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                       const SizedBox(height: 12),
                     ],
-                    FilledButton(
+                    GradientButton(
+                      label: _registerMode ? 'Créer le compte' : 'Se connecter',
                       onPressed: state.submitting ? null : _submit,
-                      child: state.submitting
-                          ? const SizedBox(
-                              height: 18,
-                              width: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : Text(_registerMode ? 'Créer le compte' : 'Se connecter'),
+                      expand: true,
+                      loading: state.submitting,
                     ),
                     TextButton(
                       onPressed: state.submitting

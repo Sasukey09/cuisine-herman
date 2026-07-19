@@ -225,7 +225,7 @@ class _CustomFieldsScreenState extends ConsumerState<CustomFieldsScreen> {
         const Divider(height: 32),
 
         const Text('Champs définis',
-            style: TextStyle(fontFamily: 'serif', fontSize: 15.5, fontWeight: FontWeight.w600)),
+            style: TextStyle(fontFamily: 'Newsreader', fontSize: 15.5, fontWeight: FontWeight.w600)),
         const SizedBox(height: 10),
         fields.maybeWhen(
           data: (rows) => rows.isEmpty

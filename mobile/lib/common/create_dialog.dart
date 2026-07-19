@@ -15,28 +15,59 @@ class CreateField {
 
 /// Generic "create" form dialog. Returns the entered values (trimmed) or null
 /// if cancelled. Keeps the list screens free of per-form boilerplate.
+///
+/// The controllers are owned by a StatefulWidget so they are disposed only when
+/// the route is fully gone — disposing them right after `showDialog` returns
+/// would crash during the close animation, which still rebuilds the fields
+/// (`'_dependents.isEmpty': is not true`). Mirrors [showEditDialog].
 Future<Map<String, String>?> showCreateDialog(
   BuildContext context, {
   required String title,
   required List<CreateField> fields,
-}) async {
-  final controllers = {for (final f in fields) f.key: TextEditingController()};
-  final formKey = GlobalKey<FormState>();
-
-  final result = await showDialog<Map<String, String>>(
+}) {
+  return showDialog<Map<String, String>>(
     context: context,
-    builder: (ctx) => AlertDialog(
-      title: Text(title),
+    builder: (ctx) => _CreateDialog(title: title, fields: fields),
+  );
+}
+
+class _CreateDialog extends StatefulWidget {
+  const _CreateDialog({required this.title, required this.fields});
+  final String title;
+  final List<CreateField> fields;
+
+  @override
+  State<_CreateDialog> createState() => _CreateDialogState();
+}
+
+class _CreateDialogState extends State<_CreateDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final Map<String, TextEditingController> _controllers = {
+    for (final f in widget.fields) f.key: TextEditingController()
+  };
+
+  @override
+  void dispose() {
+    for (final c in _controllers.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
       content: Form(
-        key: formKey,
+        key: _formKey,
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            children: fields
+            children: widget.fields
                 .map((f) => Padding(
                       padding: const EdgeInsets.symmetric(vertical: 4),
                       child: TextFormField(
-                        controller: controllers[f.key],
+                        controller: _controllers[f.key],
                         keyboardType: f.keyboard,
                         decoration: InputDecoration(labelText: f.label),
                         validator: (v) => f.required && (v == null || v.trim().isEmpty)
@@ -49,23 +80,19 @@ Future<Map<String, String>?> showCreateDialog(
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
         FilledButton(
           onPressed: () {
-            if (formKey.currentState!.validate()) {
-              Navigator.pop(ctx, {for (final f in fields) f.key: controllers[f.key]!.text.trim()});
+            if (_formKey.currentState!.validate()) {
+              Navigator.pop(context,
+                  {for (final f in widget.fields) f.key: _controllers[f.key]!.text.trim()});
             }
           },
           child: const Text('Créer'),
         ),
       ],
-    ),
-  );
-
-  for (final c in controllers.values) {
-    c.dispose();
+    );
   }
-  return result;
 }
 
 /// Create now, or keep the intent for when the network comes back.

@@ -32,3 +32,13 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # Polices du design FoodGad (Claude Design) — fichiers variables (axe wght ;
+  # Flutter 3.4+ mappe TextStyle.fontWeight sur l'axe wght). Licence OFL incluse.
+  fonts:
+    - family: Public Sans
+      fonts:
+        - asset: assets/fonts/PublicSans.ttf
+    - family: Newsreader
+      fonts:
+        - asset: assets/fonts/Newsreader.ttf
