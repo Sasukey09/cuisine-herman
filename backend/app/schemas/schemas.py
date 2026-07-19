@@ -329,6 +329,21 @@ class ResetPasswordRequest(BaseModel):
     password: str
 
 
+class GoogleAuthRequest(BaseModel):
+    """Google Sign-In: the client sends the ID token it obtained natively."""
+    id_token: str
+    # Only used when this is a brand-new user (names their organization).
+    org_name: Optional[str] = None
+
+
+class AppleAuthRequest(BaseModel):
+    """Sign in with Apple: the client sends the identity token. Apple returns the
+    display name only on the first consent, so the client forwards it here."""
+    identity_token: str
+    name: Optional[str] = None
+    org_name: Optional[str] = None
+
+
 class CreateUserRequest(_EmailPasswordMixin, BaseModel):
     email: str
     password: str

@@ -17,10 +17,13 @@ from app.schemas.schemas import (
     ResetPasswordRequest,
     UserRead,
     MeRead,
+    GoogleAuthRequest,
+    AppleAuthRequest,
 )
 from app.core import security
 from app.crud import crud_user, crud_rbac
 from app.services.rgpd import service as rgpd
+from app.services import social_auth
 from app.api.deps import get_current_user, get_current_roles, require_admin
 from app.models.models import User
 
@@ -114,6 +117,65 @@ def login(
 
     guard.record_success(email, ip)
     rgpd.record(db, str(user.tenant_id), str(user.id), rgpd.ACTION_LOGIN, {"ip": ip})
+    return _issue_tokens(user)
+
+
+# --- Social login (Google / Apple) — verified provider token -> our JWT ----- #
+def _social_login_or_create(db, identity: social_auth.SocialIdentity,
+                            org_name, name_hint=None) -> User:
+    # 1) Already linked to this provider identity -> straight login (handles
+    #    returning Apple users whose token no longer carries the email).
+    user = crud_user.get_by_provider(db, identity.provider, identity.subject)
+    if user is not None:
+        return user
+    # A verified provider email is required to safely link or create — this is
+    # what prevents linking a provider account to someone else's email.
+    if not identity.email or not identity.email_verified:
+        raise HTTPException(
+            status_code=400,
+            detail="Ce compte ne fournit pas d'e-mail vérifié ; connexion impossible.",
+        )
+    # 2) Existing account with that email (password or another provider) -> link.
+    existing = crud_user.get_user_by_email(db, identity.email)
+    if existing is not None:
+        return crud_user.link_provider(db, existing, identity.provider, identity.subject)
+    # 3) Brand-new user -> bootstrap an organization + admin, password-less.
+    display = name_hint or identity.name
+    org = crud_user.create_organization(
+        db, name=(org_name or display or identity.email.split("@")[0])
+    )
+    roles = crud_rbac.ensure_default_roles(db, str(org.id))
+    user = crud_user.create_social_user(
+        db, tenant_id=str(org.id), email=identity.email, name=display,
+        provider=identity.provider, subject=identity.subject,
+    )
+    crud_rbac.assign_role(db, str(user.id), str(roles["admin"].id))
+    return user
+
+
+@router.post("/google", response_model=Token)
+def login_google(payload: GoogleAuthRequest, db: Session = Depends(get_db)):
+    try:
+        identity = social_auth.verify_google(payload.id_token)
+    except social_auth.SocialAuthNotConfigured:
+        raise HTTPException(status_code=503, detail="Connexion Google non configurée sur le serveur.")
+    except social_auth.SocialAuthError:
+        raise HTTPException(status_code=401, detail="Jeton Google invalide.")
+    user = _social_login_or_create(db, identity, payload.org_name)
+    rgpd.record(db, str(user.tenant_id), str(user.id), rgpd.ACTION_LOGIN, {"provider": "google"})
+    return _issue_tokens(user)
+
+
+@router.post("/apple", response_model=Token)
+def login_apple(payload: AppleAuthRequest, db: Session = Depends(get_db)):
+    try:
+        identity = social_auth.verify_apple(payload.identity_token)
+    except social_auth.SocialAuthNotConfigured:
+        raise HTTPException(status_code=503, detail="Connexion Apple non configurée sur le serveur.")
+    except social_auth.SocialAuthError:
+        raise HTTPException(status_code=401, detail="Jeton Apple invalide.")
+    user = _social_login_or_create(db, identity, payload.org_name, name_hint=payload.name)
+    rgpd.record(db, str(user.tenant_id), str(user.id), rgpd.ACTION_LOGIN, {"provider": "apple"})
     return _issue_tokens(user)
 
 
