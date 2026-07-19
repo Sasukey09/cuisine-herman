@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
@@ -15,22 +15,22 @@ function FullScreenLoader() {
 }
 
 /**
- * Client-side route protection. Waits for the persisted store to hydrate
- * (mounted) before deciding, to avoid an SSR redirect flash.
+ * Client-side route protection. Waits for the boot-time session restore
+ * (`bootstrapped`) before deciding, so a reload — which starts with the
+ * in-memory access token empty until the httpOnly refresh cookie is exchanged —
+ * doesn't flash a redirect to /login.
  */
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const [mounted, setMounted] = useState(false);
+  const bootstrapped = useAuthStore((s) => s.bootstrapped);
   const accessToken = useAuthStore((s) => s.accessToken);
 
-  useEffect(() => setMounted(true), []);
-
   useEffect(() => {
-    if (mounted && !accessToken) {
+    if (bootstrapped && !accessToken) {
       router.replace("/login");
     }
-  }, [mounted, accessToken, router]);
+  }, [bootstrapped, accessToken, router]);
 
-  if (!mounted || !accessToken) return <FullScreenLoader />;
+  if (!bootstrapped || !accessToken) return <FullScreenLoader />;
   return <>{children}</>;
 }

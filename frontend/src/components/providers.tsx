@@ -5,6 +5,14 @@ import { ThemeProvider } from "next-themes";
 
 import { getQueryClient } from "@/lib/query-client";
 import { Toaster } from "@/components/ui/sonner";
+import { useSessionBootstrap } from "@/hooks/use-auth";
+
+/** Runs the boot-time session restore (from the httpOnly refresh cookie) once,
+ *  app-wide, before the guards decide. Renders nothing. */
+function SessionBootstrapper() {
+  useSessionBootstrap();
+  return null;
+}
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const queryClient = getQueryClient();
@@ -17,6 +25,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         enableSystem
         disableTransitionOnChange
       >
+        <SessionBootstrapper />
         {children}
         <Toaster richColors position="top-right" />
       </ThemeProvider>

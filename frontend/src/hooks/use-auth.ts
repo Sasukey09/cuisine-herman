@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 
@@ -9,6 +10,7 @@ import {
   logout as logoutApi,
   register as registerApi,
 } from "@/services/auth-service";
+import { refreshAccessToken } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth-store";
 import type { RegisterPayload } from "@/services/types";
 
@@ -27,13 +29,13 @@ export function useMe(enabled = true) {
 }
 
 export function useLogin() {
-  const setTokens = useAuthStore((s) => s.setTokens);
+  const setAccessToken = useAuthStore((s) => s.setAccessToken);
   const setUser = useAuthStore((s) => s.setUser);
 
   return useMutation({
     mutationFn: async (vars: { email: string; password: string }) => {
-      const tokens = await loginApi(vars.email, vars.password);
-      setTokens(tokens.access_token, tokens.refresh_token ?? "");
+      const accessToken = await loginApi(vars.email, vars.password);
+      setAccessToken(accessToken);
       const me = await getMe();
       setUser(me);
       return me;
@@ -49,17 +51,50 @@ export function useRegister() {
 
 export function useLogout() {
   const router = useRouter();
-  const logout = useAuthStore((s) => s.logout);
+  const clear = useAuthStore((s) => s.clear);
   const queryClient = useQueryClient();
 
   return () => {
-    // Revoke the tokens server-side first. Clearing local state alone left a
-    // stolen refresh token minting access tokens for its full 14-day life.
-    // Best-effort: a network failure must never trap the user in the app.
+    // Revoke server-side first (bumps token_version) and drop the httpOnly
+    // refresh cookie. Best-effort: a network failure must never trap the user.
     void logoutApi().catch(() => undefined);
 
-    logout();
+    clear();
     queryClient.clear();
     router.replace("/login");
   };
+}
+
+/**
+ * Restores a session on app boot. The access token lives only in memory, so a
+ * reload starts with none; this asks our origin to mint a fresh one from the
+ * httpOnly refresh cookie. Runs once, then flips `bootstrapped` so the guards
+ * can decide without a redirect flash.
+ */
+export function useSessionBootstrap() {
+  const setUser = useAuthStore((s) => s.setUser);
+  const setBootstrapped = useAuthStore((s) => s.setBootstrapped);
+  const bootstrapped = useAuthStore((s) => s.bootstrapped);
+
+  useEffect(() => {
+    if (bootstrapped) return;
+    let cancelled = false;
+    (async () => {
+      const token = await refreshAccessToken();
+      if (!cancelled && token) {
+        try {
+          setUser(await getMe());
+        } catch {
+          // Token minted but /me failed: leave user null; guards still allow in
+          // and the next request will surface any real problem.
+        }
+      }
+      if (!cancelled) setBootstrapped(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [bootstrapped, setUser, setBootstrapped]);
+
+  return bootstrapped;
 }

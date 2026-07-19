@@ -8,12 +8,16 @@ import { useAuthStore } from "@/stores/auth-store";
 export const API_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
 
+/** Same-origin session endpoints (Next route handlers). They hold the refresh
+ *  token in an httpOnly cookie; the browser never sees it. */
+export const SESSION_REFRESH_URL = "/api/session/refresh";
+
 export const api = axios.create({
   baseURL: API_URL,
   headers: { "Content-Type": "application/json" },
 });
 
-// --- attach access token on every request ---------------------------------
+// --- attach the in-memory access token on every request -------------------
 api.interceptors.request.use((config) => {
   const token = useAuthStore.getState().accessToken;
   if (token) {
@@ -34,17 +38,25 @@ function notifyWaiters(token: string | null) {
   waiters = [];
 }
 
-async function refreshAccessToken(): Promise<string | null> {
-  const { refreshToken, setTokens, logout } = useAuthStore.getState();
-  if (!refreshToken) return null;
+/** Ask our own origin to mint a new access token from the httpOnly refresh
+ *  cookie. Returns the new token, or null when the session is gone. */
+export async function refreshAccessToken(): Promise<string | null> {
   try {
-    const { data } = await axios.post(`${API_URL}/auth/refresh`, {
-      refresh_token: refreshToken,
+    const res = await fetch(SESSION_REFRESH_URL, {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store",
     });
-    setTokens(data.access_token, data.refresh_token);
-    return data.access_token as string;
+    if (!res.ok) {
+      useAuthStore.getState().clear();
+      return null;
+    }
+    const data = (await res.json()) as { access_token?: string };
+    const token = data.access_token ?? null;
+    useAuthStore.getState().setAccessToken(token);
+    return token;
   } catch {
-    logout();
+    useAuthStore.getState().clear();
     return null;
   }
 }
@@ -56,9 +68,6 @@ api.interceptors.response.use(
     const status = error.response?.status;
 
     if (status !== 401 || !original || original._retry) {
-      return Promise.reject(error);
-    }
-    if (!useAuthStore.getState().refreshToken) {
       return Promise.reject(error);
     }
 
