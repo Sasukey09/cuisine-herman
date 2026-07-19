@@ -54,10 +54,14 @@ workflows:
           sed -i '' -E 's/(PRODUCT_BUNDLE_IDENTIFIER = )com\.foodgad\.[A-Za-z_]*Mobile;/\1foodgad-ios-2026;/g' \
             ios/Runner.xcodeproj/project.pbxproj
 
-      - name: Fixer le nom affiche de l'app a FoodGad
+      - name: Info.plist — nom affiche + conformite export (chiffrement exempte)
         script: |
-          plutil -replace CFBundleDisplayName -string "FoodGad" \
-            "$CM_BUILD_DIR/mobile/ios/Runner/Info.plist"
+          PLIST="$CM_BUILD_DIR/mobile/ios/Runner/Info.plist"
+          plutil -replace CFBundleDisplayName -string "FoodGad" "$PLIST"
+          # Declare que l'app n'utilise que du chiffrement EXEMPTE (HTTPS/TLS
+          # standard + keychain iOS). Evite l'invite "conformite export" sur
+          # TestFlight a CHAQUE build : le build est directement testable.
+          plutil -replace ITSAppUsesNonExemptEncryption -bool false "$PLIST"
 
       - name: Recuperer les dependances Flutter
         script: |
