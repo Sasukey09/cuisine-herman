@@ -64,22 +64,19 @@ workflows:
           cd mobile/ios
           pod install || true
 
-      - name: Signature iOS — creer/recuperer certificat + profil, puis appliquer
+      - name: Signature iOS — creer certificat de distribution + profil, puis appliquer
         script: |
-          # Cree le certificat de distribution ET le profil app_store s'ils
-          # n'existent pas (--create), via la cle App Store Connect. Corrige
-          # "No matching profiles found". Necessite une cle de role App Manager
-          # ou Admin (droit de gerer certificats/profils).
+          set -e   # echoue franchement si une commande de signature plante
           keychain initialize
-          # --certificate-key : Codemagic cree/associe le certificat de
-          # distribution A PARTIR de notre cle privee (env CERTIFICATE_PRIVATE_KEY),
-          # donc l'identite de signature est TOUJOURS utilisable. Sans ca,
-          # fetch-signing-files reutilise un certificat existant dont la cle privee
-          # n'est plus telechargeable -> "No valid code signing certificates".
+          # Certificat de distribution NEUF dont Codemagic conserve la cle privee
+          # (--save) : identite de signature toujours utilisable, SANS dependre
+          # d'une variable d'env. (fetch-signing-files ne fait que RECUPERER un
+          # certificat existant, dont la cle privee n'est pas re-telechargeable
+          # -> "No valid code signing certificates".) Necessite une cle API de
+          # role App Manager/Admin.
+          app-store-connect create-certificate --type IOS_DISTRIBUTION --save
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
-            --type IOS_APP_STORE \
-            --certificate-key=@env:CERTIFICATE_PRIVATE_KEY \
-            --create
+            --type IOS_APP_STORE --create
           keychain add-certificates
           cd mobile
           xcode-project use-profiles
