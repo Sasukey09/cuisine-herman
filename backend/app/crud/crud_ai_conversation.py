@@ -1,4 +1,7 @@
-"""Saved assistant threads. Everything is tenant-scoped."""
+"""Saved assistant threads. Scoped to both the tenant AND the owning user:
+an assistant thread is a personal working session (it can hold confidential
+costing/strategy questions), so one member must not read or delete another
+member's threads within the same organization."""
 import uuid
 from typing import List, Optional
 
@@ -29,21 +32,29 @@ def create_conversation(
     return convo
 
 
-def get_conversation(db: Session, tenant_id: str, conversation_id: str) -> Optional[AIConversation]:
+def get_conversation(
+    db: Session, tenant_id: str, conversation_id: str, user_id: str
+) -> Optional[AIConversation]:
     return (
         db.query(AIConversation)
         .filter(
             AIConversation.id == conversation_id,
             AIConversation.tenant_id == tenant_id,
+            AIConversation.user_id == user_id,
         )
         .first()
     )
 
 
-def list_conversations(db: Session, tenant_id: str, limit: int = 30) -> List[AIConversation]:
+def list_conversations(
+    db: Session, tenant_id: str, user_id: str, limit: int = 30
+) -> List[AIConversation]:
     return (
         db.query(AIConversation)
-        .filter(AIConversation.tenant_id == tenant_id)
+        .filter(
+            AIConversation.tenant_id == tenant_id,
+            AIConversation.user_id == user_id,
+        )
         .order_by(AIConversation.updated_at.desc())
         .limit(limit)
         .all()
@@ -81,8 +92,10 @@ def touch(db: Session, convo: AIConversation) -> None:
     db.commit()
 
 
-def delete_conversation(db: Session, tenant_id: str, conversation_id: str) -> bool:
-    convo = get_conversation(db, tenant_id, conversation_id)
+def delete_conversation(
+    db: Session, tenant_id: str, conversation_id: str, user_id: str
+) -> bool:
+    convo = get_conversation(db, tenant_id, conversation_id, user_id)
     if convo is None:
         return False
     db.delete(convo)  # messages cascade
