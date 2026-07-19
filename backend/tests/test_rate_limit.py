@@ -137,34 +137,42 @@ class _Req:
         self.client = _Peer(peer)
 
 
-def test_client_ip_uses_the_trusted_rightmost_hop_not_the_spoofable_left():
-    # The edge proxy appends the address it observed on the right; the value to
-    # its left is whatever the caller sent. We must key on the right one.
-    req = _Req(xff="203.0.113.7, 70.1.2.3")  # attacker-set , edge-observed
+def test_client_ip_skips_renders_private_trailing_hops():
+    """Render appends its own private (10.x/192.168.x) hop on the right; the
+    real client is the right-most PUBLIC address, not that shared edge IP."""
+    req = _Req(xff="70.1.2.3, 10.28.252.3")  # [real client, Render edge]
+    assert rate_limit.client_ip(req) == "70.1.2.3"
+
+
+def test_client_ip_ignores_a_forged_public_ip_to_the_left():
+    """A caller-forged public IP is always LEFT of the real client (which Render
+    appends), so the right-most-public scan must ignore the forgery."""
+    req = _Req(xff="8.8.8.8, 70.1.2.3, 10.0.0.5")  # [forged, real, private edge]
     assert rate_limit.client_ip(req) == "70.1.2.3"
 
 
 def test_rotating_the_forwarded_header_does_not_change_the_rate_limit_key():
     """The proven bypass: a caller rotating X-Forwarded-For must resolve to the
     SAME key, so the per-IP counter still bites."""
-    a = _Req(xff="1.1.1.1, 70.1.2.3")
-    b = _Req(xff="2.2.2.2, 70.1.2.3")
+    a = _Req(xff="1.1.1.1, 70.1.2.3, 10.0.0.5")
+    b = _Req(xff="2.2.2.2, 70.1.2.3, 10.0.0.5")
     assert rate_limit.client_ip(a) == rate_limit.client_ip(b) == "70.1.2.3"
+
+
+def test_client_ip_supports_ipv6_clients():
+    req = _Req(xff="2a02:8429:8841:5a01::1, 10.28.252.3")
+    assert rate_limit.client_ip(req) == "2a02:8429:8841:5a01::1"
 
 
 def test_client_ip_falls_back_to_the_peer_without_a_forwarded_header():
     assert rate_limit.client_ip(_Req(xff=None, peer="42.42.42.42")) == "42.42.42.42"
 
 
-def test_client_ip_honours_extra_trusted_hops(monkeypatch):
-    monkeypatch.setenv("TRUSTED_PROXY_HOPS", "2")
-    # Two trusted proxies each appended a hop on the right (idx = len - hops):
-    # the resolver returns the entry those two hops wrap, not the spoofable left.
-    req = _Req(xff="1.1.1.1, 70.1.2.3, 9.9.9.9")  # [spoofed, real client, edge]
-    assert rate_limit.client_ip(req) == "70.1.2.3"
+def test_client_ip_falls_back_to_the_peer_when_the_chain_is_all_private():
+    # No public IP anywhere (local dev / fully-private network): use the socket.
+    req = _Req(xff="10.0.0.5, 192.168.1.1", peer="203.0.113.9")
+    assert rate_limit.client_ip(req) == "203.0.113.9"
 
 
-def test_a_short_chain_never_indexes_out_of_range():
-    """A misconfigured hop count must clamp, never crash or fall back to left."""
-    req = _Req(xff="70.1.2.3")  # single entry, hops default 1
-    assert rate_limit.client_ip(req) == "70.1.2.3"
+def test_a_single_public_entry_is_returned():
+    assert rate_limit.client_ip(_Req(xff="70.1.2.3")) == "70.1.2.3"
