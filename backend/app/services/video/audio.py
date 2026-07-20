@@ -42,18 +42,27 @@ def transcode_to_mp3(input_path: str) -> str:
     return out_path
 
 
-# Try alternate clients first (often bypass the bot check), then the default web.
-_BASE_OPTS: Dict[str, Any] = {
-    "quiet": True,
-    "noplaylist": True,
-    "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
-    "http_headers": {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
-        )
-    },
-}
+def _base_opts() -> Dict[str, Any]:
+    """yt-dlp options with anti-bot mitigations. Built per call so a cookies
+    file dropped in via env is picked up without a restart."""
+    opts: Dict[str, Any] = {
+        "quiet": True,
+        "noplaylist": True,
+        # Several player clients: when one is bot-blocked another may still pass.
+        "extractor_args": {"youtube": {"player_client": ["ios", "android", "web"]}},
+        "http_headers": {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+            )
+        },
+    }
+    # The robust workaround for datacenter-IP blocks: cookies exported from a
+    # logged-in browser let yt-dlp pass YouTube's "confirm you're not a bot".
+    cookiefile = os.getenv("YOUTUBE_COOKIES_FILE")
+    if cookiefile and os.path.exists(cookiefile):
+        opts["cookiefile"] = cookiefile
+    return opts
 
 
 def _ydl():
@@ -80,7 +89,7 @@ def _friendly_error(exc: Exception) -> str:
 def probe_duration(url: str) -> Dict[str, Any]:
     """Return {duration, title, ...} without downloading (raises on failure)."""
     yt_dlp = _ydl()
-    opts = {**_BASE_OPTS, "skip_download": True}
+    opts = {**_base_opts(), "skip_download": True}
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -106,7 +115,7 @@ def download_audio(url: str) -> str:
     tmp_dir = tempfile.mkdtemp(prefix="ch_video_")
     out_template = os.path.join(tmp_dir, "audio.%(ext)s")
     opts = {
-        **_BASE_OPTS,
+        **_base_opts(),
         "format": "bestaudio/best",
         "outtmpl": out_template,
         "postprocessors": [

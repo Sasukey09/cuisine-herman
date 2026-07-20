@@ -94,6 +94,10 @@ class SuppliersScreen extends ConsumerWidget {
           final type = (s['code'] ?? '').toString().isNotEmpty ? '${s['code']}' : 'Fournisseur';
           final rating = s['rating'] as num?;
           return GestureDetector(
+            // Un tap ouvre les actions (modifier / supprimer) : sans onTap, la
+            // carte ne reagissait qu'a l'appui long, non decouvrable -> l'usager
+            // avait l'impression de "ne pas pouvoir cliquer".
+            onTap: () => _actions(context, ref, s),
             onLongPress: () => _actions(context, ref, s),
             child: MockCard(
             child: Row(

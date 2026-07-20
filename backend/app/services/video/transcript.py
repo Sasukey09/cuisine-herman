@@ -21,20 +21,54 @@ from .platforms import detect_platform, youtube_video_id
 logger = get_logger("video.transcript")
 
 
+def _segments_to_text(segments) -> Optional[str]:
+    text = " ".join(
+        (s.get("text", "") if isinstance(s, dict) else getattr(s, "text", ""))
+        for s in segments
+    )
+    return text.strip() or None
+
+
 def _youtube_captions(video_id: str) -> Optional[str]:
-    """Return joined caption text, or None if unavailable."""
+    """Return joined caption text, or None if unavailable.
+
+    Coverage is deliberately broad so we call yt-dlp (which YouTube blocks from
+    datacenter IPs) as rarely as possible: preferred-language manual captions,
+    then preferred-language auto-generated, then ANY available track translated
+    to a preferred language. A recipe video almost always has captions in *some*
+    language, so this avoids the audio download for the vast majority of cases.
+    """
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
     except ImportError:  # pragma: no cover - depends on install
         return None
     langs = get_video_config().youtube_caption_languages or ["en"]
     try:
-        segments = YouTubeTranscriptApi.get_transcript(video_id, languages=langs)
+        tl = YouTubeTranscriptApi.list_transcripts(video_id)
+        transcript = None
+        for finder in (tl.find_manually_created_transcript, tl.find_generated_transcript):
+            try:
+                transcript = finder(langs)
+                break
+            except Exception:
+                continue
+        if transcript is None:
+            # No preferred-language track: take any and translate it.
+            any_t = next(iter(tl), None)
+            if any_t is None:
+                return None
+            transcript = any_t.translate(langs[0]) if getattr(any_t, "is_translatable", False) else any_t
+        return _segments_to_text(transcript.fetch())
+    except AttributeError:
+        # Older/newer youtube-transcript-api without list_transcripts: fall back.
+        try:
+            return _segments_to_text(YouTubeTranscriptApi.get_transcript(video_id, languages=langs))
+        except Exception as exc:
+            log_event(logger, logging.INFO, "video.captions.unavailable", video_id=video_id, error=str(exc))
+            return None
     except Exception as exc:
         log_event(logger, logging.INFO, "video.captions.unavailable", video_id=video_id, error=str(exc))
         return None
-    text = " ".join(s.get("text", "") for s in segments if s.get("text"))
-    return text.strip() or None
 
 
 def _audio_stt(url: str, stt_provider: Any) -> str:
