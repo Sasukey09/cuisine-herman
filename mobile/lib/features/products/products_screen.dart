@@ -106,6 +106,9 @@ class ProductsScreen extends ConsumerWidget {
               .where((e) => e != null && '$e'.isNotEmpty)
               .join(' · ');
           return GestureDetector(
+            // Tap = actions (modifier / supprimer) ; sans onTap la carte ne
+            // reagissait qu'a l'appui long, non decouvrable.
+            onTap: () => _actions(context, ref, p),
             onLongPress: () => _actions(context, ref, p),
             child: MockCard(
             child: Row(

@@ -106,6 +106,10 @@ class RecipesScreen extends ConsumerWidget {
               ? cost.toDouble() / price.toDouble() * 100
               : null;
           return GestureDetector(
+            // Un tap ouvre les actions (modifier / supprimer, dont les portions) :
+            // sans onTap, la recette ne repondait qu'a l'appui long -> impossible
+            // de "revenir dessus" / de renseigner les portions.
+            onTap: () => _actions(context, ref, r),
             onLongPress: () => _actions(context, ref, r),
             child: Container(
             clipBehavior: Clip.antiAlias,
