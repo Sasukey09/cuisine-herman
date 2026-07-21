@@ -17,6 +17,22 @@ final _invoicesProvider = FutureProvider.autoDispose<Loaded>((ref) async {
   });
 });
 
+/// PDF or photo of an invoice.
+/// - `extensions` + `mimeTypes` are what Android's file dialog and the
+///   desktop/web pickers honour.
+/// - `uniformTypeIdentifiers` are REQUIRED by iOS: file_selector_ios throws an
+///   `ArgumentError` for any type group that is not "allow all" yet carries no
+///   UTIs. Without them (and with `openFile` called outside a try/catch) the
+///   exception vanished silently and the "Choisir un fichier" button did
+///   nothing at all on iPhone/iPad. `public.image` covers jpg/png/webp/heic.
+@visibleForTesting
+const invoiceFileTypes = XTypeGroup(
+  label: 'Factures',
+  extensions: ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
+  mimeTypes: ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'],
+  uniformTypeIdentifiers: ['com.adobe.pdf', 'public.image'],
+);
+
 class InvoicesScreen extends ConsumerStatefulWidget {
   const InvoicesScreen({super.key});
 
@@ -27,27 +43,31 @@ class InvoicesScreen extends ConsumerStatefulWidget {
 class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
   bool _uploading = false;
 
-  /// PDF or photo of an invoice. `mimeTypes` is what Android's file dialog
-  /// actually honours; `extensions` covers the desktop/web pickers.
-  static const _invoiceFiles = XTypeGroup(
-    label: 'Factures',
-    extensions: ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
-    mimeTypes: ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'],
-  );
-
   Future<void> _upload() async {
     final messenger = ScaffoldMessenger.of(context);
-    final file = await openFile(acceptedTypeGroups: const [_invoiceFiles]);
-    if (file == null) return;
 
-    final bytes = await file.readAsBytes();
-    if (bytes.isEmpty) {
-      messenger.showSnackBar(const SnackBar(content: Text('Fichier illisible.')));
+    // MUST stay inside try/catch: on iOS, openFile() throws an ArgumentError
+    // synchronously if the type group has no uniformTypeIdentifiers. Left
+    // uncaught (as it was), that exception silently aborted this callback and
+    // the button looked completely dead — no picker, no error, nothing.
+    final XFile? file;
+    try {
+      file = await openFile(acceptedTypeGroups: const [invoiceFileTypes]);
+    } catch (e) {
+      messenger.showSnackBar(const SnackBar(
+        content: Text("Impossible d'ouvrir le sélecteur de fichiers."),
+      ));
       return;
     }
+    if (file == null) return;
 
     setState(() => _uploading = true);
     try {
+      final bytes = await file.readAsBytes();
+      if (bytes.isEmpty) {
+        messenger.showSnackBar(const SnackBar(content: Text('Fichier illisible.')));
+        return;
+      }
       final form = FormData.fromMap({
         'file': MultipartFile.fromBytes(bytes, filename: file.name),
       });
