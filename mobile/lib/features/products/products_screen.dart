@@ -11,11 +11,17 @@ import '../../common/ui_kit.dart';
 import '../../core/providers.dart';
 import '../../main.dart' show kMuted, kCategoryColors;
 
-final _query = StateProvider.autoDispose<String>((ref) => '');
+@visibleForTesting
+final productsSearchQueryProvider = StateProvider.autoDispose<String>((ref) => '');
 
-final _productsProvider = FutureProvider.autoDispose<Loaded>((ref) async {
+@visibleForTesting
+final productsListProvider = FutureProvider.autoDispose<Loaded>((ref) async {
+  // Watch the search query *synchronously*, before any await. Reading it inside
+  // the request closure — after fetchWithCache's first await — never registered
+  // the reactive dependency, so typing in the search box updated the query but
+  // never re-ran this provider: the list silently ignored the search entirely.
+  final q = ref.watch(productsSearchQueryProvider).trim();
   return fetchWithCache(ref, cacheKey: 'products', request: () async {
-    final q = ref.watch(_query).trim();
     final resp = await ref.read(apiClientProvider).dio.get('/products/enriched', queryParameters: {
       'limit': 200,
       if (q.isNotEmpty) 'q': q,
@@ -44,7 +50,7 @@ class ProductsScreen extends ConsumerWidget {
       },
       label: 'Produit : ${data['name']}',
       successMessage: 'Produit créé.',
-      onDone: () => ref.invalidate(_productsProvider),
+      onDone: () => ref.invalidate(productsListProvider),
     );
   }
 
@@ -72,7 +78,7 @@ class ProductsScreen extends ConsumerWidget {
           'sku': (data['sku'] ?? '').isEmpty ? null : data['sku'],
         },
         successMessage: 'Produit modifié.',
-        onDone: () => ref.invalidate(_productsProvider),
+        onDone: () => ref.invalidate(productsListProvider),
       );
     } else {
       await confirmAndDelete(
@@ -82,7 +88,7 @@ class ProductsScreen extends ConsumerWidget {
         path: '/products/${p['id']}',
         name: '${p['name'] ?? ''}',
         successMessage: 'Produit supprimé.',
-        onDone: () => ref.invalidate(_productsProvider),
+        onDone: () => ref.invalidate(productsListProvider),
       );
     }
   }
@@ -92,11 +98,11 @@ class ProductsScreen extends ConsumerWidget {
     return Scaffold(
       body: offlineCardList(
         ref: ref,
-        provider: _productsProvider,
+        provider: productsListProvider,
         empty: 'Aucun produit. Touchez + pour en ajouter.',
         header: Column(children: [
           const PendingWritesBanner(),
-          _SearchPill(onChanged: (v) => ref.read(_query.notifier).state = v),
+          _SearchPill(onChanged: (v) => ref.read(productsSearchQueryProvider.notifier).state = v),
         ]),
         itemBuilder: (p) {
           final name = '${p['name'] ?? ''}';
