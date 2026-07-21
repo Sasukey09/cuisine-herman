@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../common/ui_kit.dart';
+import '../../core/api_error.dart';
+import '../../core/providers.dart';
 import '../../main.dart' show kGradBrand, kGlow, kSerif;
 import 'auth_controller.dart';
 
@@ -16,6 +18,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _email = TextEditingController();
   final _password = TextEditingController();
+  final _confirm = TextEditingController();
   final _orgName = TextEditingController();
   final _name = TextEditingController();
   bool _registerMode = false;
@@ -24,9 +27,48 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   void dispose() {
     _email.dispose();
     _password.dispose();
+    _confirm.dispose();
     _orgName.dispose();
     _name.dispose();
     super.dispose();
+  }
+
+  /// Self-service recovery — step 1 (POST /auth/forgot-password). The server
+  /// always answers the same way (anti-enumeration); the reset link arrives by
+  /// email and opens the web reset page. Before this, mobile had no way out.
+  Future<void> _forgotPassword() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final ctrl = TextEditingController(text: _email.text.trim());
+    final email = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Mot de passe oublié'),
+        content: TextField(
+          controller: ctrl,
+          keyboardType: TextInputType.emailAddress,
+          autocorrect: false,
+          decoration: const InputDecoration(labelText: 'Votre email'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim().toLowerCase()),
+              child: const Text('Envoyer le lien')),
+        ],
+      ),
+    );
+    if (email == null || !email.contains('@')) return;
+    try {
+      await ref.read(apiClientProvider).dio.post('/auth/forgot-password', data: {'email': email});
+    } catch (e) {
+      // A failure must not reveal whether the address exists; show the same
+      // generic message unless it's clearly a network problem.
+      messenger.showSnackBar(SnackBar(content: Text(apiErrorMessage(e))));
+      return;
+    }
+    messenger.showSnackBar(const SnackBar(
+      content: Text('Si un compte existe, un email de réinitialisation a été envoyé.'),
+    ));
   }
 
   void _submit() {
@@ -118,9 +160,36 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       controller: _password,
                       obscureText: true,
                       decoration: const InputDecoration(labelText: 'Mot de passe'),
-                      validator: (v) =>
-                          (v == null || v.isEmpty) ? 'Requis' : null,
+                      validator: (v) {
+                        if (v == null || v.isEmpty) return 'Requis';
+                        // À l'inscription, imposer la même règle que le backend
+                        // (min 8) — sinon compte trop faible et, sans reset in-app,
+                        // une faute de frappe = compte inaccessible.
+                        if (_registerMode && v.length < 8) {
+                          return '8 caractères minimum';
+                        }
+                        return null;
+                      },
                     ),
+                    if (_registerMode) ...[
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _confirm,
+                        obscureText: true,
+                        decoration:
+                            const InputDecoration(labelText: 'Confirmer le mot de passe'),
+                        validator: (v) =>
+                            (v != _password.text) ? 'Les mots de passe ne correspondent pas' : null,
+                      ),
+                    ],
+                    if (!_registerMode)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: state.submitting ? null : _forgotPassword,
+                          child: const Text('Mot de passe oublié ?'),
+                        ),
+                      ),
                     const SizedBox(height: 20),
                     if (state.error != null) ...[
                       Text(

@@ -6,6 +6,7 @@ import '../core/theme_controller.dart';
 import '../features/admin/admin_screen.dart';
 import '../features/assistant/assistant_screen.dart';
 import '../features/auth/auth_controller.dart';
+import '../features/auth/profile_screen.dart';
 import '../features/custom_fields/custom_fields_screen.dart';
 import '../features/dashboard/dashboard_screen.dart';
 import '../features/invoices/invoices_screen.dart';
@@ -223,11 +224,22 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                         ref.read(authControllerProvider.notifier).logout();
                       } else if (v == 'theme') {
                         ref.read(themeModeProvider.notifier).toggle();
+                      } else if (v == 'profile') {
+                        Navigator.of(context).push(
+                            MaterialPageRoute(builder: (_) => const ProfileScreen()));
                       }
                     },
                     itemBuilder: (_) {
                       final isDark = ref.read(themeModeProvider) == ThemeMode.dark;
                       return [
+                        const PopupMenuItem(
+                          value: 'profile',
+                          child: Row(children: [
+                            Icon(Icons.person_outline, size: 18),
+                            SizedBox(width: 10),
+                            Text('Profil'),
+                          ]),
+                        ),
                         PopupMenuItem(
                           value: 'theme',
                           child: Row(
