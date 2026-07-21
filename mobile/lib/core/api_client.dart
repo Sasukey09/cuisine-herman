@@ -6,7 +6,20 @@ import 'token_store.dart';
 /// Dio wrapper that attaches the bearer token on every request and transparently
 /// refreshes it once on a 401 (mirrors the web app's axios interceptor).
 class ApiClient {
-  ApiClient(this.tokenStore) : dio = Dio(BaseOptions(baseUrl: AppConfig.apiBaseUrl)) {
+  ApiClient(this.tokenStore)
+      : dio = Dio(BaseOptions(
+          baseUrl: AppConfig.apiBaseUrl,
+          // Without timeouts a request that connects but never answers (Render
+          // free-tier cold start, a stalled proxy, a half-open connection) never
+          // returns AND never throws — so the launch `me()` call in
+          // auth_controller._bootstrap hangs and the app sits on a full-screen
+          // spinner forever. Finite timeouts turn that into a thrown error, which
+          // _bootstrap already handles by dropping cleanly to the login screen.
+          // 60s of receive budget survives a typical cold start; heavy uploads
+          // (invoice OCR) still override this per request.
+          connectTimeout: const Duration(seconds: 20),
+          receiveTimeout: const Duration(seconds: 60),
+        )) {
     dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
@@ -53,9 +66,13 @@ class ApiClient {
     final refresh = await tokenStore.refreshToken;
     if (refresh == null) return false;
     try {
-      // bare Dio so the interceptor doesn't recurse
-      final resp = await Dio(BaseOptions(baseUrl: AppConfig.apiBaseUrl))
-          .post('/auth/refresh', data: {'refresh_token': refresh});
+      // bare Dio so the interceptor doesn't recurse (same finite timeouts, so a
+      // stalled refresh can't hang the retry either)
+      final resp = await Dio(BaseOptions(
+        baseUrl: AppConfig.apiBaseUrl,
+        connectTimeout: const Duration(seconds: 20),
+        receiveTimeout: const Duration(seconds: 60),
+      )).post('/auth/refresh', data: {'refresh_token': refresh});
       final data = resp.data as Map<String, dynamic>;
       await tokenStore.save(
         data['access_token'] as String,
