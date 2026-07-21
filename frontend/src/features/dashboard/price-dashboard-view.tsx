@@ -20,6 +20,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { ErrorState } from "@/components/error-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -112,9 +113,19 @@ function MovementRow({ m, up }: { m: PriceMovement; up: boolean }) {
 }
 
 export function PriceDashboardView() {
-  const { data, isLoading } = usePriceDashboard();
+  const { data, isLoading, isError, error, refetch, isFetching } = usePriceDashboard();
   const { data: alerts } = useStoredPriceAlerts();
   const markRead = useMarkPriceAlertRead();
+
+  if (isError) {
+    // Don't show "Pas encore assez de données" when the request actually failed:
+    // that reads as "you have no price history", not "the server hiccuped".
+    return (
+      <div className="rounded-xl border bg-card">
+        <ErrorState error={error} onRetry={() => refetch()} retrying={isFetching} />
+      </div>
+    );
+  }
 
   if (isLoading) {
     return <Skeleton className="h-64 w-full" />;

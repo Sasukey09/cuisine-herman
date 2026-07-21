@@ -5,6 +5,7 @@ import { Loader2, Play, Save, Trash2, Plus, Download, FileSpreadsheet } from "lu
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/page-header";
+import { ErrorState } from "@/components/error-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -320,6 +321,13 @@ export function ReportsView() {
           <CardTitle className="text-base">Rapports enregistrés</CardTitle>
         </CardHeader>
         <CardContent>
+          {saved.isError && (
+            <ErrorState
+              error={saved.error}
+              onRetry={() => saved.refetch()}
+              retrying={saved.isFetching}
+            />
+          )}
           {saved.data?.length === 0 && (
             <p className="text-sm text-muted-foreground">Aucun rapport enregistré.</p>
           )}

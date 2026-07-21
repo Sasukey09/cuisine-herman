@@ -25,6 +25,10 @@ CREATE TABLE users (
   metadata jsonb,
   UNIQUE(tenant_id, email)
 );
+-- NB: password_reset_tokens is created by Alembic migration 0013, not here.
+-- schema.sql is the *base* state the first migration applies; later additions
+-- (e.g. users.token_version in 0009) live only in their migration, so adding a
+-- table here too would make the base create it AND 0013 recreate it → conflict.
 
 -- suppliers
 CREATE TABLE suppliers (

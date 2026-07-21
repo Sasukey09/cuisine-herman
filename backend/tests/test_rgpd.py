@@ -68,6 +68,68 @@ def test_deleting_an_organization_requires_retyping_its_exact_name(monkeypatch):
         app.dependency_overrides.clear()
 
 
+def test_erasure_requires_the_password_for_a_password_based_account(monkeypatch):
+    """Second confirmation factor before irreversible erasure. A password-based
+    admin must re-enter their password; a wrong/absent one is refused (400) and
+    nothing is deleted; the exact one lets the erasure proceed (204)."""
+    from app.api.api_v1.endpoints import rgpd as endpoint
+    from app.core import security
+
+    deleted = {"called": False}
+    pw_hash = security.get_password_hash("MonMotDePasse1")
+
+    class FakeQuery:
+        def filter(self, *a):
+            return self
+
+        def first(self):
+            return N(id="t1", name="Restaurant FoodGad")
+
+    class FakeDB:
+        def query(self, *a):
+            return FakeQuery()
+
+    monkeypatch.setattr(endpoint.rgpd, "record", lambda *a, **k: None)
+    monkeypatch.setattr(
+        endpoint.rgpd, "delete_organization",
+        lambda db, t: deleted.update(called=True) or True,
+    )
+    from app.db.session import get_db
+    from app.api.deps import get_current_tenant_id, get_current_user, get_current_roles
+
+    app.dependency_overrides[get_db] = lambda: FakeDB()
+    app.dependency_overrides[get_current_tenant_id] = lambda: "t1"
+    app.dependency_overrides[get_current_user] = lambda: N(
+        id="u1", tenant_id="t1", email="chef@foodgad.fr", token_version=0, password_hash=pw_hash
+    )
+    app.dependency_overrides[get_current_roles] = lambda: ["admin"]
+    try:
+        client = TestClient(app)
+
+        wrong_pw = client.post(
+            "/api/v1/rgpd/delete-organization",
+            json={"confirm_name": "Restaurant FoodGad", "password": "mauvais"},
+        )
+        assert wrong_pw.status_code == 400
+        assert not deleted["called"], "a wrong password must not erase the restaurant"
+
+        no_pw = client.post(
+            "/api/v1/rgpd/delete-organization",
+            json={"confirm_name": "Restaurant FoodGad"},
+        )
+        assert no_pw.status_code == 400, "the password is required for a password account"
+        assert not deleted["called"]
+
+        ok = client.post(
+            "/api/v1/rgpd/delete-organization",
+            json={"confirm_name": "Restaurant FoodGad", "password": "MonMotDePasse1"},
+        )
+        assert ok.status_code == 204
+        assert deleted["called"]
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_only_an_admin_can_erase_or_export():
     _as("manager")  # not admin
     try:
