@@ -25,18 +25,10 @@ CREATE TABLE users (
   metadata jsonb,
   UNIQUE(tenant_id, email)
 );
-
--- password_reset_tokens (self-service "mot de passe oublié"; only the hash is stored)
-CREATE TABLE password_reset_tokens (
-  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  token_hash text NOT NULL UNIQUE,
-  expires_at timestamptz NOT NULL,
-  used_at timestamptz,
-  created_at timestamptz DEFAULT now()
-);
-CREATE INDEX ix_password_reset_tokens_user_id ON password_reset_tokens(user_id);
-CREATE INDEX ix_password_reset_tokens_token_hash ON password_reset_tokens(token_hash);
+-- NB: password_reset_tokens is created by Alembic migration 0013, not here.
+-- schema.sql is the *base* state the first migration applies; later additions
+-- (e.g. users.token_version in 0009) live only in their migration, so adding a
+-- table here too would make the base create it AND 0013 recreate it → conflict.
 
 -- suppliers
 CREATE TABLE suppliers (
