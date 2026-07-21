@@ -21,7 +21,8 @@ from app.models.models import VideoSource, Transcription
 from .platforms import detect_platform
 from .transcript import get_transcript
 from .extractor import get_extractor
-from .errors import STTNotConfiguredError, VideoTooLongError
+from .config import get_video_config
+from .errors import STTNotConfiguredError, VideoTooLongError, TranscriptUnavailableError
 
 # Whisper rejects audio files larger than 25MB; our transcode stays well below.
 _MAX_AUDIO_BYTES = 24 * 1024 * 1024
@@ -147,6 +148,55 @@ def extract_recipe_from_url(
         "note": (
             "Fiche générée automatiquement : les quantités sont estimées et "
             "doivent être validées avant enregistrement."
+        ),
+    }
+
+
+def extract_recipe_from_transcript(
+    db: Session,
+    tenant_id: str,
+    transcript: str,
+    url: Optional[str] = None,
+    title: Optional[str] = None,
+    extractor: Any = None,
+) -> Dict[str, Any]:
+    """Extract a recipe from a transcript the CLIENT already fetched.
+
+    The mobile app pulls the YouTube captions from the phone's residential IP —
+    which YouTube does not bot-block like Render's datacenter IP — and posts the
+    text here. We never fetch YouTube server-side on this path, so there is no
+    SSRF surface and no datacenter-IP block: only the AI extraction runs.
+    """
+    text = (transcript or "").strip()
+    if not text:
+        raise TranscriptUnavailableError("Transcript vide.")
+    limit = get_video_config().transcript_char_limit
+    if len(text) > limit:
+        text = text[:limit]
+
+    source = VideoSource(
+        id=str(uuid.uuid4()),
+        tenant_id=tenant_id,
+        url=(url or "client-transcript")[:2000],
+        platform="youtube_client",
+        fetched_at=datetime.utcnow(),
+    )
+    db.add(source)
+    db.commit()
+    db.add(Transcription(id=str(uuid.uuid4()), source_id=str(source.id), text=text, language=None))
+    db.commit()
+
+    draft = (extractor or get_extractor()).extract(text, hint_title=title)
+    excerpt = text[:600] + ("…" if len(text) > 600 else "")
+    return {
+        "source_id": str(source.id),
+        "platform": "youtube_client",
+        "transcript_source": "client_captions",
+        "transcript_excerpt": excerpt,
+        "draft": draft,
+        "note": (
+            "Fiche générée depuis les sous-titres de la vidéo : les quantités sont "
+            "estimées et doivent être validées avant enregistrement."
         ),
     }
 
