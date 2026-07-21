@@ -137,3 +137,48 @@ def test_base_opts_no_cookiefile_when_absent(monkeypatch):
     assert "cookiefile" not in audio._base_opts()
     # anti-bot mitigations still present
     assert "ios" in audio._base_opts()["extractor_args"]["youtube"]["player_client"]
+
+
+# --------------------------------------------------------------------------- #
+# Client-provided transcript path: the mobile app fetches captions from the
+# phone's residential IP (not blocked) and posts the text; the server runs only
+# the AI extraction, never a YouTube fetch (no datacenter-IP block, no SSRF).
+# --------------------------------------------------------------------------- #
+def test_extract_from_transcript_runs_ai_without_any_fetch():
+    from app.services.video import service as svc
+
+    class FakeExtractor:
+        def extract(self, text, hint_title=None):
+            return {"name": "Tarte", "hint": hint_title, "seen": text[:15]}
+
+    class FakeDB:
+        def add(self, *a):
+            pass
+
+        def commit(self):
+            pass
+
+    out = svc.extract_recipe_from_transcript(
+        FakeDB(), "t1", "Prenez 3 pommes, du beurre et du sucre.",
+        url="https://youtu.be/abc", title="Ma tarte", extractor=FakeExtractor(),
+    )
+    assert out["platform"] == "youtube_client"
+    assert out["transcript_source"] == "client_captions"
+    assert out["draft"]["name"] == "Tarte"
+    assert out["draft"]["hint"] == "Ma tarte"
+
+
+def test_extract_from_transcript_rejects_empty():
+    import pytest
+    from app.services.video import service as svc
+    from app.services.video.errors import TranscriptUnavailableError
+
+    class FakeDB:
+        def add(self, *a):
+            pass
+
+        def commit(self):
+            pass
+
+    with pytest.raises(TranscriptUnavailableError):
+        svc.extract_recipe_from_transcript(FakeDB(), "t1", "   ")

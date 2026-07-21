@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 import '../../common/format.dart';
 import '../../common/ui_kit.dart';
@@ -39,6 +40,43 @@ class _VideoImportScreenState extends ConsumerState<VideoImportScreen> {
     super.dispose();
   }
 
+  static bool _isYoutube(String url) {
+    final u = url.toLowerCase();
+    return u.contains('youtube.com') || u.contains('youtu.be');
+  }
+
+  /// Fetch the captions FROM the phone (residential IP), which YouTube does not
+  /// bot-block like the server's datacenter IP. Returns null if unavailable.
+  Future<({String text, String title})?> _fetchYoutubeCaptions(String url) async {
+    final yt = YoutubeExplode();
+    try {
+      final video = await yt.videos.get(url);
+      final manifest = await yt.videos.closedCaptions.getManifest(video.id);
+      if (manifest.tracks.isEmpty) return null;
+      ClosedCaptionTrackInfo pick() {
+        for (final lang in ['fr', 'en']) {
+          final m = manifest.tracks
+              .where((t) => t.language.code.toLowerCase().startsWith(lang));
+          if (m.isNotEmpty) return m.first;
+        }
+        return manifest.tracks.first;
+      }
+
+      final track = await yt.videos.closedCaptions.get(pick());
+      final text = track.captions
+          .map((c) => c.text)
+          .where((t) => t.trim().isNotEmpty)
+          .join(' ')
+          .trim();
+      if (text.isEmpty) return null;
+      return (text: text, title: video.title);
+    } catch (_) {
+      return null; // pas de sous-titres accessibles -> on tentera le serveur
+    } finally {
+      yt.close();
+    }
+  }
+
   Future<void> _extract() async {
     final url = _url.text.trim();
     if (url.isEmpty || _extracting) return;
@@ -47,8 +85,20 @@ class _VideoImportScreenState extends ConsumerState<VideoImportScreen> {
       _savedInfo = null;
     });
     try {
-      final resp = await ref.read(apiClientProvider).dio.post('/video/extract', data: {'url': url});
-      final draft = (resp.data as Map<String, dynamic>)['draft'] as Map<String, dynamic>;
+      final api = ref.read(apiClientProvider).dio;
+      Map<String, dynamic> data;
+      // YouTube : récupérer les sous-titres côté téléphone (IP résidentielle,
+      // non bloquée) puis les envoyer au backend. Repli serveur si indisponible.
+      final caps = _isYoutube(url) ? await _fetchYoutubeCaptions(url) : null;
+      if (caps != null) {
+        final resp = await api.post('/video/extract-transcript',
+            data: {'transcript': caps.text, 'url': url, 'title': caps.title});
+        data = resp.data as Map<String, dynamic>;
+      } else {
+        final resp = await api.post('/video/extract', data: {'url': url});
+        data = resp.data as Map<String, dynamic>;
+      }
+      final draft = data['draft'] as Map<String, dynamic>;
       _name.text = (draft['name'] as String?) ?? '';
       _portions.text = draft['yield_qty'] != null ? '${draft['yield_qty']}' : '';
       _ings

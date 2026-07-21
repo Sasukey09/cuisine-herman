@@ -6,6 +6,7 @@ from app.db.session import get_db
 from app.api.deps import get_current_tenant_id, require_writer, quota, daily_quota
 from app.schemas.schemas import (
     VideoExtractRequest,
+    VideoTranscriptRequest,
     VideoExtractResult,
     VideoSaveRequest,
 )
@@ -49,6 +50,33 @@ def api_video_extract(
         raise HTTPException(status_code=413, detail=str(exc))
     except (TranscriptUnavailableError, AudioDownloadError) as exc:
         raise HTTPException(status_code=502, detail=str(exc))
+    except RecipeExtractionError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except VideoError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+@router.post("/extract-transcript", response_model=VideoExtractResult)
+def api_video_extract_transcript(
+    payload: VideoTranscriptRequest,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+    _: list = Depends(require_writer),
+    _q: None = Depends(quota("video", "VIDEO_IMPORT_PER_MIN", 10)),
+    _qd: None = Depends(daily_quota("video", "VIDEO_IMPORT_PER_DAY", 50)),
+):
+    """The client fetched the transcript itself (mobile app, residential IP) →
+    AI-extracted, editable recipe draft. Bypasses YouTube's datacenter-IP block
+    entirely because the server never fetches YouTube on this path."""
+    text = (payload.transcript or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Transcript vide")
+    try:
+        return video_service.extract_recipe_from_transcript(
+            db, tenant_id, text, url=payload.url, title=payload.title
+        )
+    except TranscriptUnavailableError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     except RecipeExtractionError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     except VideoError as exc:

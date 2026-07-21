@@ -443,6 +443,15 @@ class VideoExtractRequest(BaseModel):
     url: str
 
 
+class VideoTranscriptRequest(BaseModel):
+    """The client (mobile app) fetched the transcript itself — from the phone's
+    residential IP, which YouTube does not block like a datacenter one — and
+    sends it here for AI extraction. No server-side YouTube fetch happens."""
+    transcript: str = Field(min_length=1, max_length=200000)
+    url: Optional[str] = Field(default=None, max_length=2048)
+    title: Optional[str] = Field(default=None, max_length=500)
+
+
 class VideoIngredientDraft(BaseModel):
     name: str
     qty: Optional[float] = None
