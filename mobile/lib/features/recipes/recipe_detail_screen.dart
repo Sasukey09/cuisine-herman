@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../common/format.dart';
 import '../../core/api_error.dart';
 import '../../core/providers.dart';
-import '../../main.dart' show kMuted, kGood, kBad;
+import '../../main.dart' show kMuted, kGood, kBad, kWarn, kTerracotta;
 
 /// Recipe detail + ingredient management — the mobile equivalent of the web
 /// recipe page. The recipes list only let you set name/portions/price; there was
@@ -18,14 +18,22 @@ final recipeFullProvider =
   return Map<String, dynamic>.from(resp.data as Map);
 });
 
+/// Simulated selling price for the cost panel. null -> use the recipe's own
+/// selling_price (server fallback). Mirrors the web cost-panel "Prix de vente".
+final recipeSellingPriceProvider =
+    StateProvider.autoDispose.family<double?, String>((ref, id) => null);
+
 final recipeCostProvider =
     FutureProvider.autoDispose.family<Map<String, dynamic>?, String>((ref, id) async {
   final full = await ref.read(recipeFullProvider(id).future);
   final vid = (full['recipe'] as Map?)?['current_version_id'];
   if (vid == null) return null;
+  final override = ref.watch(recipeSellingPriceProvider(id));
   try {
-    final resp =
-        await ref.read(apiClientProvider).dio.post('/recipes/$id/versions/$vid/compute-cost');
+    final resp = await ref.read(apiClientProvider).dio.post(
+          '/recipes/$id/versions/$vid/compute-cost',
+          data: override != null ? {'selling_price': override} : null,
+        );
     return Map<String, dynamic>.from(resp.data as Map);
   } catch (_) {
     return null; // viewer role / no prices — just hide the figure
@@ -77,7 +85,6 @@ class RecipeDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final fullAsync = ref.watch(recipeFullProvider(recipeId));
-    final costAsync = ref.watch(recipeCostProvider(recipeId));
     // id -> nom produit, pour afficher les ingrédients (/full ne renvoie que l'id)
     final productNames = <String, String>{
       for (final p in (ref.watch(_productsPickerProvider).valueOrNull ?? const []))
@@ -120,55 +127,15 @@ class RecipeDetailScreen extends ConsumerWidget {
             final ingredients =
                 (full['ingredients'] as List? ?? const []).cast<Map<String, dynamic>>();
             final portions = recipe['yield_qty'];
-            final cost = costAsync.valueOrNull;
-            final cpp = cost?['cost_per_portion'] as num?;
-            final fc = cost?['food_cost_pct'] as num?;
 
             return ListView(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
               children: [
-                // --- Résumé : portions + coût/portion ---
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('Portions', style: TextStyle(fontSize: 12, color: kMuted)),
-                              const SizedBox(height: 2),
-                              Text(portions == null ? '—' : _fmt(portions),
-                                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
-                            ],
-                          ),
-                        ),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('Coût / portion',
-                                  style: TextStyle(fontSize: 12, color: kMuted)),
-                              const SizedBox(height: 2),
-                              Text(cpp == null ? '—' : eur(cpp),
-                                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
-                              if (fc != null)
-                                Text('food cost ${fc.round()} %',
-                                    style: TextStyle(
-                                        fontSize: 11.5,
-                                        color: fc >= 33 ? kBad : kGood,
-                                        fontWeight: FontWeight.w600)),
-                            ],
-                          ),
-                        ),
-                        OutlinedButton(
-                          onPressed: () => _editPortions(context, ref, portions),
-                          child: const Text('Portions'),
-                        ),
-                      ],
-                    ),
-                  ),
+                // --- Coût matière, marge, food cost + simulation de prix ---
+                _CostCard(
+                  recipeId: recipeId,
+                  portions: portions,
+                  onEditPortions: () => _editPortions(context, ref, portions),
                 ),
                 const SizedBox(height: 16),
                 const Padding(
@@ -215,6 +182,9 @@ class RecipeDetailScreen extends ConsumerWidget {
                       ),
                     );
                   }),
+                _InstructionsSection(
+                  instructions: (full['instructions'] as List?) ?? const [],
+                ),
               ],
             );
           },
@@ -338,6 +308,7 @@ class _IngredientDialogState extends State<_IngredientDialog> {
   String? _productId;
   late final TextEditingController _qty;
   late final TextEditingController _loss;
+  late final TextEditingController _yield;
 
   @override
   void initState() {
@@ -347,12 +318,15 @@ class _IngredientDialogState extends State<_IngredientDialog> {
         text: widget.initial?['qty'] == null ? '' : _fmt(widget.initial!['qty']));
     _loss = TextEditingController(
         text: (widget.initial?['loss_pct'] ?? 0) == 0 ? '' : _fmt(widget.initial!['loss_pct']));
+    _yield = TextEditingController(
+        text: (widget.initial?['yield_pct'] ?? 100) == 100 ? '' : _fmt(widget.initial!['yield_pct']));
   }
 
   @override
   void dispose() {
     _qty.dispose();
     _loss.dispose();
+    _yield.dispose();
     super.dispose();
   }
 
@@ -396,6 +370,13 @@ class _IngredientDialogState extends State<_IngredientDialog> {
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 decoration: const InputDecoration(labelText: 'Perte % (optionnel)'),
               ),
+              const SizedBox(height: 6),
+              TextFormField(
+                controller: _yield,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                    labelText: 'Rendement % (optionnel, défaut 100)'),
+              ),
             ],
           ),
         ),
@@ -409,11 +390,181 @@ class _IngredientDialogState extends State<_IngredientDialog> {
               'product_id': _productId,
               'qty': double.tryParse(_qty.text.replaceAll(',', '.')),
               'loss_pct': double.tryParse(_loss.text.replaceAll(',', '.')) ?? 0,
-              'yield_pct': widget.initial?['yield_pct'] ?? 100,
+              'yield_pct': double.tryParse(_yield.text.replaceAll(',', '.')) ?? 100,
             });
           },
           child: const Text('Enregistrer'),
         ),
+      ],
+    );
+  }
+}
+
+/// Cost panel — the mobile equivalent of the web `cost-panel.tsx`: material cost,
+/// cost/portion, food cost %, estimated margin, a "missing prices" warning, and a
+/// live "simulate a selling price" input that re-runs compute-cost with a body.
+class _CostCard extends ConsumerStatefulWidget {
+  const _CostCard({
+    required this.recipeId,
+    required this.portions,
+    required this.onEditPortions,
+  });
+  final String recipeId;
+  final dynamic portions;
+  final VoidCallback onEditPortions;
+
+  @override
+  ConsumerState<_CostCard> createState() => _CostCardState();
+}
+
+class _CostCardState extends ConsumerState<_CostCard> {
+  final _price = TextEditingController();
+
+  @override
+  void dispose() {
+    _price.dispose();
+    super.dispose();
+  }
+
+  Widget _metric(String label, String value, {Color? color}) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 12, color: kMuted)),
+          const SizedBox(height: 2),
+          Text(value,
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: color)),
+        ],
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final cost = ref.watch(recipeCostProvider(widget.recipeId)).valueOrNull;
+    final cpp = cost?['cost_per_portion'] as num?;
+    final fc = cost?['food_cost_pct'] as num?;
+    final total = cost?['computed_cost_total'] as num?;
+    final margin = cost?['margin_estimated'] as num?;
+    final missing = cost?['has_missing_prices'] == true;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                    child: _metric('Portions',
+                        widget.portions == null ? '—' : _fmt(widget.portions))),
+                Expanded(child: _metric('Coût / portion', cpp == null ? '—' : eur(cpp))),
+                OutlinedButton(
+                    onPressed: widget.onEditPortions, child: const Text('Portions')),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(child: _metric('Coût matière', total == null ? '—' : eur(total))),
+                Expanded(
+                    child: _metric('Marge / portion', margin == null ? '—' : eur(margin),
+                        color: margin == null ? null : (margin >= 0 ? kGood : kBad))),
+                Expanded(
+                    child: _metric('Food cost', fc == null ? '—' : '${fc.round()} %',
+                        color: fc == null ? null : (fc >= 33 ? kBad : kGood))),
+              ],
+            ),
+            if (missing) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(9),
+                decoration: BoxDecoration(
+                    color: const Color(0xFFF6EAD4), borderRadius: BorderRadius.circular(8)),
+                child: const Row(children: [
+                  Icon(Icons.info_outline, size: 16, color: kWarn),
+                  SizedBox(width: 6),
+                  Expanded(
+                      child: Text("Coût partiel : certains ingrédients n'ont pas de prix.",
+                          style: TextStyle(fontSize: 12, color: Color(0xFF8A6D3B)))),
+                ]),
+              ),
+            ],
+            const Divider(height: 26),
+            const Text('Simuler un prix de vente / portion',
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _price,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                        isDense: true, hintText: 'ex. 12,50', prefixText: '€ '),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: () {
+                    ref.read(recipeSellingPriceProvider(widget.recipeId).notifier).state =
+                        double.tryParse(_price.text.replaceAll(',', '.'));
+                  },
+                  child: const Text('Calculer'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Recipe procedure — the ordered steps returned by GET /recipes/{id}/full
+/// (`instructions`). Hidden when there are none. Mirrors the web recipe page.
+class _InstructionsSection extends StatelessWidget {
+  const _InstructionsSection({required this.instructions});
+  final List instructions;
+
+  @override
+  Widget build(BuildContext context) {
+    if (instructions.isEmpty) return const SizedBox.shrink();
+    final steps = instructions.map((e) => Map<String, dynamic>.from(e as Map)).toList()
+      ..sort((a, b) =>
+          ((a['step_number'] ?? 0) as num).compareTo((b['step_number'] ?? 0) as num));
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 20),
+        const Text('Procédure',
+            style: TextStyle(
+                fontFamily: 'Newsreader', fontSize: 17, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 8),
+        ...steps.asMap().entries.map((e) {
+          final n = e.value['step_number'] ?? (e.key + 1);
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 24,
+                  height: 24,
+                  alignment: Alignment.center,
+                  decoration:
+                      const BoxDecoration(color: Color(0xFFEFE1D3), shape: BoxShape.circle),
+                  child: Text('$n',
+                      style: const TextStyle(
+                          fontSize: 12, fontWeight: FontWeight.w700, color: kTerracotta)),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text('${e.value['content'] ?? ''}',
+                      style: const TextStyle(fontSize: 13.5, height: 1.35)),
+                ),
+              ],
+            ),
+          );
+        }),
       ],
     );
   }
