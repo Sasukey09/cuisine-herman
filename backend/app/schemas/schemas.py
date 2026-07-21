@@ -9,10 +9,10 @@ from datetime import date as DateType
 
 
 class SupplierBase(BaseModel):
-    name: str
-    code: Optional[str] = None
+    name: str = Field(max_length=200)
+    code: Optional[str] = Field(default=None, max_length=100)
     contact: Optional[dict] = None
-    rating: Optional[float] = None
+    rating: Optional[float] = Field(default=None, allow_inf_nan=False)
 
 
 class SupplierCreate(SupplierBase):
@@ -20,10 +20,10 @@ class SupplierCreate(SupplierBase):
 
 
 class SupplierUpdate(BaseModel):
-    name: Optional[str] = None
-    code: Optional[str] = None
+    name: Optional[str] = Field(default=None, max_length=200)
+    code: Optional[str] = Field(default=None, max_length=100)
     contact: Optional[dict] = None
-    rating: Optional[float] = None
+    rating: Optional[float] = Field(default=None, allow_inf_nan=False)
 
 
 class SupplierRead(SupplierBase):
@@ -46,7 +46,7 @@ class SupplierPriceRead(BaseModel):
 class ProductPriceCreate(BaseModel):
     """A price a human types in, rather than one an invoice brought."""
 
-    price: float = Field(gt=0, description="Prix pour UNE unité (ex. 8.50 pour 8,50 €/kg)")
+    price: float = Field(gt=0, allow_inf_nan=False, description="Prix pour UNE unité (ex. 8.50 pour 8,50 €/kg)")
     unit_id: int = Field(description="L'unité à laquelle ce prix s'applique (kg, L, pièce…)")
     supplier_id: Optional[str] = None
     currency: str = "EUR"
@@ -54,8 +54,8 @@ class ProductPriceCreate(BaseModel):
 
 
 class ProductBase(BaseModel):
-    name: str
-    sku: Optional[str] = None
+    name: str = Field(max_length=200)
+    sku: Optional[str] = Field(default=None, max_length=100)
     base_unit_id: Optional[int] = None
 
 
@@ -64,8 +64,8 @@ class ProductCreate(ProductBase):
 
 
 class ProductUpdate(BaseModel):
-    name: Optional[str] = None
-    sku: Optional[str] = None
+    name: Optional[str] = Field(default=None, max_length=200)
+    sku: Optional[str] = Field(default=None, max_length=100)
     base_unit_id: Optional[int] = None
 
 
@@ -135,9 +135,9 @@ class InvoiceIngestResult(BaseModel):
 
 
 class RecipeBase(BaseModel):
-    name: str
-    yield_qty: Optional[float] = None
-    selling_price: Optional[float] = None
+    name: str = Field(max_length=200)
+    yield_qty: Optional[float] = Field(default=None, allow_inf_nan=False)
+    selling_price: Optional[float] = Field(default=None, allow_inf_nan=False)
 
 
 class RecipeCreate(RecipeBase):
@@ -145,9 +145,9 @@ class RecipeCreate(RecipeBase):
 
 
 class RecipeUpdate(BaseModel):
-    name: Optional[str] = None
-    yield_qty: Optional[float] = None
-    selling_price: Optional[float] = None
+    name: Optional[str] = Field(default=None, max_length=200)
+    yield_qty: Optional[float] = Field(default=None, allow_inf_nan=False)
+    selling_price: Optional[float] = Field(default=None, allow_inf_nan=False)
 
 
 class RecipeInstructionRead(BaseModel):
@@ -170,12 +170,12 @@ class RecipeIngredientCreate(BaseModel):
     # Optional: ingredients imported from a PDF / video / the assistant may not be
     # matched to a catalog product yet (kept by free-text ingredient_name).
     product_id: Optional[str] = None
-    qty: Optional[float] = None
+    qty: Optional[float] = Field(default=None, allow_inf_nan=False)
     unit_id: Optional[int] = None
-    qty_normalized: Optional[float] = None
-    loss_pct: Optional[float] = 0
-    yield_pct: Optional[float] = 100
-    prep_notes: Optional[str] = None
+    qty_normalized: Optional[float] = Field(default=None, allow_inf_nan=False)
+    loss_pct: Optional[float] = Field(default=0, allow_inf_nan=False, ge=0)
+    yield_pct: Optional[float] = Field(default=100, allow_inf_nan=False, ge=0)
+    prep_notes: Optional[str] = Field(default=None, max_length=2000)
 
 
 class RecipeIngredientRead(RecipeIngredientCreate):
