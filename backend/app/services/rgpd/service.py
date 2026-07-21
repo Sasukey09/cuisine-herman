@@ -42,6 +42,8 @@ ACTION_LOGIN = "auth.login"
 ACTION_LOGOUT = "auth.logout"
 ACTION_USER_CREATED = "auth.user_created"
 ACTION_PASSWORD_RESET = "auth.password_reset"
+ACTION_PASSWORD_RESET_REQUESTED = "auth.password_reset_requested"
+ACTION_PASSWORD_RESET_COMPLETED = "auth.password_reset_completed"
 ACTION_DATA_EXPORTED = "rgpd.data_exported"
 ACTION_ORG_DELETED = "rgpd.organization_deleted"
 

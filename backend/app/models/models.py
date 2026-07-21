@@ -53,6 +53,24 @@ class User(Base):
     token_version = Column(Integer, nullable=False, server_default="0")
 
 
+class PasswordResetToken(Base):
+    """A single-use, short-lived credential for self-service password recovery.
+
+    Only the SHA-256 *hash* of the token is stored: a leak of this table must not
+    hand an attacker a working reset link. The plaintext token lives only in the
+    email we send. Rows are consumed (``used_at``) on first use and expire.
+    """
+    __tablename__ = "password_reset_tokens"
+    id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
+    user_id = Column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    token_hash = Column(Text, nullable=False, unique=True, index=True)
+    expires_at = Column(TIMESTAMP, nullable=False)
+    used_at = Column(TIMESTAMP)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+
 class Supplier(Base):
     __tablename__ = "suppliers"
     id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())

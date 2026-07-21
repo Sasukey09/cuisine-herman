@@ -26,6 +26,18 @@ CREATE TABLE users (
   UNIQUE(tenant_id, email)
 );
 
+-- password_reset_tokens (self-service "mot de passe oublié"; only the hash is stored)
+CREATE TABLE password_reset_tokens (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash text NOT NULL UNIQUE,
+  expires_at timestamptz NOT NULL,
+  used_at timestamptz,
+  created_at timestamptz DEFAULT now()
+);
+CREATE INDEX ix_password_reset_tokens_user_id ON password_reset_tokens(user_id);
+CREATE INDEX ix_password_reset_tokens_token_hash ON password_reset_tokens(token_hash);
+
 -- suppliers
 CREATE TABLE suppliers (
   id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),

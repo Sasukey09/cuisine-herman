@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Upload, FileText, Pencil, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { ErrorState } from "@/components/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -33,7 +34,7 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import type { Invoice } from "@/services/types";
 
 export function InvoicesView() {
-  const { data: invoices, isLoading } = useInvoices();
+  const { data: invoices, isLoading, isError, error, refetch, isFetching } = useInvoices();
   const canWrite = useAuthStore((s) => s.hasRole("admin", "manager"));
   const deleteInvoice = useDeleteInvoice();
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -75,7 +76,13 @@ export function InvoicesView() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isLoading ? (
+            {isError ? (
+              <TableRow>
+                <TableCell colSpan={colCount}>
+                  <ErrorState error={error} onRetry={() => refetch()} retrying={isFetching} compact />
+                </TableCell>
+              </TableRow>
+            ) : isLoading ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
                   {Array.from({ length: colCount }).map((__, j) => (

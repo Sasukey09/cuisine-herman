@@ -329,6 +329,19 @@ class ResetPasswordRequest(BaseModel):
     password: str
 
 
+class ForgotPasswordRequest(BaseModel):
+    """Self-service recovery: the user gives only their email. The endpoint
+    always answers the same way, so it never reveals who has an account."""
+    email: str = Field(max_length=320)
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    """Redeem a reset link. Password strength is enforced in the endpoint (400),
+    same policy as everywhere else."""
+    token: str = Field(min_length=16, max_length=512)
+    password: str
+
+
 class GoogleAuthRequest(BaseModel):
     """Google Sign-In: the client sends the ID token it obtained natively."""
     id_token: str
@@ -699,6 +712,11 @@ class AuditLogRead(BaseModel):
 
 class DeleteOrganizationRequest(BaseModel):
     """Retyping the exact name is the only thing between a mis-click and every
-    invoice, recipe and price this restaurant has ever recorded."""
+    invoice, recipe and price this restaurant has ever recorded.
+
+    ``password`` is verified for password-based accounts (a second confirmation
+    factor before irreversible erasure); it is optional so social-login admins,
+    who have no password, can still exercise their right to erasure."""
 
     confirm_name: str
+    password: Optional[str] = None

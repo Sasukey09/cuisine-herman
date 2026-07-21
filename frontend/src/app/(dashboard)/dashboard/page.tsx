@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { Wallet, Percent, ShoppingCart, TrendingDown } from "lucide-react";
 
 import { PageHeader } from "@/components/page-header";
+import { ErrorState } from "@/components/error-state";
 import { StatCard } from "@/features/dashboard/stat-card";
 import { CostTrendChart } from "@/features/dashboard/cost-trend-chart";
 import { TopProductsCard } from "@/features/dashboard/top-products-card";
@@ -45,12 +46,27 @@ export default function DashboardPage() {
   const totalSpend = products.reduce((sum, p) => sum + (p.total_spend ?? 0), 0);
   const losing = lossMaking.data?.losing_money ?? [];
 
+  // A dashboard full of zeros that is actually a backend outage is the most
+  // alarming possible lie for a cost tracker. Surface the failure explicitly
+  // (with a single retry that refetches everything) instead of a silent all-green.
+  const queries = [costTrends, topProducts, marginAlerts, priceAlerts, lossMaking];
+  const anyError = queries.some((q) => q.isError);
+  const firstError = queries.find((q) => q.isError)?.error;
+  const retrying = queries.some((q) => q.isFetching);
+  const retryAll = () => queries.forEach((q) => q.refetch());
+
   return (
     <>
       <PageHeader
         title="Tableau de bord"
         description="Vue d'ensemble de vos coûts matière et de vos achats."
       />
+
+      {anyError && (
+        <div className="mb-4 rounded-xl border border-destructive/30 bg-card">
+          <ErrorState error={firstError} onRetry={retryAll} retrying={retrying} compact />
+        </div>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard

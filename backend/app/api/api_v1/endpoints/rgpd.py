@@ -83,6 +83,20 @@ def api_delete_organization(
             ),
         )
 
+    # Second confirmation factor before irreversible erasure: re-enter the
+    # password. Enforced for password-based accounts; a social-login admin has no
+    # password, so name-confirmation + an authenticated session is the ceiling
+    # there (they cannot supply one).
+    pw_hash = getattr(current_user, "password_hash", None)
+    if pw_hash:
+        from app.core import security
+
+        if not payload.password or not security.verify_password(payload.password, pw_hash):
+            raise HTTPException(
+                status_code=400,
+                detail="Mot de passe incorrect. Saisissez votre mot de passe pour confirmer.",
+            )
+
     name, email = org.name, current_user.email
     rgpd.delete_organization(db, tenant_id)
 
