@@ -38,14 +38,26 @@ type Values = z.infer<typeof schema>;
 
 const emptyRow = { product_id: "", qty: undefined, loss_pct: 0, yield_pct: 100 };
 
+export interface InitialIngredient {
+  product_id: string;
+  qty?: number;
+  loss_pct?: number;
+  yield_pct?: number;
+}
+
 export function VersionFormDialog({
   open,
   onOpenChange,
   recipeId,
+  initialIngredients,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   recipeId: string;
+  // Pre-fill with the recipe's current ingredients so the user builds on them —
+  // adds a 2nd/3rd, edits or removes one — instead of re-entering everything.
+  // Saving writes a new version with the full list (which becomes current).
+  initialIngredients?: InitialIngredient[];
 }) {
   const { data: products } = useProducts();
   const create = useCreateVersion(recipeId);
@@ -63,8 +75,20 @@ export function VersionFormDialog({
   const { fields, append, remove } = useFieldArray({ control, name: "ingredients" });
 
   useEffect(() => {
-    if (open) reset({ ingredients: [{ ...emptyRow }] });
-  }, [open, reset]);
+    if (!open) return;
+    const rows =
+      initialIngredients && initialIngredients.length > 0
+        ? initialIngredients.map((i) => ({
+            product_id: i.product_id ?? "",
+            qty: i.qty,
+            loss_pct: i.loss_pct ?? 0,
+            yield_pct: i.yield_pct ?? 100,
+          }))
+        : [{ ...emptyRow }];
+    reset({ ingredients: rows });
+    // Depend on the serialized ingredients so reopening after a save reflects
+    // the latest saved list (incremental building).
+  }, [open, reset, JSON.stringify(initialIngredients)]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onSubmit = (values: Values) => {
     const payload = {

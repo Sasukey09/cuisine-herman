@@ -35,7 +35,9 @@ pgvector==0.3.6
 anthropic>=0.69.0
 
 # Video import: transcript (YouTube captions / audio download) + STT (OpenAI Whisper)
-youtube-transcript-api>=0.6.2
+# Pinned: 1.0 removed the static list_transcripts/get_transcript the caller used,
+# so an unpinned ">=0.6.2" silently broke caption fetching on the next deploy.
+youtube-transcript-api>=1.2.0,<2
 yt-dlp>=2024.8.6
 openai>=1.40.0
 

@@ -70,6 +70,61 @@ def test_captions_none_when_no_transcripts(monkeypatch):
     assert tx._youtube_captions("vid") is None
 
 
+# --------------------------------------------------------------------------- #
+# The actual bug this closes: youtube-transcript-api 1.0 REMOVED the static
+# list_transcripts/get_transcript and replaced them with an *instance* .list().
+# The code only called the old ones, so an unpinned bump broke every caption
+# fetch (AttributeError -> None -> falls to blocked yt-dlp). We now support both.
+# --------------------------------------------------------------------------- #
+def _install_fake_new(monkeypatch, tlist, capture=None):
+    class _Api:  # 1.x: instantiate, then .list(); NO static list_transcripts
+        def __init__(self, proxy_config=None):
+            if capture is not None:
+                capture["proxy"] = proxy_config
+
+        def list(self, vid):
+            return tlist
+
+    mod = types.ModuleType("youtube_transcript_api")
+    mod.YouTubeTranscriptApi = _Api
+    proxies = types.ModuleType("youtube_transcript_api.proxies")
+
+    class WebshareProxyConfig:
+        def __init__(self, proxy_username=None, proxy_password=None):
+            self.kind = "webshare"
+
+    class GenericProxyConfig:
+        def __init__(self, http_url=None, https_url=None):
+            self.kind = "generic"
+
+    proxies.WebshareProxyConfig = WebshareProxyConfig
+    proxies.GenericProxyConfig = GenericProxyConfig
+    monkeypatch.setitem(sys.modules, "youtube_transcript_api", mod)
+    monkeypatch.setitem(sys.modules, "youtube_transcript_api.proxies", proxies)
+
+
+def test_captions_work_with_the_new_1x_instance_api(monkeypatch):
+    _install_fake_new(monkeypatch, _FakeList(manual=_FakeTranscript("recette 1x")))
+    assert tx._youtube_captions("vid") == "recette 1x"
+
+
+def test_new_api_receives_the_configured_proxy(monkeypatch):
+    cap = {}
+    _install_fake_new(monkeypatch, _FakeList(manual=_FakeTranscript("x")), capture=cap)
+    monkeypatch.delenv("WEBSHARE_PROXY_USERNAME", raising=False)
+    monkeypatch.setenv("YOUTUBE_HTTPS_PROXY", "http://proxy.example:8080")
+    tx._youtube_captions("vid")
+    assert cap.get("proxy") is not None, "the proxy must be handed to the API when configured"
+
+
+def test_proxy_config_prefers_webshare(monkeypatch):
+    _install_fake_new(monkeypatch, _FakeList())
+    monkeypatch.setenv("WEBSHARE_PROXY_USERNAME", "u")
+    monkeypatch.setenv("WEBSHARE_PROXY_PASSWORD", "p")
+    pc = tx._proxy_config()
+    assert getattr(pc, "kind", None) == "webshare"
+
+
 def test_base_opts_uses_cookiefile_when_present(monkeypatch, tmp_path):
     ck = tmp_path / "cookies.txt"
     ck.write_text("# Netscape HTTP Cookie File")

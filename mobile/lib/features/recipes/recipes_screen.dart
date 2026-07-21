@@ -9,6 +9,7 @@ import '../../common/ui_kit.dart';
 import '../../core/api_error.dart';
 import '../../core/providers.dart';
 import '../../main.dart' show kMuted, kGood, kBad;
+import 'recipe_detail_screen.dart';
 
 final _recipesProvider = FutureProvider.autoDispose<Loaded>((ref) async {
   return fetchWithCache(ref, cacheKey: 'recipes', request: () async {
@@ -106,10 +107,12 @@ class RecipesScreen extends ConsumerWidget {
               ? cost.toDouble() / price.toDouble() * 100
               : null;
           return GestureDetector(
-            // Un tap ouvre les actions (modifier / supprimer, dont les portions) :
-            // sans onTap, la recette ne repondait qu'a l'appui long -> impossible
-            // de "revenir dessus" / de renseigner les portions.
-            onTap: () => _actions(context, ref, r),
+            // Tap = ouvrir la recette (détail + ingrédients : ajouter/modifier/
+            // supprimer, portions, coût recalculé), comme sur le Web. L'appui long
+            // garde les actions rapides (modifier la fiche / supprimer).
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => RecipeDetailScreen(recipeId: '${r['id']}', recipeName: name),
+            )),
             onLongPress: () => _actions(context, ref, r),
             child: Container(
             clipBehavior: Clip.antiAlias,

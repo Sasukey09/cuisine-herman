@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Upload, FileText, Pencil, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,19 @@ export function InvoicesView() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [editInvoice, setEditInvoice] = useState<Invoice | null>(null);
   const [toDelete, setToDelete] = useState<Invoice | null>(null);
+
+  // The header "+ Importer une facture" links here with ?import=1. Open the
+  // upload dialog on arrival (and strip the param so a refresh doesn't reopen it),
+  // so the button actually imports — even when the user is already on /factures.
+  const params = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  useEffect(() => {
+    if (canWrite && params.get("import") === "1") {
+      setUploadOpen(true);
+      router.replace(pathname);
+    }
+  }, [params, canWrite, router, pathname]);
 
   const colCount = canWrite ? 6 : 5;
 
