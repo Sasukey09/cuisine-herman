@@ -9,6 +9,7 @@ import '../../common/ui_kit.dart';
 import '../../core/api_error.dart';
 import '../../core/providers.dart';
 import '../../main.dart' show kMuted, kGood, kWarn;
+import 'invoice_detail_screen.dart';
 
 final _invoicesProvider = FutureProvider.autoDispose<Loaded>((ref) async {
   return fetchWithCache(ref, cacheKey: 'invoices', request: () async {
@@ -154,6 +155,15 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
         itemBuilder: (inv) {
           final st = _status(inv);
           return MockCard(
+            onTap: () async {
+              await Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => InvoiceDetailScreen(
+                  invoiceId: '${inv['id']}',
+                  invoiceNumber: inv['invoice_number'] as String?,
+                ),
+              ));
+              ref.invalidate(_invoicesProvider);
+            },
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
