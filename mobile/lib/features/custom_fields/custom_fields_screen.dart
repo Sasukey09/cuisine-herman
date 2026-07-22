@@ -23,6 +23,7 @@ class _CustomFieldsScreenState extends ConsumerState<CustomFieldsScreen> {
   final _options = TextEditingController();
   String _target = 'product';
   String _type = 'text';
+  bool _required = false;
 
   // value editor
   String _valTarget = 'product';
@@ -51,12 +52,14 @@ class _CustomFieldsScreenState extends ConsumerState<CustomFieldsScreen> {
         'label': _label.text.trim(),
         'target': _target,
         'type': _type,
+        'required': _required,
         'options': _type == 'select'
             ? _options.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList()
             : [],
       });
       _label.clear();
       _options.clear();
+      setState(() => _required = false);
       ref.invalidate(_fieldsProvider);
       _snack('Champ créé.');
     } catch (e) {
@@ -141,6 +144,16 @@ class _CustomFieldsScreenState extends ConsumerState<CustomFieldsScreen> {
             controller: _options,
             decoration: const InputDecoration(labelText: 'Choix (séparés par virgules)'),
           ),
+        // Case « obligatoire » — présente au web, absente du mobile jusqu'ici :
+        // impossible de définir un champ requis.
+        CheckboxListTile(
+          value: _required,
+          onChanged: (v) => setState(() => _required = v ?? false),
+          contentPadding: EdgeInsets.zero,
+          controlAffinity: ListTileControlAffinity.leading,
+          dense: true,
+          title: const Text('Champ obligatoire'),
+        ),
         const SizedBox(height: 8),
         FilledButton.icon(onPressed: _create, icon: const Icon(Icons.add), label: const Text('Créer')),
         const Divider(height: 32),

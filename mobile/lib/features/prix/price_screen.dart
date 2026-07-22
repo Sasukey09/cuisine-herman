@@ -64,18 +64,49 @@ class PriceScreen extends ConsumerWidget {
                   ? const _EmptyLine('Aucune alerte.')
                   : Column(
                       children: [
-                        for (final r in rows.take(12))
-                          Container(
-                            margin: const EdgeInsets.only(bottom: 3),
-                            padding: const EdgeInsets.fromLTRB(10, 5, 0, 5),
-                            decoration: const BoxDecoration(
-                              border: Border(left: BorderSide(color: Color(0xFFE0B07A), width: 2)),
-                            ),
-                            child: Text('${(r as Map)['message'] ?? ''}',
-                                style: TextStyle(
-                                    fontSize: 12.5,
-                                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .85))),
-                          ),
+                        for (final raw in rows.take(12))
+                          Builder(builder: (_) {
+                            final r = raw as Map;
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 3),
+                              padding: const EdgeInsets.fromLTRB(10, 2, 0, 2),
+                              decoration: const BoxDecoration(
+                                border:
+                                    Border(left: BorderSide(color: Color(0xFFE0B07A), width: 2)),
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text('${r['message'] ?? ''}',
+                                        style: TextStyle(
+                                            fontSize: 12.5,
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .onSurface
+                                                .withValues(alpha: .85))),
+                                  ),
+                                  if (r['id'] != null)
+                                    IconButton(
+                                      icon: const Icon(Icons.check, size: 16),
+                                      tooltip: 'Marquer comme traitée',
+                                      visualDensity: VisualDensity.compact,
+                                      onPressed: () async {
+                                        final messenger = ScaffoldMessenger.of(context);
+                                        try {
+                                          await ref
+                                              .read(apiClientProvider)
+                                              .dio
+                                              .post('/alerts/${r['id']}/read');
+                                          ref.invalidate(_priceAlertsProvider);
+                                          messenger.showSnackBar(const SnackBar(
+                                              content: Text('Alerte traitée.')));
+                                        } catch (_) {}
+                                      },
+                                    ),
+                                ],
+                              ),
+                            );
+                          }),
                       ],
                     ),
             ),
