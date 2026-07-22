@@ -9,7 +9,18 @@ export function getApiErrorMessage(error: unknown, fallback = "Une erreur est su
       // FastAPI validation errors: [{ msg, loc, ... }]
       return detail.map((d: { msg?: string }) => d.msg).filter(Boolean).join(", ") || fallback;
     }
+    // A timeout / unreachable / 5xx server is not a client mistake. It must never
+    // fall through to a caller fallback like "Identifiants incorrects" — that
+    // sends the user resetting a password that was never wrong (the free-tier
+    // cold start makes this a real, frequent case).
+    if (error.code === "ECONNABORTED" || /timeout/i.test(error.message)) {
+      return "Serveur injoignable (il démarre peut-être). Réessayez dans un instant.";
+    }
     if (error.code === "ERR_NETWORK") return "Impossible de joindre le serveur.";
+    const status = error.response?.status;
+    if (status !== undefined && status >= 500) {
+      return "Serveur momentanément indisponible. Réessayez dans un instant.";
+    }
   }
   if (error instanceof Error && error.message) return error.message;
   return fallback;
