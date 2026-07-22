@@ -15,6 +15,7 @@ import {
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/page-header";
+import { BackButton } from "@/components/back-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -147,6 +148,7 @@ export function RecipePdfImportView() {
 
   return (
     <>
+      <BackButton />
       <PageHeader
         title="Importer une recette PDF"
         description="Déposez un PDF de recette (texte, scanné ou image). L'IA en extrait une fiche technique modifiable, associe les produits de votre catalogue et la chiffre."

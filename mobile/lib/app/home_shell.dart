@@ -33,29 +33,30 @@ class _Mod {
 const _modules = <_Mod>[
   _Mod('dashboard', 'Bonjour, Chef', "Vos coûts aujourd'hui",
       Icons.grid_view_outlined, DashboardScreen()),
-  _Mod('produits', 'Produits', 'Catalogue et coûts',
-      Icons.inventory_2_outlined, ProductsScreen()),
-  _Mod('factures', 'Factures', 'Import & OCR',
-      Icons.receipt_long_outlined, InvoicesScreen()),
+  _Mod('produits', 'Produits', 'Catalogue et coûts', Icons.inventory_2_outlined,
+      ProductsScreen()),
+  _Mod('factures', 'Factures', 'Import & OCR', Icons.receipt_long_outlined,
+      InvoicesScreen()),
   _Mod('recettes', 'Recettes', 'Coût matière & marge',
       Icons.restaurant_menu_outlined, RecipesScreen()),
   // Secondary modules (shown in the "Plus" sheet).
   _Mod('fournisseurs', 'Fournisseurs', 'Partenaires & catalogues',
       Icons.local_shipping_outlined, SuppliersScreen()),
-  _Mod('prix', 'Variations de prix', 'Évolution des coûts',
-      Icons.trending_up, PriceScreen()),
-  _Mod('import', 'Import vidéo', 'Extraire une recette',
-      Icons.movie_outlined, VideoImportScreen()),
+  _Mod('prix', 'Variations de prix', 'Évolution des coûts', Icons.trending_up,
+      PriceScreen()),
+  _Mod('import', 'Import vidéo', 'Extraire une recette', Icons.movie_outlined,
+      VideoImportScreen()),
   _Mod('assistant', 'Assistant IA', 'Posez vos questions',
       Icons.smart_toy_outlined, AssistantScreen()),
   _Mod('indicateurs', 'Indicateurs', 'Formules & ratios',
       Icons.calculate_outlined, MetricsScreen()),
-  _Mod('champs', 'Champs perso', 'Vos attributs',
-      Icons.tune_outlined, CustomFieldsScreen()),
-  _Mod('rapports', 'Rapports', 'Exports & analyses',
-      Icons.table_chart_outlined, ReportsScreen()),
+  _Mod('champs', 'Champs perso', 'Vos attributs', Icons.tune_outlined,
+      CustomFieldsScreen()),
+  _Mod('rapports', 'Rapports', 'Exports & analyses', Icons.table_chart_outlined,
+      ReportsScreen()),
   _Mod('administration', 'Administration', 'Utilisateurs & rôles',
-      Icons.admin_panel_settings_outlined, AdminScreen(), adminOnly: true),
+      Icons.admin_panel_settings_outlined, AdminScreen(),
+      adminOnly: true),
 ];
 
 const _primaryCount = 4; // dashboard, produits, factures, recettes
@@ -70,6 +71,12 @@ class HomeShell extends ConsumerStatefulWidget {
 class _HomeShellState extends ConsumerState<HomeShell> {
   int _index = 0; // index into _modules
 
+  /// The last primary tab the user was on before opening a secondary module.
+  /// A secondary module (Import vidéo, Assistant…) is mounted inside the shell,
+  /// not pushed as a route, so it has no automatic back arrow. "Back" returns
+  /// here — the user is never trapped on a page with no visible way out (#4).
+  int _lastPrimary = 0;
+
   /// Screens actually visited. IndexedStack builds ALL its children eagerly, so
   /// logging in used to mount the 12 modules at once and fire ~15 requests —
   /// including GET /auth/users for non-admins (a guaranteed 403) and the same
@@ -78,7 +85,9 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 
   String _initials(Map<String, dynamic>? user) {
     final name = (user?['name'] as String?)?.trim();
-    final base = (name != null && name.isNotEmpty) ? name : (user?['email'] as String? ?? '?');
+    final base = (name != null && name.isNotEmpty)
+        ? name
+        : (user?['email'] as String? ?? '?');
     final t = base.trim();
     return t.substring(0, t.length >= 2 ? 2 : 1).toUpperCase();
   }
@@ -86,8 +95,8 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   void _openMore() {
     final theme = Theme.of(context);
     final auth = ref.read(authControllerProvider);
-    final isAdmin =
-        ((auth.user?['roles'] as List?)?.cast<String>() ?? const []).contains('admin');
+    final isAdmin = ((auth.user?['roles'] as List?)?.cast<String>() ?? const [])
+        .contains('admin');
     final mods = _modules
         .skip(_primaryCount)
         .where((m) => !m.adminOnly || isAdmin)
@@ -120,7 +129,9 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                 padding: EdgeInsets.only(left: 4, bottom: 12),
                 child: Text('Tous les modules',
                     style: TextStyle(
-                        fontFamily: 'Newsreader', fontSize: 19, fontWeight: FontWeight.w600)),
+                        fontFamily: 'Newsreader',
+                        fontSize: 19,
+                        fontWeight: FontWeight.w600)),
               ),
               GridView.count(
                 crossAxisCount: 2,
@@ -171,6 +182,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 
   void _open(int i) {
     setState(() {
+      if (i < _primaryCount) _lastPrimary = i;
       _index = i;
       _built.add(i);
     });
@@ -189,114 +201,142 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     final auth = ref.watch(authControllerProvider);
     final current = _modules[_index];
     final onPrimary = _index < _primaryCount;
-    final navIndex = onPrimary ? _index : _primaryCount; // highlight "Plus" otherwise
+    final navIndex =
+        onPrimary ? _index : _primaryCount; // highlight "Plus" otherwise
 
-    return Scaffold(
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            // Header (serif title + subtitle + avatar)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 16, 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(current.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: kSerif.copyWith(fontSize: 24)),
-                        const SizedBox(height: 2),
-                        Text(current.subtitle,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 12.5, color: kMuted)),
-                      ],
+    return PopScope(
+      // A secondary module is mounted inside the shell (not pushed as a route),
+      // so it has no automatic back arrow. Intercept the Android/system back to
+      // return to the last primary tab instead of leaving the app (#4).
+      canPop: onPrimary,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _open(_lastPrimary);
+      },
+      child: Scaffold(
+        body: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              // Header (serif title + subtitle + avatar)
+              Padding(
+                padding: EdgeInsets.fromLTRB(onPrimary ? 20 : 4, 8, 16, 12),
+                child: Row(
+                  children: [
+                    if (!onPrimary)
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back),
+                        tooltip: 'Retour',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => _open(_lastPrimary),
+                      ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(current.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: kSerif.copyWith(fontSize: 24)),
+                          const SizedBox(height: 2),
+                          Text(current.subtitle,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontSize: 12.5, color: kMuted)),
+                        ],
+                      ),
                     ),
-                  ),
-                  PopupMenuButton<String>(
-                    tooltip: 'Compte',
-                    onSelected: (v) {
-                      if (v == 'logout') {
-                        ref.read(authControllerProvider.notifier).logout();
-                      } else if (v == 'theme') {
-                        ref.read(themeModeProvider.notifier).toggle();
-                      } else if (v == 'profile') {
-                        Navigator.of(context).push(
-                            MaterialPageRoute(builder: (_) => const ProfileScreen()));
-                      }
-                    },
-                    itemBuilder: (_) {
-                      final isDark = ref.read(themeModeProvider) == ThemeMode.dark;
-                      return [
-                        const PopupMenuItem(
-                          value: 'profile',
-                          child: Row(children: [
-                            Icon(Icons.person_outline, size: 18),
-                            SizedBox(width: 10),
-                            Text('Profil'),
-                          ]),
-                        ),
-                        PopupMenuItem(
-                          value: 'theme',
-                          child: Row(
-                            children: [
-                              Icon(
-                                  isDark
-                                      ? Icons.light_mode_outlined
-                                      : Icons.dark_mode_outlined,
-                                  size: 18),
-                              const SizedBox(width: 10),
-                              Text(isDark ? 'Thème clair' : 'Thème sombre'),
-                            ],
+                    PopupMenuButton<String>(
+                      tooltip: 'Compte',
+                      onSelected: (v) {
+                        if (v == 'logout') {
+                          ref.read(authControllerProvider.notifier).logout();
+                        } else if (v == 'theme') {
+                          ref.read(themeModeProvider.notifier).toggle();
+                        } else if (v == 'profile') {
+                          Navigator.of(context).push(MaterialPageRoute(
+                              builder: (_) => const ProfileScreen()));
+                        }
+                      },
+                      itemBuilder: (_) {
+                        final isDark =
+                            ref.read(themeModeProvider) == ThemeMode.dark;
+                        return [
+                          const PopupMenuItem(
+                            value: 'profile',
+                            child: Row(children: [
+                              Icon(Icons.person_outline, size: 18),
+                              SizedBox(width: 10),
+                              Text('Profil'),
+                            ]),
                           ),
-                        ),
-                        const PopupMenuItem(value: 'logout', child: Text('Déconnexion')),
-                      ];
-                    },
-                    child: CircleAvatar(
-                      radius: 19,
-                      backgroundColor: kTerracotta,
-                      child: Text(_initials(auth.user),
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600)),
+                          PopupMenuItem(
+                            value: 'theme',
+                            child: Row(
+                              children: [
+                                Icon(
+                                    isDark
+                                        ? Icons.light_mode_outlined
+                                        : Icons.dark_mode_outlined,
+                                    size: 18),
+                                const SizedBox(width: 10),
+                                Text(isDark ? 'Thème clair' : 'Thème sombre'),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuItem(
+                              value: 'logout', child: Text('Déconnexion')),
+                        ];
+                      },
+                      child: CircleAvatar(
+                        radius: 19,
+                        backgroundColor: kTerracotta,
+                        child: Text(_initials(auth.user),
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600)),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            Expanded(
-              child: IndexedStack(
-                index: _index,
-                children: [
-                  for (var i = 0; i < _modules.length; i++)
-                    if (_built.contains(i)) _modules[i].screen else const SizedBox.shrink(),
-                ],
+              Expanded(
+                child: IndexedStack(
+                  index: _index,
+                  children: [
+                    for (var i = 0; i < _modules.length; i++)
+                      if (_built.contains(i))
+                        _modules[i].screen
+                      else
+                        const SizedBox.shrink(),
+                  ],
+                ),
               ),
-            ),
+            ],
+          ),
+        ),
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: navIndex,
+          onDestinationSelected: _onTab,
+          height: 66,
+          backgroundColor: Theme.of(context).cardColor,
+          indicatorColor: kTerracotta.withValues(alpha: .14),
+          surfaceTintColor: Colors.transparent,
+          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+          destinations: const [
+            NavigationDestination(
+                icon: Icon(Icons.grid_view_outlined), label: 'Accueil'),
+            NavigationDestination(
+                icon: Icon(Icons.inventory_2_outlined), label: 'Produits'),
+            NavigationDestination(
+                icon: Icon(Icons.receipt_long_outlined), label: 'Factures'),
+            NavigationDestination(
+                icon: Icon(Icons.restaurant_menu_outlined), label: 'Recettes'),
+            NavigationDestination(
+                icon: Icon(Icons.apps_outlined), label: 'Plus'),
           ],
         ),
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: navIndex,
-        onDestinationSelected: _onTab,
-        height: 66,
-        backgroundColor: Theme.of(context).cardColor,
-        indicatorColor: kTerracotta.withValues(alpha: .14),
-        surfaceTintColor: Colors.transparent,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.grid_view_outlined), label: 'Accueil'),
-          NavigationDestination(icon: Icon(Icons.inventory_2_outlined), label: 'Produits'),
-          NavigationDestination(icon: Icon(Icons.receipt_long_outlined), label: 'Factures'),
-          NavigationDestination(icon: Icon(Icons.restaurant_menu_outlined), label: 'Recettes'),
-          NavigationDestination(icon: Icon(Icons.apps_outlined), label: 'Plus'),
-        ],
       ),
     );
   }
