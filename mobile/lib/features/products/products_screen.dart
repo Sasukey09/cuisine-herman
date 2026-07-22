@@ -10,6 +10,7 @@ import '../../common/format.dart';
 import '../../common/ui_kit.dart';
 import '../../core/providers.dart';
 import '../../main.dart' show kMuted, kCategoryColors;
+import 'product_detail_screen.dart';
 
 @visibleForTesting
 final productsSearchQueryProvider = StateProvider.autoDispose<String>((ref) => '');
@@ -112,9 +113,12 @@ class ProductsScreen extends ConsumerWidget {
               .where((e) => e != null && '$e'.isNotEmpty)
               .join(' · ');
           return GestureDetector(
-            // Tap = actions (modifier / supprimer) ; sans onTap la carte ne
-            // reagissait qu'a l'appui long, non decouvrable.
-            onTap: () => _actions(context, ref, p),
+            // Tap = fiche détail (comparaison fournisseurs + historique), comme
+            // le web. Appui long = actions (modifier / supprimer).
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) =>
+                  ProductDetailScreen(productId: '${p['id']}', productName: name),
+            )),
             onLongPress: () => _actions(context, ref, p),
             child: MockCard(
             child: Row(

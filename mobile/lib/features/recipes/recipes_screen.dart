@@ -28,12 +28,16 @@ class RecipesScreen extends ConsumerWidget {
     final data = await showCreateDialog(context, title: 'Nouvelle recette', fields: const [
       CreateField('name', 'Nom', required: true),
       CreateField('yield_qty', 'Portions', keyboard: TextInputType.number),
+      CreateField('selling_price', 'Prix de vente / portion (optionnel)',
+          keyboard: TextInputType.number),
     ]);
     if (data == null) return;
     try {
+      final sp = double.tryParse((data['selling_price'] ?? '').replaceAll(',', '.'));
       await ref.read(apiClientProvider).dio.post('/recipes/', data: {
         'name': data['name'],
         'yield_qty': double.tryParse(data['yield_qty'] ?? '') ?? 1,
+        if (sp != null) 'selling_price': sp,
       });
       ref.invalidate(_recipesProvider);
       messenger.showSnackBar(
