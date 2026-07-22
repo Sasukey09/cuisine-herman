@@ -1,9 +1,11 @@
+import logging
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
+from app.core.logging import get_logger, log_event
 from app.db.session import get_db
 from app.api.deps import (
     daily_quota,
@@ -26,10 +28,18 @@ from app.services.ai.assistant import get_assistant
 from app.services.ai.errors import AINotConfiguredError, AIProviderError
 
 router = APIRouter()
+logger = get_logger("ai.endpoint")
 
 _AI_UNAVAILABLE = (
     "Assistant IA indisponible : aucune clé API LLM n'est configurée "
     "(ANTHROPIC_API_KEY)."
+)
+# Shown to the user when the LLM provider call fails. Deliberately generic: the
+# raw provider payload (which can contain a 400 body, model ids, internal
+# messages) is written to the logs, never returned to the client.
+_AI_PROVIDER_ERROR = (
+    "L'assistant IA a rencontré un problème et n'a pas pu répondre. "
+    "Réessayez dans un instant."
 )
 
 # Each call bills Anthropic. Without a ceiling, one scripted account drains the
@@ -162,4 +172,10 @@ async def api_ai_chat(
     except AINotConfiguredError:
         raise HTTPException(status_code=503, detail=_AI_UNAVAILABLE)
     except AIProviderError as exc:
-        raise HTTPException(status_code=502, detail=f"Erreur du fournisseur IA : {exc}")
+        # Log the full provider detail for diagnosis; return a clean, generic
+        # message so the raw API JSON never reaches the interface.
+        log_event(
+            logger, logging.ERROR, "ai.chat.provider_error",
+            tenant=tenant_id, detail=str(exc)[:500],
+        )
+        raise HTTPException(status_code=502, detail=_AI_PROVIDER_ERROR)

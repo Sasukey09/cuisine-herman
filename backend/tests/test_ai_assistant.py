@@ -120,22 +120,130 @@ def test_not_configured_raises():
         assistant.chat(db="DB", tenant_id="t1", message="salut")
 
 
+import app.services.ai.assistant as ai_assistant
+
+
+@pytest.fixture(autouse=True)
+def _reset_runtime_caches():
+    """The unsupported-knob caches are module-level; keep tests independent."""
+    ai_assistant._UNSUPPORTED_THINKING.clear()
+    ai_assistant._UNSUPPORTED_EFFORT.clear()
+    yield
+    ai_assistant._UNSUPPORTED_THINKING.clear()
+    ai_assistant._UNSUPPORTED_EFFORT.clear()
+
+
+# --------------------------------------------------------------------------- #
+# Compatibility layer: only opted-in models receive the advanced knobs, and a
+# model that rejects one (TypeError or provider 400) is never sent it again.
+# --------------------------------------------------------------------------- #
+def test_no_advanced_params_by_default():
+    """The regression this fixes: with the default (empty) allowlists, NEITHER
+    `thinking` NOR `output_config` is sent — so no model gets a parameter it
+    rejects ("adaptive thinking is not supported on this model")."""
+    client = FakeClient([resp([text_block("ok")], "end_turn")])
+    assistant = AIAssistant(client=client, config=_cfg())
+    out = assistant.chat(db="DB", tenant_id="t1", message="salut")
+    assert out["reply"] == "ok"
+    call = client.messages.calls[0]
+    assert "thinking" not in call
+    assert "output_config" not in call
+
+
+def test_advanced_params_sent_only_when_model_opted_in():
+    client = FakeClient([resp([text_block("ok")], "end_turn")])
+    cfg = _cfg(
+        thinking_models=frozenset({"claude-opus-4-8"}),
+        effort_models=frozenset({"claude-opus-4-8"}),
+    )
+    assistant = AIAssistant(client=client, config=cfg)
+    assistant.chat(db="DB", tenant_id="t1", message="salut")
+    call = client.messages.calls[0]
+    assert call["thinking"] == {"type": "adaptive"}
+    assert call["output_config"] == {"effort": "medium"}
+
+
+def test_retry_strips_params_on_provider_400():
+    """A model opted-in but that the API rejects with the exact production error
+    must self-heal: strip the knob, retry without it, and succeed."""
+
+    class Picky(FakeMessages):
+        def create(self, **kwargs):
+            if "thinking" in kwargs:
+                raise RuntimeError(
+                    "Error code: 400 - {'type': 'error', 'error': {'type': "
+                    "'invalid_request_error', 'message': 'adaptive thinking is "
+                    "not supported on this model'}}"
+                )
+            return super().create(**kwargs)
+
+    client = FakeClient([])
+    client.messages = Picky([resp([text_block("ok")], "end_turn")])
+    assistant = AIAssistant(client=client, config=_cfg(thinking_models=frozenset({"claude-opus-4-8"})))
+
+    out = assistant.chat(db="DB", tenant_id="t1", message="salut")
+    assert out["reply"] == "ok"
+    # the retry that succeeded carried no advanced knob
+    assert "thinking" not in client.messages.calls[-1]
+    # and the model is now remembered as unsupported
+    assert "claude-opus-4-8" in ai_assistant._UNSUPPORTED_THINKING
+
+
 def test_advanced_kwargs_retry_on_typeerror():
     """Older SDKs reject thinking/output_config kwargs — the loop retries without them."""
 
     class PickyMessages(FakeMessages):
         def create(self, **kwargs):
             if "thinking" in kwargs or "output_config" in kwargs:
-                raise TypeError("unexpected keyword argument")
+                raise TypeError("unexpected keyword argument 'thinking'")
             return super().create(**kwargs)
 
-    client = FakeClient([resp([text_block("ok")], "end_turn")])
+    client = FakeClient([])
     client.messages = PickyMessages([resp([text_block("ok")], "end_turn")])
-    assistant = AIAssistant(client=client, config=_cfg())
+    # opt the model in so the knobs are actually sent -> the retry path is exercised
+    assistant = AIAssistant(client=client, config=_cfg(thinking_models=frozenset({"claude-opus-4-8"})))
 
     out = assistant.chat(db="DB", tenant_id="t1", message="salut")
     assert out["reply"] == "ok"
-    assert "thinking" not in client.messages.calls[0]
+    assert "thinking" not in client.messages.calls[-1]
+
+
+def test_genuine_provider_error_is_not_retried_and_wraps():
+    """An auth/outage error (no incompatible-param hint) must surface as
+    AIProviderError, not be retried as if it were a param problem."""
+    from app.services.ai.errors import AIProviderError
+
+    class Failing(FakeMessages):
+        def create(self, **kwargs):
+            self.calls.append(kwargs)
+            raise RuntimeError("Error code: 401 - authentication_error: check your key")
+
+    client = FakeClient([])
+    client.messages = Failing([])
+    # opt a knob in so `advanced` is non-empty: proves the retry is gated on the
+    # error LOOKING like a param problem, not merely on having sent a knob.
+    assistant = AIAssistant(client=client, config=_cfg(thinking_models=frozenset({"claude-opus-4-8"})))
+    with pytest.raises(AIProviderError):
+        assistant.chat(db="DB", tenant_id="t1", message="salut")
+    # a genuine error is NOT retried -> exactly one call
+    assert len(client.messages.calls) == 1
+
+
+def test_multiple_models_work_without_incompatible_params(monkeypatch):
+    """Routing between Haiku (simple) and Opus (complex) both succeed and neither
+    sends an incompatible parameter under the default config."""
+    monkeypatch.setattr(ai_tools, "execute_tool", lambda *a, **k: {"ok": True})
+    for msg, expected_model in [
+        ("Mon food cost moyen ?", "claude-haiku-4-5"),
+        ("Analyse mes marges et compare mes fournisseurs", "claude-opus-4-8"),
+    ]:
+        client = FakeClient([resp([text_block("réponse")], "end_turn")])
+        assistant = AIAssistant(client=client, config=_cfg(routing_enabled=True))
+        out = assistant.chat(db="DB", tenant_id="t1", message=msg)
+        assert out["reply"] == "réponse"
+        call = client.messages.calls[0]
+        assert call["model"] == expected_model
+        assert "thinking" not in call and "output_config" not in call
 
 
 # --- I6: cost optimisation (prompt cache + model routing) ------------------ #

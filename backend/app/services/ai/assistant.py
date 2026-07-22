@@ -4,8 +4,11 @@ Runs a *manual* agentic loop (rather than the SDK tool runner) on purpose: each
 tool call must execute against the caller's ``db`` session and ``tenant_id``, so
 the loop owns dispatch and keeps that context out of the model's reach.
 
-Model: ``claude-opus-4-8`` by default (configurable via ``AI_MODEL``), adaptive
-thinking + ``effort`` for cost/quality control. The anthropic client is
+Model: ``claude-opus-4-8`` by default (configurable via ``AI_MODEL``). Advanced
+knobs (``thinking``, ``output_config.effort``) are sent ONLY to models that opt
+in via ``AI_THINKING_MODELS`` / ``AI_EFFORT_MODELS`` and that haven't rejected
+them at runtime — so the assistant never sends a parameter a model refuses (the
+"adaptive thinking is not supported on this model" 400). The anthropic client is
 injectable so the loop is unit-testable without network access or an API key.
 """
 import json
@@ -21,6 +24,34 @@ from . import context as ai_context
 from . import tools as ai_tools
 
 logger = get_logger("ai.assistant")
+
+# Models observed at runtime to reject an advanced knob -> never offer it to that
+# model again this process, even if the config allowlist still names it. This is
+# the safety net behind the config allowlist: one 400 is enough to stop sending
+# the incompatible parameter for good.
+_UNSUPPORTED_THINKING: set = set()
+_UNSUPPORTED_EFFORT: set = set()
+
+# Substrings that identify a "the model doesn't accept this parameter" failure
+# (SDK TypeError message or Anthropic invalid_request_error body) — as opposed to
+# a genuine outage/auth/rate-limit error, which must NOT be retried.
+_INCOMPATIBLE_PARAM_HINTS = (
+    "thinking", "adaptive", "output_config", "effort",
+    "not supported", "unsupported", "unexpected keyword",
+)
+
+
+def _is_incompatible_param_error(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return any(hint in msg for hint in _INCOMPATIBLE_PARAM_HINTS)
+
+
+def _remember_unsupported(model: str, advanced: Dict[str, Any]) -> None:
+    """Record which knob(s) this model just rejected so future calls skip them."""
+    if "thinking" in advanced:
+        _UNSUPPORTED_THINKING.add(model)
+    if "output_config" in advanced:
+        _UNSUPPORTED_EFFORT.add(model)
 
 SYSTEM_PROMPT = (
     "Tu es l'assistant IA de FoodGad, une plateforme de gestion de "
@@ -73,6 +104,21 @@ class AIAssistant:
         self._client = anthropic.Anthropic()
         return self._client
 
+    def _advanced_kwargs(self, cfg: AIConfig, model: str) -> Dict[str, Any]:
+        """The advanced knobs THIS model is known to accept — nothing more.
+
+        A model is offered `thinking` / `output_config` only if the config
+        allowlist opts it in AND it hasn't already rejected that knob at runtime.
+        With the default (empty) allowlists this returns ``{}``, so the baseline
+        call carries no parameter any current Claude model would reject.
+        """
+        kw: Dict[str, Any] = {}
+        if model in cfg.thinking_models and model not in _UNSUPPORTED_THINKING:
+            kw["thinking"] = {"type": "adaptive"}
+        if model in cfg.effort_models and model not in _UNSUPPORTED_EFFORT:
+            kw["output_config"] = {"effort": cfg.effort}
+        return kw
+
     def _create(
         self,
         cfg: AIConfig,
@@ -81,26 +127,34 @@ class AIAssistant:
         model: str,
     ):
         client = self._get_client()
-        kwargs: Dict[str, Any] = {
+        base: Dict[str, Any] = {
             "model": model,
             "max_tokens": cfg.max_tokens,
             "system": system,
             "messages": messages,
             "tools": ai_tools.tool_schemas(),
-            "thinking": {"type": "adaptive"},
-            "output_config": {"effort": cfg.effort},
         }
+        advanced = self._advanced_kwargs(cfg, model)
         try:
-            return client.messages.create(**kwargs)
-        except TypeError:
-            # Older anthropic SDK builds may not accept thinking/output_config as
-            # kwargs. Retry without the advanced knobs rather than hard-failing.
-            for key in ("thinking", "output_config"):
-                kwargs.pop(key, None)
-            return client.messages.create(**kwargs)
+            return client.messages.create(**base, **advanced)
         except AINotConfiguredError:
             raise
         except Exception as exc:
+            # Self-healing compatibility net: if we sent an advanced knob and the
+            # failure is the model rejecting it — an older SDK `TypeError`, or a
+            # provider 400 like "adaptive thinking is not supported on this model"
+            # — disable that knob for this model and retry ONCE without any of the
+            # advanced kwargs. Genuine failures (auth, rate limit) are not retried.
+            if advanced and _is_incompatible_param_error(exc):
+                _remember_unsupported(model, advanced)
+                log_event(
+                    logger, logging.WARNING, "ai.incompatible_params_stripped",
+                    model=model, params=sorted(advanced), detail=str(exc)[:200],
+                )
+                try:
+                    return client.messages.create(**base)
+                except Exception as exc2:
+                    raise AIProviderError(str(exc2)) from exc2
             raise AIProviderError(str(exc)) from exc
 
     def chat(
