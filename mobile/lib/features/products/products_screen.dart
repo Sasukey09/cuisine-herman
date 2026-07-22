@@ -10,6 +10,7 @@ import '../../common/format.dart';
 import '../../common/ui_kit.dart';
 import '../../core/providers.dart';
 import '../../main.dart' show kMuted, kCategoryColors;
+import '../auth/auth_controller.dart';
 import 'product_detail_screen.dart';
 
 @visibleForTesting
@@ -96,6 +97,7 @@ class ProductsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final canWrite = ref.watch(canWriteProvider);
     return Scaffold(
       body: offlineCardList(
         ref: ref,
@@ -119,7 +121,7 @@ class ProductsScreen extends ConsumerWidget {
               builder: (_) =>
                   ProductDetailScreen(productId: '${p['id']}', productName: name),
             )),
-            onLongPress: () => _actions(context, ref, p),
+            onLongPress: canWrite ? () => _actions(context, ref, p) : null,
             child: MockCard(
             child: Row(
               children: [
@@ -168,7 +170,8 @@ class ProductsScreen extends ConsumerWidget {
           ));
         },
       ),
-      floatingActionButton: GradientFab(onPressed: () => _create(context, ref)),
+      floatingActionButton:
+          canWrite ? GradientFab(onPressed: () => _create(context, ref)) : null,
     );
   }
 }

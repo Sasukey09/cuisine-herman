@@ -10,6 +10,7 @@ import '../../common/format.dart';
 import '../../common/ui_kit.dart';
 import '../../core/providers.dart';
 import '../../main.dart' show kMuted, kTerracotta, kWarn;
+import '../auth/auth_controller.dart';
 import 'supplier_detail_screen.dart';
 
 final suppliersSearchQueryProvider = StateProvider.autoDispose<String>((ref) => '');
@@ -119,6 +120,7 @@ class SuppliersScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final canWrite = ref.watch(canWriteProvider);
     return Scaffold(
       body: offlineCardList(
         ref: ref,
@@ -143,7 +145,7 @@ class SuppliersScreen extends ConsumerWidget {
               builder: (_) =>
                   SupplierDetailScreen(supplierId: '${s['id']}', supplierName: name),
             )),
-            onLongPress: () => _actions(context, ref, s),
+            onLongPress: canWrite ? () => _actions(context, ref, s) : null,
             child: MockCard(
             child: Row(
               children: [
@@ -179,7 +181,8 @@ class SuppliersScreen extends ConsumerWidget {
           ));
         },
       ),
-      floatingActionButton: GradientFab(onPressed: () => _create(context, ref)),
+      floatingActionButton:
+          canWrite ? GradientFab(onPressed: () => _create(context, ref)) : null,
     );
   }
 }

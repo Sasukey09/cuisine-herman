@@ -124,3 +124,13 @@ class AuthController extends Notifier<AuthState> {
 
 final authControllerProvider =
     NotifierProvider<AuthController, AuthState>(AuthController.new);
+
+/// Write access = admin or manager, like the web `hasRole("admin","manager")`.
+/// A viewer gets read-only screens (no create/edit/delete affordances); the
+/// backend enforces the same via `require_writer`, so this is purely UX — it
+/// stops showing buttons that would only 403.
+final canWriteProvider = Provider<bool>((ref) {
+  final roles =
+      (ref.watch(authControllerProvider).user?['roles'] as List?)?.cast<String>() ?? const [];
+  return roles.contains('admin') || roles.contains('manager');
+});
