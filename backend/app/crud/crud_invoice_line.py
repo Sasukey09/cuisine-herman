@@ -25,12 +25,12 @@ def delete_line(db: Session, tenant_id: str, line_id: str) -> bool:
     return True
 
 
-_EDITABLE = ("description", "qty", "unit_id", "unit_price", "line_total")
+_EDITABLE = ("description", "qty", "unit_id", "unit_price", "line_total", "vat_rate")
 
 
 def update_line(db: Session, tenant_id: str, line_id: str, **fields) -> InvoiceLine:
     """Update editable fields of a line (tenant-scoped). Only provided
-    (non-None) fields among description/qty/unit_id/unit_price/line_total."""
+    (non-None) fields among description/qty/unit_id/unit_price/line_total/vat_rate."""
     line = get_line(db, tenant_id, line_id)
     if line is None:
         return None

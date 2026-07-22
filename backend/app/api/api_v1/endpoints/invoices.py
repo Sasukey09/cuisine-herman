@@ -24,7 +24,7 @@ from app.crud.crud_invoice import (
     set_invoice_ocr_status,
     update_invoice,
 )
-from app.crud import crud_invoice_line, crud_price, crud_product
+from app.crud import crud_invoice_line, crud_price, crud_product, crud_supplier
 from app.schemas.schemas import (
     InvoiceFileUrl,
     InvoiceQueuedResp,
@@ -34,9 +34,13 @@ from app.schemas.schemas import (
     CreateProductFromLine,
     ProductCreate,
     ProductRead,
+    InvoicePreviewLine,
+    InvoicePreviewResult,
 )
 from app.services.ocr.service import extract_invoice
 from app.services.ocr.schemas import InvoiceExtractionResult
+from app.services.matching.product_matcher import match_product
+from app.services.classification.classifier import classify
 from app.services.ocr.errors import OcrError, AllProvidersFailedError
 from app.services.invoicing import invoice_pricing
 from app.services.storage import s3_storage
@@ -261,6 +265,7 @@ def api_add_line(
         unit_id=unit_id,
         unit_price=payload.unit_price,
         line_total=payload.line_total,
+        vat_rate=payload.vat_rate,
         product_id=payload.product_id,
     )
     if line.product_id is not None and line.unit_price is not None:
@@ -414,6 +419,7 @@ def api_update_line(
         "qty": payload.qty,
         "unit_price": payload.unit_price,
         "line_total": payload.line_total,
+        "vat_rate": payload.vat_rate,
     }
     if payload.unit is not None:
         unit_id = crud_price.get_units_by_code(db).get(payload.unit.strip().lower())
@@ -446,5 +452,71 @@ async def api_extract_invoice(
             return extract_invoice(content, ctype)
         except OcrError as exc:
             raise _ocr_http_error(exc)
+
+    return await run_in_threadpool(_work)
+
+
+@router.post("/preview", response_model=InvoicePreviewResult)
+async def api_preview_invoice(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+    _: list = Depends(require_writer),
+    _q: None = Depends(quota("ocr", "OCR_PER_MIN", 20)),
+    _qd: None = Depends(daily_quota("ocr", "OCR_PER_DAY", 400)),
+):
+    """Smart-import preview: OCR + per-line product-match suggestion + category
+    suggestion, for the validation dialog. Persists nothing (the detected supplier
+    is resolved to an existing one but never created here)."""
+    content = await file.read()
+    validate_upload(content, file.content_type)
+    ctype = file.content_type
+
+    def _work():
+        try:
+            extraction = extract_invoice(content, ctype)
+        except OcrError as exc:
+            raise _ocr_http_error(exc)
+
+        supplier_id = None
+        if extraction.supplier:
+            existing = crud_supplier.get_supplier_by_name(db, tenant_id, extraction.supplier)
+            supplier_id = str(existing.id) if existing is not None else None
+
+        lines: List[InvoicePreviewLine] = []
+        for raw in extraction.lines:
+            desc = raw.description or ""
+            m = (
+                match_product(db, tenant_id, desc)
+                if desc
+                else {"product_id": None, "confidence_score": None, "manual_review": True}
+            )
+            pid = m.get("product_id")
+            pname = None
+            if pid:
+                p = crud_product.get_product(db, pid, tenant_id)
+                pname = p.name if p is not None else None
+            lines.append(
+                InvoicePreviewLine(
+                    description=desc,
+                    qty=raw.qty,
+                    unit=raw.unit,
+                    unit_price=raw.unit_price,
+                    line_total=raw.line_total,
+                    matched_product_id=pid,
+                    matched_product_name=pname,
+                    match_confidence=m.get("confidence_score"),
+                    needs_review=bool(m.get("manual_review", True)) or not pid,
+                    suggested_category=classify(desc) if desc else None,
+                )
+            )
+        return InvoicePreviewResult(
+            supplier=extraction.supplier,
+            supplier_id=supplier_id,
+            date=extraction.date,
+            invoice_number=extraction.invoice_number,
+            total_amount=getattr(extraction, "total_amount", None),
+            lines=lines,
+        )
 
     return await run_in_threadpool(_work)
