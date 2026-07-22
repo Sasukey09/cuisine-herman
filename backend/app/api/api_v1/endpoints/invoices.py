@@ -36,7 +36,10 @@ from app.schemas.schemas import (
     ProductRead,
     InvoicePreviewLine,
     InvoicePreviewResult,
+    InvoiceConfirmRequest,
 )
+from app.models.models import Invoice
+import uuid as _uuid
 from app.services.ocr.service import extract_invoice
 from app.services.ocr.schemas import InvoiceExtractionResult
 from app.services.matching.product_matcher import match_product
@@ -520,3 +523,93 @@ async def api_preview_invoice(
         )
 
     return await run_in_threadpool(_work)
+
+
+@router.post("/confirm", response_model=InvoiceIngestResult, status_code=201)
+def api_confirm_invoice(
+    payload: InvoiceConfirmRequest,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+    _: list = Depends(require_writer),
+):
+    """Persist a validated smart-import: create the invoice, then per line create
+    a new product (auto-classified, with VAT) or associate an existing one, and
+    derive prices (which also links the product to the supplier — #7). Lines are
+    the ones the user reviewed in the dialog; no re-OCR."""
+    # Detect/resolve the supplier once (#7 starts here).
+    supplier_id = payload.supplier_id
+    if not supplier_id and payload.supplier:
+        sup = crud_supplier.get_or_create_supplier_by_name(db, tenant_id, payload.supplier)
+        supplier_id = str(sup.id) if sup is not None else None
+
+    invoice = Invoice(
+        id=str(_uuid.uuid4()),
+        tenant_id=tenant_id,
+        supplier_id=supplier_id,
+        invoice_number=payload.invoice_number,
+        date=payload.date,
+        total_amount=payload.total_amount,
+        currency=payload.currency or "EUR",
+        parsed=True,
+        ocr_status="confirmed",
+    )
+    db.add(invoice)
+    db.commit()
+    db.refresh(invoice)
+    invoice_id = str(invoice.id)
+
+    units = crud_price.get_units_by_code(db)
+    created_products = 0
+    associated = 0
+    lines_persisted = 0
+
+    for l in payload.lines:
+        if l.action == "skip":
+            continue
+        unit_id = units.get((l.unit or "").strip().lower()) if l.unit else None
+        product_id = None
+        if l.action == "associate" and l.product_id:
+            assert_product_in_tenant(db, tenant_id, l.product_id)
+            product_id = l.product_id
+            associated += 1
+        elif l.action == "create":
+            prod = crud_product.create_product(
+                db,
+                ProductCreate(
+                    name=l.description,
+                    base_unit_id=unit_id,
+                    category=l.category,
+                    vat_rate=l.vat_rate,
+                ),
+                tenant_id,
+            )
+            product_id = str(prod.id)
+            created_products += 1
+
+        line = crud_invoice_line.create_invoice_line(
+            db,
+            invoice_id,
+            description=l.description,
+            qty=l.qty,
+            unit_id=unit_id,
+            unit_price=l.unit_price,
+            line_total=l.line_total,
+            vat_rate=l.vat_rate,
+            product_id=product_id,
+        )
+        lines_persisted += 1
+        # Derive the price -> also records purchase history + auto-links the
+        # product to the invoice's supplier (#7) + recomputes recipe costs.
+        if product_id and l.unit_price is not None:
+            invoice_pricing.reprice_line(db, tenant_id, line)
+
+    return {
+        "invoice_id": invoice_id,
+        "summary": {
+            "invoice_id": invoice_id,
+            "lines": lines_persisted,
+            "matched": associated,
+            "prices_created": created_products + associated,
+            "needs_review": [],
+        },
+    }

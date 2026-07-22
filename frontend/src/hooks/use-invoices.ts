@@ -16,10 +16,32 @@ import {
   deleteInvoice,
   addInvoiceLine,
   deleteInvoiceLine,
+  previewInvoice,
+  confirmInvoice,
 } from "@/services/invoices-service";
 import { getApiErrorMessage } from "@/lib/api-error";
+import type { InvoiceConfirmRequest } from "@/services/types";
 
 const KEY = ["invoices"];
+
+export function useInvoicePreview() {
+  return useMutation({
+    mutationFn: (file: File) => previewInvoice(file),
+    onError: (e) => toast.error(getApiErrorMessage(e)),
+  });
+}
+
+export function useConfirmInvoice() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: InvoiceConfirmRequest) => confirmInvoice(payload),
+    onSuccess: () => {
+      toast.success("Facture importée et enregistrée.");
+      qc.invalidateQueries({ queryKey: KEY });
+    },
+    onError: (e) => toast.error(getApiErrorMessage(e)),
+  });
+}
 
 export function useInvoices() {
   return useQuery({ queryKey: KEY, queryFn: () => listInvoices({ limit: 200 }) });

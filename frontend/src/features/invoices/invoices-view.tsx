@@ -77,6 +77,14 @@ export function InvoicesView() {
         </button>
       )}
 
+      {canWrite && (
+        <div className="-mt-2 text-center text-sm">
+          <Link href="/factures/import" className="font-medium text-primary hover:underline">
+            ✨ Import intelligent — vérifier &amp; valider (créer / associer produits, TVA, catégorie) avant enregistrement
+          </Link>
+        </div>
+      )}
+
       <div className="rounded-lg border bg-card">
         <Table>
           <TableHeader>

@@ -217,6 +217,53 @@ export interface MapProductResult {
   price_id: string | null;
 }
 
+// --- Smart invoice import (Phase 3) ---------------------------------------
+
+export interface InvoicePreviewLineData {
+  description: string;
+  qty?: number | null;
+  unit?: string | null;
+  unit_price?: number | null;
+  line_total?: number | null;
+  vat_rate?: number | null;
+  matched_product_id?: string | null;
+  matched_product_name?: string | null;
+  match_confidence?: number | null;
+  needs_review: boolean;
+  suggested_category?: string | null;
+}
+
+export interface InvoicePreviewResult {
+  supplier?: string | null;
+  supplier_id?: string | null;
+  date?: string | null;
+  invoice_number?: string | null;
+  total_amount?: number | null;
+  lines: InvoicePreviewLineData[];
+}
+
+export interface InvoiceConfirmLineData {
+  description: string;
+  qty?: number | null;
+  unit?: string | null;
+  unit_price?: number | null;
+  line_total?: number | null;
+  vat_rate?: number | null;
+  action: "create" | "associate" | "skip";
+  product_id?: string | null;
+  category?: string | null;
+}
+
+export interface InvoiceConfirmRequest {
+  supplier?: string | null;
+  supplier_id?: string | null;
+  date?: string | null;
+  invoice_number?: string | null;
+  total_amount?: number | null;
+  currency?: string | null;
+  lines: InvoiceConfirmLineData[];
+}
+
 // --- Recipes ---------------------------------------------------------------
 
 export interface Recipe {
