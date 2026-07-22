@@ -6,6 +6,12 @@ import '../core/outbox.dart';
 import '../core/providers.dart';
 import '../main.dart' show kMuted, kWarn;
 
+/// Offline banner text. `formatAge` returns a standalone phrase ("à l'instant",
+/// "il y a 8 min"), so it must NOT follow "données de …" — that read as the
+/// broken "données de à l'instant" / "données de il y a 8 min". "mises en cache"
+/// composes correctly with both.
+String offlineBannerText(Duration age) => 'Hors connexion — données mises en cache ${formatAge(age)}';
+
 /// Card-style async list matching the mobile mockup: an always-visible [header]
 /// (search pill, drop-zone…) on top, then spaced cards. Pull-to-refresh.
 Widget asyncCardList({
@@ -160,7 +166,7 @@ class StaleBanner extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'Hors connexion — données de ${formatAge(age)}',
+              offlineBannerText(age),
               style: const TextStyle(fontSize: 12.5, color: Color(0xFF8A5A22)),
             ),
           ),
