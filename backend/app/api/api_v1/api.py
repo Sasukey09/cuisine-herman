@@ -14,6 +14,7 @@ from app.api.api_v1.endpoints import (
     custom_fields,
     reports,
     alerts,
+    quotes,
 )
 
 api_router = APIRouter()
@@ -31,3 +32,4 @@ api_router.include_router(metrics.router, prefix="/metrics", tags=["metrics"])
 api_router.include_router(custom_fields.router, prefix="/custom-fields", tags=["custom-fields"])
 api_router.include_router(reports.router, prefix="/reports", tags=["reports"])
 api_router.include_router(alerts.router, prefix="/alerts", tags=["alerts"])
+api_router.include_router(quotes.router, prefix="/quotes", tags=["quotes"])

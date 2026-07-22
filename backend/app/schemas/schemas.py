@@ -828,3 +828,71 @@ class DeleteOrganizationRequest(BaseModel):
 
     confirm_name: str
     password: Optional[str] = None
+
+
+# --- Quotes (comparateur de devis) ----------------------------------------
+
+
+class QuoteLineBase(BaseModel):
+    product_id: Optional[str] = None
+    description: Optional[str] = Field(default=None, max_length=300)
+    qty: Optional[float] = Field(default=None, ge=0, allow_inf_nan=False)
+    unit_id: Optional[int] = None
+
+
+class QuoteLineCreate(QuoteLineBase):
+    pass
+
+
+class QuoteLineUpdate(BaseModel):
+    product_id: Optional[str] = None
+    description: Optional[str] = Field(default=None, max_length=300)
+    qty: Optional[float] = Field(default=None, ge=0, allow_inf_nan=False)
+    unit_id: Optional[int] = None
+
+
+class QuoteLineRead(BaseModel):
+    id: str
+    product_id: Optional[str] = None
+    product_name: Optional[str] = None
+    description: Optional[str] = None
+    qty: Optional[float] = None
+    unit_id: Optional[int] = None
+    unit_price: Optional[float] = None
+    supplier_id: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class QuoteCreate(BaseModel):
+    title: Optional[str] = Field(default=None, max_length=200)
+    notes: Optional[str] = Field(default=None, max_length=1000)
+    lines: List[QuoteLineCreate] = []
+
+
+class QuoteUpdate(BaseModel):
+    title: Optional[str] = Field(default=None, max_length=200)
+    notes: Optional[str] = Field(default=None, max_length=1000)
+    status: Optional[str] = Field(default=None, max_length=20)
+
+
+class QuoteRead(BaseModel):
+    id: str
+    reference: Optional[str] = None
+    title: Optional[str] = None
+    status: Optional[str] = None
+    supplier_id: Optional[str] = None
+    supplier_name: Optional[str] = None
+    total_amount: Optional[float] = None
+    notes: Optional[str] = None
+    line_count: Optional[int] = None
+    ordered_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class QuoteOrderRequest(BaseModel):
+    """Convert a quote into an order by retaining one supplier's prices."""
+
+    supplier_id: str
