@@ -499,7 +499,16 @@ class Quote(Base):
     ordered_at = Column(TIMESTAMP)
     created_at = Column(TIMESTAMP, server_default=func.now())
 
-    lines = relationship("QuoteLine", back_populates="quote")
+    # delete-orphan + passive_deletes: deleting a quote must remove its lines.
+    # quote_lines.quote_id is NOT NULL, so the ORM's default "nullify children on
+    # parent delete" would violate the constraint and 500. passive_deletes lets
+    # the DB's ON DELETE CASCADE (see the FK below) do the removal instead.
+    lines = relationship(
+        "QuoteLine",
+        back_populates="quote",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class QuoteLine(Base):

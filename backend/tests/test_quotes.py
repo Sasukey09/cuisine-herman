@@ -143,3 +143,46 @@ def test_list_read_and_line_crud(db):
     first = crud_quote.get_lines(db, tenant_id, str(quote.id))[0]
     crud_quote.delete_line(db, first)
     assert len(crud_quote.get_lines(db, tenant_id, str(quote.id))) == 1
+
+
+def test_delete_quote_removes_its_lines_even_when_ordered(db):
+    """Regression: deleting a quote must cascade to its lines. quote_lines.quote_id
+    is NOT NULL, so the ORM's default nullify-on-parent-delete 500'd; the relation
+    now relies on the DB ON DELETE CASCADE (found live: DELETE /quotes/{id} -> 500)."""
+    from app.models.models import QuoteLine
+
+    tenant_id, sup_a, sup_b, p1, p2 = _seed(db)
+
+    # a draft quote with lines
+    draft = crud_quote.create_quote(
+        db, tenant_id, QuoteCreate(title="Draft", lines=[QuoteLineCreate(product_id=p1, qty=2)])
+    )
+    draft_id = str(draft.id)
+    crud_quote.delete_quote(db, draft)
+    assert crud_quote.get_quote(db, tenant_id, draft_id) is None
+    assert db.query(QuoteLine).filter(QuoteLine.quote_id == draft_id).count() == 0
+
+    # an ORDERED quote (the exact case that failed live) with snapshotted lines
+    ordered = crud_quote.create_quote(
+        db,
+        tenant_id,
+        QuoteCreate(
+            title="Ordered",
+            lines=[QuoteLineCreate(product_id=p1, qty=10), QuoteLineCreate(product_id=p2, qty=2)],
+        ),
+    )
+    ordered_id = str(ordered.id)
+    lines = crud_quote.get_lines(db, tenant_id, ordered_id)
+    totals = quote_service.supplier_totals(db, tenant_id, lines, sup_b)
+    crud_quote.mark_ordered(
+        db,
+        ordered,
+        sup_b,
+        totals["total"],
+        {l["product_id"]: l["unit_cost"] for l in totals["lines"]},
+    )
+    assert crud_quote.get_quote(db, tenant_id, ordered_id).status == "ordered"
+
+    crud_quote.delete_quote(db, ordered)
+    assert crud_quote.get_quote(db, tenant_id, ordered_id) is None
+    assert db.query(QuoteLine).filter(QuoteLine.quote_id == ordered_id).count() == 0
