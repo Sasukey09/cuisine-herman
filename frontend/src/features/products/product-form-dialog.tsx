@@ -24,6 +24,7 @@ const schema = z.object({
   name: z.string().min(1, "Nom requis"),
   sku: z.string().optional(),
   category: z.string().optional(),
+  vat_rate: z.string().optional(),
 });
 
 const SELECT_CLASS =
@@ -59,6 +60,7 @@ export function ProductFormDialog({ open, onOpenChange, product }: ProductFormDi
         name: product?.name ?? "",
         sku: product?.sku ?? "",
         category: product?.category ?? "",
+        vat_rate: product?.vat_rate != null ? String(product.vat_rate) : "",
       });
     }
   }, [open, product, reset]);
@@ -68,7 +70,9 @@ export function ProductFormDialog({ open, onOpenChange, product }: ProductFormDi
   const onSubmit = (values: Values) => {
     // Empty category => let the backend auto-classify from the name.
     const category = values.category?.trim() ? values.category : null;
-    const payload = { name: values.name, sku: values.sku?.trim() || null, category };
+    const vat_rate =
+      values.vat_rate?.trim() && !Number.isNaN(Number(values.vat_rate)) ? Number(values.vat_rate) : null;
+    const payload = { name: values.name, sku: values.sku?.trim() || null, category, vat_rate };
     const opts = { onSuccess: () => onOpenChange(false) };
     if (isEdit && product) update.mutate({ id: product.id, payload }, opts);
     else create.mutate(payload, opts);
@@ -105,6 +109,10 @@ export function ProductFormDialog({ open, onOpenChange, product }: ProductFormDi
                 </option>
               ))}
             </select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="vat_rate">TVA (%) — optionnel</Label>
+            <Input id="vat_rate" type="number" step="0.1" min={0} max={100} placeholder="20" {...register("vat_rate")} />
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
