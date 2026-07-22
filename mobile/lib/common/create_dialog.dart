@@ -6,11 +6,58 @@ import '../core/outbox.dart';
 import '../core/providers.dart';
 
 class CreateField {
-  const CreateField(this.key, this.label, {this.keyboard = TextInputType.text, this.required = false});
+  const CreateField(
+    this.key,
+    this.label, {
+    this.keyboard = TextInputType.text,
+    this.required = false,
+    this.options,
+    this.emptyLabel = '—',
+  });
   final String key;
   final String label;
   final TextInputType keyboard;
   final bool required;
+
+  /// When set, the field is a dropdown of these choices (plus an empty option
+  /// labelled [emptyLabel]). The value still lives in the row's controller, so
+  /// result collection stays uniform across text and dropdown fields.
+  final List<String>? options;
+  final String emptyLabel;
+}
+
+/// One dialog field, backed by [controller]. A field with `options` renders as a
+/// dropdown (writing the chosen value back into the controller); otherwise a
+/// text field. Shared by the create and edit dialogs.
+Widget buildDialogField(CreateField f, TextEditingController controller) {
+  if (f.options != null) {
+    final cur = controller.text;
+    final values = <String>['', ...f.options!];
+    if (cur.isNotEmpty && !f.options!.contains(cur)) values.insert(1, cur);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: DropdownButtonFormField<String>(
+        initialValue: values.contains(cur) ? cur : '',
+        isExpanded: true,
+        decoration: InputDecoration(labelText: f.label),
+        items: [
+          for (final v in values)
+            DropdownMenuItem(value: v, child: Text(v.isEmpty ? f.emptyLabel : v)),
+        ],
+        onChanged: (v) => controller.text = v ?? '',
+      ),
+    );
+  }
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: TextFormField(
+      controller: controller,
+      keyboardType: f.keyboard,
+      decoration: InputDecoration(labelText: f.label),
+      validator: (v) =>
+          f.required && (v == null || v.trim().isEmpty) ? 'Requis' : null,
+    ),
+  );
 }
 
 /// Generic "create" form dialog. Returns the entered values (trimmed) or null
@@ -64,17 +111,7 @@ class _CreateDialogState extends State<_CreateDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: widget.fields
-                .map((f) => Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: TextFormField(
-                        controller: _controllers[f.key],
-                        keyboardType: f.keyboard,
-                        decoration: InputDecoration(labelText: f.label),
-                        validator: (v) => f.required && (v == null || v.trim().isEmpty)
-                            ? 'Requis'
-                            : null,
-                      ),
-                    ))
+                .map((f) => buildDialogField(f, _controllers[f.key]!))
                 .toList(),
           ),
         ),

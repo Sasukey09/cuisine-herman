@@ -58,17 +58,7 @@ class _EditDialogState extends State<_EditDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: widget.fields
-                .map((f) => Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: TextFormField(
-                        controller: _controllers[f.key],
-                        keyboardType: f.keyboard,
-                        decoration: InputDecoration(labelText: f.label),
-                        validator: (v) => f.required && (v == null || v.trim().isEmpty)
-                            ? 'Requis'
-                            : null,
-                      ),
-                    ))
+                .map((f) => buildDialogField(f, _controllers[f.key]!))
                 .toList(),
           ),
         ),

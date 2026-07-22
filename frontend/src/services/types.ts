@@ -43,6 +43,7 @@ export interface Product {
   name: string;
   sku?: string | null;
   base_unit_id?: number | null;
+  category?: string | null;
 }
 
 export interface ProductRow {
@@ -61,6 +62,8 @@ export interface ProductPayload {
   name: string;
   sku?: string | null;
   base_unit_id?: number | null;
+  /** A taxonomy category name; omit/null to auto-classify from the name. */
+  category?: string | null;
 }
 
 export type ProductUpdatePayload = Partial<ProductPayload>;
