@@ -16,9 +16,25 @@ String apiErrorMessage(Object error, [String fallback = 'Une erreur est survenue
           .toList();
       if (msgs.isNotEmpty) return msgs.join(', ');
     }
-    if (error.type == DioExceptionType.connectionError ||
-        error.type == DioExceptionType.connectionTimeout) {
-      return 'Impossible de joindre le serveur.';
+    // A slow/unreachable server (typically a free-tier cold start) is NOT a
+    // client mistake. It must never fall through to a caller fallback like
+    // "Identifiants incorrects" — that sends the user resetting a password that
+    // was never wrong. receiveTimeout/sendTimeout are the cold-start symptom the
+    // old code missed (it only caught the two connection-* types).
+    switch (error.type) {
+      case DioExceptionType.connectionError:
+      case DioExceptionType.connectionTimeout:
+      case DioExceptionType.receiveTimeout:
+      case DioExceptionType.sendTimeout:
+        return 'Serveur injoignable (il démarre peut-être). Réessayez dans un instant.';
+      default:
+        break;
+    }
+    // A 5xx (incl. the 502/503 a waking server returns) is a server problem, not
+    // bad credentials — again, don't leak the caller's fallback.
+    final status = error.response?.statusCode ?? 0;
+    if (status >= 500) {
+      return 'Serveur momentanément indisponible. Réessayez dans un instant.';
     }
   }
   return fallback;

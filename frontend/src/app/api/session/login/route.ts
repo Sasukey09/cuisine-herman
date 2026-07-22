@@ -26,18 +26,43 @@ export async function POST(request: Request) {
   form.append("username", email);
   form.append("password", password);
 
-  const upstream = await fetch(`${API_BASE}/auth/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: form.toString(),
-    cache: "no-store",
-  });
+  let upstream: Response;
+  try {
+    upstream = await fetch(`${API_BASE}/auth/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: form.toString(),
+      cache: "no-store",
+    });
+  } catch {
+    // Backend unreachable — almost always a free-tier cold start, not bad
+    // credentials. Never answer this with "Identifiants incorrects": the user
+    // would reset a password that was correct.
+    return NextResponse.json(
+      { detail: "Serveur injoignable (il démarre peut-être). Réessayez dans un instant." },
+      { status: 503 },
+    );
+  }
 
   const data = await upstream.json().catch(() => ({}));
   if (!upstream.ok || !data?.access_token || !data?.refresh_token) {
+    // Only a real 401 means the credentials are wrong. A 5xx (or an OK response
+    // with no tokens — a waking server) must say the server is unavailable.
+    if (upstream.status === 401) {
+      return NextResponse.json(
+        { detail: data?.detail ?? "Identifiants incorrects" },
+        { status: 401 },
+      );
+    }
+    if (upstream.ok || upstream.status >= 500) {
+      return NextResponse.json(
+        { detail: "Serveur momentanément indisponible. Réessayez dans un instant." },
+        { status: 503 },
+      );
+    }
     return NextResponse.json(
-      { detail: data?.detail ?? "Identifiants incorrects" },
-      { status: upstream.ok ? 502 : upstream.status },
+      { detail: data?.detail ?? "Connexion impossible. Réessayez." },
+      { status: upstream.status },
     );
   }
 
