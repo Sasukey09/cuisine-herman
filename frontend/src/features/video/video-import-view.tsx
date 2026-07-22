@@ -6,6 +6,7 @@ import { Loader2, Wand2, Plus, Trash2, CheckCircle2, Youtube, AlertTriangle, Upl
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/page-header";
+import { BackButton } from "@/components/back-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -128,6 +129,7 @@ export function VideoImportView() {
 
   return (
     <>
+      <BackButton />
       <PageHeader
         title="Import depuis une vidéo"
         description="Collez un lien (YouTube, TikTok, Instagram, Facebook…) OU importez un fichier vidéo. L'IA en extrait une fiche recette modifiable, puis la chiffre avec vos prix."
