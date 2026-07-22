@@ -44,6 +44,66 @@ export interface Product {
   sku?: string | null;
   base_unit_id?: number | null;
   category?: string | null;
+  unit?: string | null;
+  vat_rate?: number | null;
+}
+
+// --- Product detail tabs (Phase 2) ----------------------------------------
+
+export interface ProductSupplierRow {
+  supplier_id: string;
+  supplier_name?: string | null;
+  last_cost?: number | null;
+  avg_cost?: number | null;
+  best_cost?: number | null;
+  unit_code?: string | null;
+  currency?: string | null;
+  last_purchase_date?: string | null;
+  available?: boolean;
+  preferred?: boolean;
+  supplier_sku?: string | null;
+  pack_size?: string | null;
+  lead_time_days?: number | null;
+  link_id?: string | null;
+  is_cheapest?: boolean;
+}
+
+export interface ProductSuppliersResponse {
+  product_id: string;
+  suppliers: ProductSupplierRow[];
+  cheapest_supplier_id?: string | null;
+}
+
+export interface ProductSupplierPayload {
+  supplier_id: string;
+  supplier_sku?: string | null;
+  pack_size?: string | null;
+  available?: boolean;
+  preferred?: boolean;
+  lead_time_days?: number | null;
+  notes?: string | null;
+}
+
+export type ProductSupplierUpdatePayload = Partial<Omit<ProductSupplierPayload, "supplier_id">>;
+
+export interface ProductInvoiceRow {
+  invoice_id: string;
+  invoice_number?: string | null;
+  date?: string | null;
+  supplier_name?: string | null;
+  total_amount?: number | null;
+  currency?: string | null;
+  qty: number;
+  line_total: number;
+  lines: number;
+}
+
+export interface ProductRecipeRow {
+  recipe_id: string;
+  name: string;
+  ingredient_name?: string | null;
+  qty?: number | null;
+  unit?: string | null;
 }
 
 export interface ProductRow {

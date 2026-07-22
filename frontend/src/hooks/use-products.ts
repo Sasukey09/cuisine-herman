@@ -11,9 +11,20 @@ import {
   updateProduct,
   deleteProduct,
   listCategories,
+  getProductSuppliers,
+  addProductSupplier,
+  updateProductSupplier,
+  deleteProductSupplier,
+  getProductInvoices,
+  getProductRecipes,
 } from "@/services/products-service";
 import { getApiErrorMessage } from "@/lib/api-error";
-import type { ProductPayload, ProductUpdatePayload } from "@/services/types";
+import type {
+  ProductPayload,
+  ProductUpdatePayload,
+  ProductSupplierPayload,
+  ProductSupplierUpdatePayload,
+} from "@/services/types";
 
 const KEY = ["products"];
 
@@ -44,6 +55,65 @@ export function useProductCategories() {
     queryKey: ["product-categories"],
     queryFn: listCategories,
     staleTime: 60 * 60 * 1000, // the taxonomy is effectively static
+  });
+}
+
+// --- Product detail tabs (Phase 2) ----------------------------------------
+
+export function useProductSuppliers(id?: string) {
+  return useQuery({
+    queryKey: [...KEY, id, "suppliers"],
+    queryFn: () => getProductSuppliers(id as string),
+    enabled: Boolean(id),
+  });
+}
+
+export function useProductInvoices(id?: string) {
+  return useQuery({
+    queryKey: [...KEY, id, "invoices"],
+    queryFn: () => getProductInvoices(id as string),
+    enabled: Boolean(id),
+  });
+}
+
+export function useProductRecipes(id?: string) {
+  return useQuery({
+    queryKey: [...KEY, id, "recipes"],
+    queryFn: () => getProductRecipes(id as string),
+    enabled: Boolean(id),
+  });
+}
+
+function useSupplierMutation(id: string, fn: () => void) {
+  const qc = useQueryClient();
+  return {
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [...KEY, id, "suppliers"] });
+      fn();
+    },
+    onError: (e: unknown) => toast.error(getApiErrorMessage(e)),
+  };
+}
+
+export function useAddProductSupplier(id: string) {
+  return useMutation({
+    mutationFn: (payload: ProductSupplierPayload) => addProductSupplier(id, payload),
+    ...useSupplierMutation(id, () => toast.success("Fournisseur associé")),
+  });
+}
+
+export function useUpdateProductSupplier(id: string) {
+  return useMutation({
+    mutationFn: (vars: { linkId: string; payload: ProductSupplierUpdatePayload }) =>
+      updateProductSupplier(id, vars.linkId, vars.payload),
+    ...useSupplierMutation(id, () => toast.success("Fournisseur mis à jour")),
+  });
+}
+
+export function useDeleteProductSupplier(id: string) {
+  return useMutation({
+    mutationFn: (linkId: string) => deleteProductSupplier(id, linkId),
+    ...useSupplierMutation(id, () => toast.success("Fournisseur retiré")),
   });
 }
 
