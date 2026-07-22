@@ -273,14 +273,15 @@ class _State extends ConsumerState<InvoiceSmartImportScreen> {
         const SizedBox(height: 8),
         Row(children: [
           SizedBox(
-            width: 128,
+            width: 150,
             child: DropdownButtonFormField<String>(
               initialValue: l.action,
               isDense: true,
+              isExpanded: true, // let the value ellipsize instead of overflowing
               decoration: const InputDecoration(isDense: true),
               items: const [
-                DropdownMenuItem(value: 'create', child: Text('➕ Créer')),
-                DropdownMenuItem(value: 'associate', child: Text('🔗 Associer')),
+                DropdownMenuItem(value: 'create', child: Text('Créer')),
+                DropdownMenuItem(value: 'associate', child: Text('Associer')),
                 DropdownMenuItem(value: 'skip', child: Text('Ignorer')),
               ],
               onChanged: (v) => setState(() => l.action = v ?? 'create'),
