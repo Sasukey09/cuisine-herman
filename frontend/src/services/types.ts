@@ -731,3 +731,82 @@ export interface ReportRunResult {
   rows: Record<string, unknown>[];
   count: number;
 }
+
+// --- Quotes / comparateur de devis (Phase 4) ------------------------------
+
+export type QuoteStatus = "draft" | "ordered" | "archived";
+
+export interface Quote {
+  id: string;
+  reference?: string | null;
+  title?: string | null;
+  status?: QuoteStatus | string | null;
+  supplier_id?: string | null;
+  supplier_name?: string | null;
+  total_amount?: number | null;
+  notes?: string | null;
+  line_count?: number | null;
+  ordered_at?: string | null;
+  created_at?: string | null;
+}
+
+export interface QuoteLine {
+  id: string;
+  product_id?: string | null;
+  product_name?: string | null;
+  description?: string | null;
+  qty?: number | null;
+  unit_id?: number | null;
+  unit_price?: number | null;
+  supplier_id?: string | null;
+}
+
+export interface QuoteDetail extends Quote {
+  lines: QuoteLine[];
+}
+
+export interface QuoteLinePayload {
+  product_id?: string | null;
+  description?: string | null;
+  qty?: number | null;
+  unit_id?: number | null;
+}
+
+export interface QuoteCreatePayload {
+  title?: string | null;
+  notes?: string | null;
+  lines: QuoteLinePayload[];
+}
+
+export interface QuoteComparisonLine {
+  product_id: string;
+  product_name?: string | null;
+  qty?: number | null;
+  unit_cost?: number | null;
+  line_cost?: number | null;
+  available?: boolean;
+}
+
+export interface QuoteComparisonSupplier {
+  supplier_id: string;
+  supplier_name?: string | null;
+  covered_count: number;
+  priceable_count: number;
+  missing: { product_id: string; product_name?: string | null }[];
+  total: number;
+  max_lead_time_days?: number | null;
+  preferred?: boolean;
+  is_full_coverage?: boolean;
+  is_cheapest?: boolean;
+  is_best_coverage?: boolean;
+  lines: QuoteComparisonLine[];
+}
+
+export interface QuoteComparison {
+  quote_id?: string;
+  line_count: number;
+  priceable_count: number;
+  suppliers: QuoteComparisonSupplier[];
+  cheapest_supplier_id?: string | null;
+  best_coverage_supplier_id?: string | null;
+}
