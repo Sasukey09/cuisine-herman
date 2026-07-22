@@ -59,6 +59,7 @@ import {
   useProductSuppliers,
   useProductInvoices,
   useProductRecipes,
+  useAddProductSupplier,
   useUpdateProductSupplier,
   useDeleteProductSupplier,
 } from "@/hooks/use-products";
@@ -99,6 +100,7 @@ export function ProductDetail({ productId }: { productId: string }) {
   const { data: invoices } = useProductInvoices(productId);
   const { data: recipes } = useProductRecipes(productId);
 
+  const addSupplier = useAddProductSupplier(productId);
   const updateSupplier = useUpdateProductSupplier(productId);
   const deleteSupplier = useDeleteProductSupplier(productId);
 
@@ -147,8 +149,13 @@ export function ProductDetail({ productId }: { productId: string }) {
   }
 
   function setPreferred(row: ProductSupplierRow) {
-    if (!row.link_id) return;
-    updateSupplier.mutate({ linkId: row.link_id, payload: { preferred: true } });
+    // A purchase-only supplier has no catalog link yet — create one (idempotent),
+    // don't PATCH a link that doesn't exist.
+    if (row.link_id) {
+      updateSupplier.mutate({ linkId: row.link_id, payload: { preferred: true } });
+    } else {
+      addSupplier.mutate({ supplier_id: row.supplier_id, preferred: true, available: row.available ?? true });
+    }
   }
 
   return (
@@ -277,9 +284,11 @@ export function ProductDetail({ productId }: { productId: string }) {
                                 <Button variant="ghost" size="icon" className="h-7 w-7" title="Modifier" onClick={() => setSupplierDialog({ open: true, row: s })}>
                                   <Pencil className="h-3.5 w-3.5" />
                                 </Button>
-                                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" title="Retirer" onClick={() => setDeleteLink(s)}>
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
+                                {s.link_id && (
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" title="Retirer" onClick={() => setDeleteLink(s)}>
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
                               </div>
                             </TableCell>
                           )}

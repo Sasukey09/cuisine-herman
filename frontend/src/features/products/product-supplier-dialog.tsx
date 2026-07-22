@@ -38,7 +38,10 @@ export function ProductSupplierDialog({
   existing,
   linkedSupplierIds = [],
 }: Props) {
-  const isEdit = Boolean(existing?.link_id);
+  // `existing` present => the supplier is fixed (no dropdown), whether it already
+  // has a catalog link or only appears via purchases.
+  const isFixed = Boolean(existing);
+  const hasLink = Boolean(existing?.link_id);
   const { data: suppliers } = useSuppliers();
   const add = useAddProductSupplier(productId);
   const update = useUpdateProductSupplier(productId);
@@ -63,7 +66,7 @@ export function ProductSupplierDialog({
 
   const pending = add.isPending || update.isPending;
   const availableSuppliers = (suppliers ?? []).filter(
-    (s) => isEdit || !linkedSupplierIds.includes(s.id),
+    (s) => isFixed || !linkedSupplierIds.includes(s.id),
   );
 
   function onSubmit() {
@@ -75,11 +78,13 @@ export function ProductSupplierDialog({
       preferred,
     };
     const opts = { onSuccess: () => onOpenChange(false) };
-    if (isEdit && existing?.link_id) {
+    if (hasLink && existing?.link_id) {
       update.mutate({ linkId: existing.link_id, payload: body }, opts);
     } else {
-      if (!supplierId) return;
-      add.mutate({ supplier_id: supplierId, ...body }, opts);
+      // Add, or upsert a purchase-only supplier into the catalog.
+      const sid = existing?.supplier_id ?? supplierId;
+      if (!sid) return;
+      add.mutate({ supplier_id: sid, ...body }, opts);
     }
   }
 
@@ -87,15 +92,15 @@ export function ProductSupplierDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isEdit ? "Modifier le fournisseur" : "Associer un fournisseur"}</DialogTitle>
+          <DialogTitle>{isFixed ? "Modifier le fournisseur" : "Associer un fournisseur"}</DialogTitle>
           <DialogDescription>
-            {isEdit
+            {isFixed
               ? existing?.supplier_name ?? "Fournisseur"
               : "Reliez ce produit à un fournisseur de votre catalogue."}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
-          {!isEdit && (
+          {!isFixed && (
             <div className="space-y-2">
               <Label htmlFor="ps-supplier">Fournisseur</Label>
               <select
@@ -142,9 +147,9 @@ export function ProductSupplierDialog({
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Annuler
           </Button>
-          <Button type="button" onClick={onSubmit} disabled={pending || (!isEdit && !supplierId)}>
+          <Button type="button" onClick={onSubmit} disabled={pending || (!isFixed && !supplierId)}>
             {pending && <Loader2 className="h-4 w-4 animate-spin" />}
-            {isEdit ? "Enregistrer" : "Associer"}
+            {isFixed ? "Enregistrer" : "Associer"}
           </Button>
         </DialogFooter>
       </DialogContent>
