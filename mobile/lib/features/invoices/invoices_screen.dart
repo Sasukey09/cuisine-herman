@@ -8,8 +8,9 @@ import '../../common/format.dart';
 import '../../common/ui_kit.dart';
 import '../../core/api_error.dart';
 import '../../core/providers.dart';
-import '../../main.dart' show kMuted, kGood, kWarn;
+import '../../main.dart' show kMuted, kGood, kWarn, kTerracotta;
 import 'invoice_detail_screen.dart';
+import 'invoice_smart_import_screen.dart';
 
 final _invoicesProvider = FutureProvider.autoDispose<Loaded>((ref) async {
   return fetchWithCache(ref, cacheKey: 'invoices', request: () async {
@@ -26,7 +27,6 @@ final _invoicesProvider = FutureProvider.autoDispose<Loaded>((ref) async {
 ///   UTIs. Without them (and with `openFile` called outside a try/catch) the
 ///   exception vanished silently and the "Choisir un fichier" button did
 ///   nothing at all on iPhone/iPad. `public.image` covers jpg/png/webp/heic.
-@visibleForTesting
 const invoiceFileTypes = XTypeGroup(
   label: 'Factures',
   extensions: ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
@@ -138,6 +138,19 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
               expand: true,
               loading: _uploading,
             ),
+          ),
+          const SizedBox(height: 4),
+          TextButton.icon(
+            onPressed: _uploading
+                ? null
+                : () async {
+                    await Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const InvoiceSmartImportScreen(),
+                    ));
+                    ref.invalidate(_invoicesProvider);
+                  },
+            icon: const Icon(Icons.auto_awesome, size: 18, color: kTerracotta),
+            label: const Text('Import intelligent — vérifier & valider'),
           ),
         ],
       ),
