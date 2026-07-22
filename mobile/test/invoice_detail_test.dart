@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:foodgad_mobile/core/api_client.dart';
 import 'package:foodgad_mobile/core/providers.dart';
 import 'package:foodgad_mobile/core/token_store.dart';
+import 'package:foodgad_mobile/features/auth/auth_controller.dart';
 import 'package:foodgad_mobile/features/invoices/invoice_detail_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -35,6 +37,7 @@ class _InvoiceApi implements HttpClientAdapter {
           'unit_price': 18.5,
           'line_total': 37.0,
           'match_confidence': 91,
+          'vat_rate': 5.5,
         },
         {
           'id': 'l2',
@@ -78,6 +81,18 @@ class _InvoiceApi implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
+/// Authenticated admin, without hitting the network — so the write affordances
+/// (edit pencil, add-line, delete) render in widget tests. `canWrite` = admin.
+class _AdminAuth extends AuthController {
+  @override
+  AuthState build() => const AuthState(
+        status: AuthStatus.authenticated,
+        user: {
+          'roles': ['admin'],
+        },
+      );
+}
+
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
@@ -88,7 +103,10 @@ void main() {
     final client = ApiClient(TokenStore());
     client.dio.httpClientAdapter = _InvoiceApi();
     final c = ProviderContainer(
-      overrides: [apiClientProvider.overrideWithValue(client)],
+      overrides: [
+        apiClientProvider.overrideWithValue(client),
+        authControllerProvider.overrideWith(_AdminAuth.new),
+      ],
     );
     addTearDown(c.dispose);
     return c;
@@ -125,5 +143,48 @@ void main() {
     final lines = await c.read(invoiceLinesProvider('inv1').future);
     final needsReview = lines.where((l) => l['product_id'] == null).length;
     expect(needsReview, 1, reason: 'the banner "N ligne(s) à associer" depends on this');
+  });
+
+  Future<void> pumpScreen(WidgetTester tester, ProviderContainer c) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: c,
+      child: const MaterialApp(
+        home: InvoiceDetailScreen(invoiceId: 'inv1'),
+      ),
+    ));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('a line with vat_rate shows the "TVA x%" suffix, and the mapped '
+      'line exposes the chevron that opens the product', (tester) async {
+    final c = makeContainer();
+    await pumpScreen(tester, c);
+
+    // #8 — the VAT persisted on a line renders on its card.
+    expect(find.textContaining('TVA 5,5%'), findsOneWidget);
+    // #8 — the mapped product cell is tappable (chevron → ProductDetailScreen).
+    expect(find.byIcon(Icons.chevron_right), findsWidgets);
+    // The unmapped line still shows the "À revoir" branch.
+    expect(find.text('À revoir'), findsOneWidget);
+  });
+
+  testWidgets('the line edit dialog exposes a "TVA %" field pre-filled from the '
+      'line', (tester) async {
+    final c = makeContainer();
+    await pumpScreen(tester, c);
+
+    // Open the first line's "Corriger" dialog.
+    await tester.tap(find.byTooltip('Corriger').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Corriger la ligne'), findsOneWidget);
+    // #8 — the new VAT field is present…
+    expect(find.text('TVA %'), findsOneWidget);
+    // …and pre-filled with the line's persisted value (5.5 -> "5,5").
+    expect(find.text('5,5'), findsOneWidget);
   });
 }
