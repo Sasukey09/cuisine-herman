@@ -20,6 +20,9 @@ from app.crud import crud_supplier_product
 from app.crud.crud_product import (
     create_product,
     get_product,
+    get_product_detail,
+    product_invoices,
+    product_recipes,
     list_products,
     list_products_enriched,
     update_product,
@@ -179,16 +182,41 @@ def api_list_products_enriched(
     return list_products_enriched(db, tenant_id, skip=skip, limit=limit, q=q)
 
 
-@router.get("/{product_id}", response_model=ProductRead)
+@router.get("/{product_id}/invoices")
+def api_product_invoices(
+    product_id: str,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """Invoices containing this product (the product's "Factures" tab)."""
+    if not get_product(db, product_id, tenant_id):
+        raise HTTPException(status_code=404, detail="Product not found")
+    return {"product_id": product_id, "invoices": product_invoices(db, tenant_id, product_id)}
+
+
+@router.get("/{product_id}/recipes")
+def api_product_recipes(
+    product_id: str,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """Recipes whose current version uses this product (the "Recettes" tab)."""
+    if not get_product(db, product_id, tenant_id):
+        raise HTTPException(status_code=404, detail="Product not found")
+    return {"product_id": product_id, "recipes": product_recipes(db, tenant_id, product_id)}
+
+
+@router.get("/{product_id}")
 def api_get_product(
     product_id: str,
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant_id),
 ):
-    product = get_product(db, product_id, tenant_id)
-    if not product:
+    """Product detail with category name + unit code (for the Informations tab)."""
+    detail = get_product_detail(db, product_id, tenant_id)
+    if detail is None:
         raise HTTPException(status_code=404, detail="Product not found")
-    return product
+    return detail
 
 
 @router.put("/{product_id}", response_model=ProductRead)

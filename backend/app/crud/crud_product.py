@@ -7,6 +7,11 @@ from app.models.models import (
     ProductCategory,
     Supplier,
     Unit,
+    Invoice,
+    InvoiceLine,
+    Recipe,
+    RecipeVersion,
+    RecipeIngredient,
 )
 from app.schemas.schemas import ProductCreate, ProductUpdate
 from app.services.classification.classifier import classify, coerce_category
@@ -146,6 +151,104 @@ def get_product(db: Session, product_id: str, tenant_id: str):
         .filter(Product.id == product_id, Product.tenant_id == tenant_id)
         .first()
     )
+
+
+def get_product_detail(db: Session, product_id: str, tenant_id: str) -> Optional[Dict[str, Any]]:
+    """Product for the "Informations" tab: base fields + category name + unit code
+    (the raw ProductRead has only ids)."""
+    p = get_product(db, product_id, tenant_id)
+    if p is None:
+        return None
+    category = None
+    if p.category_id is not None:
+        c = db.query(ProductCategory).filter(ProductCategory.id == p.category_id).first()
+        category = c.name if c is not None else None
+    unit = None
+    if p.base_unit_id is not None:
+        u = db.query(Unit).filter(Unit.id == p.base_unit_id).first()
+        unit = u.code if u is not None else None
+    return {
+        "id": str(p.id),
+        "name": p.name,
+        "sku": p.sku,
+        "base_unit_id": p.base_unit_id,
+        "unit": unit,
+        "category": category,
+        "vat_rate": float(p.vat_rate) if p.vat_rate is not None else None,
+    }
+
+
+def product_invoices(db: Session, tenant_id: str, product_id: str) -> List[Dict[str, Any]]:
+    """Invoices that contain this product (one row per invoice, product qty/total
+    summed across its lines) — the product's "Factures" tab."""
+    sups = {
+        str(s.id): s.name
+        for s in db.query(Supplier).filter(Supplier.tenant_id == tenant_id).all()
+    }
+    rows = (
+        db.query(Invoice, InvoiceLine)
+        .join(InvoiceLine, InvoiceLine.invoice_id == Invoice.id)
+        .filter(Invoice.tenant_id == tenant_id, InvoiceLine.product_id == product_id)
+        .order_by(Invoice.date.desc())
+        .all()
+    )
+    by_invoice: Dict[str, Dict[str, Any]] = {}
+    for inv, line in rows:
+        e = by_invoice.setdefault(
+            str(inv.id),
+            {
+                "invoice_id": str(inv.id),
+                "invoice_number": inv.invoice_number,
+                "date": inv.date.isoformat() if inv.date else None,
+                "supplier_name": sups.get(str(inv.supplier_id)) if inv.supplier_id else None,
+                "total_amount": float(inv.total_amount) if inv.total_amount is not None else None,
+                "currency": inv.currency,
+                "qty": 0.0,
+                "line_total": 0.0,
+                "lines": 0,
+            },
+        )
+        e["lines"] += 1
+        if line.qty is not None:
+            e["qty"] += float(line.qty)
+        if line.line_total is not None:
+            e["line_total"] += float(line.line_total)
+    return list(by_invoice.values())
+
+
+def product_recipes(db: Session, tenant_id: str, product_id: str) -> List[Dict[str, Any]]:
+    """Recipes whose CURRENT version uses this product — the "Recettes" tab."""
+    units = {u.id: u.code for u in db.query(Unit).all()}
+    rows = (
+        db.query(
+            Recipe.id,
+            Recipe.name,
+            RecipeIngredient.ingredient_name,
+            RecipeIngredient.qty,
+            RecipeIngredient.unit_id,
+        )
+        .join(RecipeVersion, RecipeVersion.recipe_id == Recipe.id)
+        .join(RecipeIngredient, RecipeIngredient.recipe_version_id == RecipeVersion.id)
+        .filter(
+            Recipe.tenant_id == tenant_id,
+            RecipeIngredient.product_id == product_id,
+            RecipeVersion.id == Recipe.current_version_id,
+        )
+        .all()
+    )
+    seen: Dict[str, Dict[str, Any]] = {}
+    for rid, rname, ing_name, qty, unit_id in rows:
+        seen.setdefault(
+            str(rid),
+            {
+                "recipe_id": str(rid),
+                "name": rname,
+                "ingredient_name": ing_name,
+                "qty": float(qty) if qty is not None else None,
+                "unit": units.get(unit_id),
+            },
+        )
+    return list(seen.values())
 
 
 def list_products(
