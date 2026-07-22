@@ -79,12 +79,41 @@ const List<BoxShadow> kGlow = [
 ];
 
 /// Couleurs de famille produit (chips catégorie).
+// The canonical product taxonomy — MUST mirror the backend classifier's
+// CATEGORIES (app/services/classification/classifier.py). Order is the display
+// order used by the picker and the filter chips.
+const List<String> kProductCategories = <String>[
+  'Viande',
+  'Poisson',
+  'Légumes',
+  'Fruits',
+  'Produits laitiers',
+  'Boulangerie',
+  'Épicerie',
+  'Boissons',
+  'Surgelés',
+  'Desserts',
+  'Condiments',
+  'Hygiène',
+  'Emballages',
+  'Autres',
+];
+
 const Map<String, Color> kCategoryColors = {
   'Viande': Color(0xFFB23A2E),
   'Poisson': Color(0xFF2F6F62),
-  'Crèmerie': Color(0xFFD97706),
-  'Épicerie': Color(0xFF8A847A),
   'Légumes': Color(0xFF4A7C3F),
+  'Fruits': Color(0xFFCB4E2A),
+  'Produits laitiers': Color(0xFFD97706),
+  'Boulangerie': Color(0xFFB08442),
+  'Épicerie': Color(0xFF8A847A),
+  'Boissons': Color(0xFF3E6DA3),
+  'Surgelés': Color(0xFF5AA6C9),
+  'Desserts': Color(0xFFC06C9E),
+  'Condiments': Color(0xFF9A6A2F),
+  'Hygiène': Color(0xFF6B8E9E),
+  'Emballages': Color(0xFF8A7F70),
+  'Autres': Color(0xFF9AA0A6),
 };
 
 ThemeData foodGadTheme({Brightness brightness = Brightness.light}) {

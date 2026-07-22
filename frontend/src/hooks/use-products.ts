@@ -10,6 +10,7 @@ import {
   createProduct,
   updateProduct,
   deleteProduct,
+  listCategories,
 } from "@/services/products-service";
 import { getApiErrorMessage } from "@/lib/api-error";
 import type { ProductPayload, ProductUpdatePayload } from "@/services/types";
@@ -35,6 +36,14 @@ export function useProduct(id?: string) {
     queryKey: [...KEY, id],
     queryFn: () => getProduct(id as string),
     enabled: Boolean(id),
+  });
+}
+
+export function useProductCategories() {
+  return useQuery({
+    queryKey: ["product-categories"],
+    queryFn: listCategories,
+    staleTime: 60 * 60 * 1000, // the taxonomy is effectively static
   });
 }
 

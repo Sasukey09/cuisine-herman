@@ -9,7 +9,7 @@ import '../../common/edit_delete.dart';
 import '../../common/format.dart';
 import '../../common/ui_kit.dart';
 import '../../core/providers.dart';
-import '../../main.dart' show kMuted, kCategoryColors;
+import '../../main.dart' show kMuted, kCategoryColors, kProductCategories;
 import '../auth/auth_controller.dart';
 import 'product_detail_screen.dart';
 
@@ -52,6 +52,8 @@ class ProductsScreen extends ConsumerWidget {
     final data = await showCreateDialog(context, title: 'Nouveau produit', fields: const [
       CreateField('name', 'Nom', required: true),
       CreateField('sku', 'SKU (optionnel)'),
+      CreateField('category', 'Catégorie',
+          options: kProductCategories, emptyLabel: 'Automatique (selon le nom)'),
     ]);
     if (data == null) return;
     await createOrQueue(
@@ -61,6 +63,7 @@ class ProductsScreen extends ConsumerWidget {
       body: {
         'name': data['name'],
         if ((data['sku'] ?? '').isNotEmpty) 'sku': data['sku'],
+        if ((data['category'] ?? '').isNotEmpty) 'category': data['category'],
       },
       label: 'Produit : ${data['name']}',
       successMessage: 'Produit créé.',
@@ -79,8 +82,14 @@ class ProductsScreen extends ConsumerWidget {
         fields: const [
           CreateField('name', 'Nom', required: true),
           CreateField('sku', 'SKU (optionnel)'),
+          CreateField('category', 'Catégorie',
+              options: kProductCategories, emptyLabel: 'Automatique (selon le nom)'),
         ],
-        initial: {'name': '${p['name'] ?? ''}', 'sku': '${p['sku'] ?? ''}'},
+        initial: {
+          'name': '${p['name'] ?? ''}',
+          'sku': '${p['sku'] ?? ''}',
+          'category': '${p['category'] ?? ''}',
+        },
       );
       if (data == null) return;
       await updateEntity(
@@ -90,6 +99,7 @@ class ProductsScreen extends ConsumerWidget {
         body: {
           'name': data['name'],
           'sku': (data['sku'] ?? '').isEmpty ? null : data['sku'],
+          'category': (data['category'] ?? '').isEmpty ? null : data['category'],
         },
         successMessage: 'Produit modifié.',
         onDone: () => ref.invalidate(productsListProvider),

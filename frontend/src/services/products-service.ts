@@ -13,6 +13,11 @@ export async function getEnrichedProducts(q?: string) {
   return data;
 }
 
+export async function listCategories() {
+  const { data } = await api.get<string[]>("/products/categories");
+  return data;
+}
+
 export async function getProduct(id: string) {
   const { data } = await api.get<Product>(`/products/${id}`);
   return data;

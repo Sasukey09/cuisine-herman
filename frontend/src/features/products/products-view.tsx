@@ -197,7 +197,12 @@ export function ProductsView() {
                           className="h-7 w-7"
                           aria-label="Modifier"
                           onClick={() => {
-                            setEditing({ id: p.id, name: p.name, sku: p.sku ?? null });
+                            setEditing({
+                              id: p.id,
+                              name: p.name,
+                              sku: p.sku ?? null,
+                              category: p.category ?? null,
+                            });
                             setFormOpen(true);
                           }}
                         >

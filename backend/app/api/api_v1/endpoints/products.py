@@ -12,7 +12,11 @@ from app.schemas.schemas import (
     ProductRead,
     ProductMatchRequest,
     ProductMatchResultRead,
+    SupplierProductCreate,
+    SupplierProductUpdate,
+    SupplierProductRead,
 )
+from app.crud import crud_supplier_product
 from app.crud.crud_product import (
     create_product,
     get_product,
@@ -24,10 +28,19 @@ from app.crud.crud_product import (
 from app.core.tenancy import assert_product_in_tenant
 from app.crud import crud_price
 from app.services.costing import cost_engine
+from app.services.classification.classifier import CATEGORIES
 from app.services.matching.product_matcher import match_product
 from app.services.purchasing import purchase_service
 
 router = APIRouter()
+
+
+# Declared before the dynamic "/{product_id}/..." routes so "categories" is not
+# swallowed as a product id.
+@router.get("/categories", response_model=List[str])
+def api_list_categories(_tenant_id: str = Depends(get_current_tenant_id)):
+    """The canonical product classification taxonomy (14 categories)."""
+    return CATEGORIES
 
 
 @router.get("/{product_id}/price-history")
@@ -53,6 +66,63 @@ def api_product_supplier_comparison(
     if not get_product(db, product_id, tenant_id):
         raise HTTPException(status_code=404, detail="Product not found")
     return purchase_service.supplier_comparison(db, tenant_id, product_id)
+
+
+@router.get("/{product_id}/suppliers")
+def api_product_suppliers(
+    product_id: str,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """Every supplier of a product (the "Fournisseurs" tab): catalog attributes
+    (dispo, préféré, réf fournisseur, délai) + dernier/moyen/meilleur prix + date
+    du dernier achat, cheapest flagged."""
+    if not get_product(db, product_id, tenant_id):
+        raise HTTPException(status_code=404, detail="Product not found")
+    return purchase_service.product_suppliers(db, tenant_id, product_id)
+
+
+@router.post("/{product_id}/suppliers", response_model=SupplierProductRead, status_code=201)
+def api_add_product_supplier(
+    product_id: str,
+    payload: SupplierProductCreate,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+    _: list = Depends(require_writer),
+):
+    """Associate a supplier to a product (idempotent on the pair)."""
+    if not get_product(db, product_id, tenant_id):
+        raise HTTPException(status_code=404, detail="Product not found")
+    return crud_supplier_product.create_link(db, tenant_id, product_id, payload)
+
+
+@router.patch("/{product_id}/suppliers/{link_id}", response_model=SupplierProductRead)
+def api_update_product_supplier(
+    product_id: str,
+    link_id: str,
+    payload: SupplierProductUpdate,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+    _: list = Depends(require_writer),
+):
+    link = crud_supplier_product.get_link(db, tenant_id, link_id)
+    if link is None or str(link.product_id) != product_id:
+        raise HTTPException(status_code=404, detail="Supplier link not found")
+    return crud_supplier_product.update_link(db, link, payload)
+
+
+@router.delete("/{product_id}/suppliers/{link_id}", status_code=204)
+def api_delete_product_supplier(
+    product_id: str,
+    link_id: str,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+    _: list = Depends(require_writer),
+):
+    link = crud_supplier_product.get_link(db, tenant_id, link_id)
+    if link is None or str(link.product_id) != product_id:
+        raise HTTPException(status_code=404, detail="Supplier link not found")
+    crud_supplier_product.delete_link(db, link)
 
 
 # The fuzzy score runs a sliding-window comparison of `text` against every

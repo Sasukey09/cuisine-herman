@@ -17,13 +17,17 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useCreateProduct, useUpdateProduct } from "@/hooks/use-products";
+import { useCreateProduct, useUpdateProduct, useProductCategories } from "@/hooks/use-products";
 import type { Product } from "@/services/types";
 
 const schema = z.object({
   name: z.string().min(1, "Nom requis"),
   sku: z.string().optional(),
+  category: z.string().optional(),
 });
+
+const SELECT_CLASS =
+  "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
 
 type Values = z.infer<typeof schema>;
 
@@ -36,6 +40,7 @@ interface ProductFormDialogProps {
 export function ProductFormDialog({ open, onOpenChange, product }: ProductFormDialogProps) {
   const create = useCreateProduct();
   const update = useUpdateProduct();
+  const { data: categories } = useProductCategories();
   const isEdit = Boolean(product);
 
   const {
@@ -43,16 +48,27 @@ export function ProductFormDialog({ open, onOpenChange, product }: ProductFormDi
     handleSubmit,
     reset,
     formState: { errors },
-  } = useForm<Values>({ resolver: zodResolver(schema), defaultValues: { name: "", sku: "" } });
+  } = useForm<Values>({
+    resolver: zodResolver(schema),
+    defaultValues: { name: "", sku: "", category: "" },
+  });
 
   useEffect(() => {
-    if (open) reset({ name: product?.name ?? "", sku: product?.sku ?? "" });
+    if (open) {
+      reset({
+        name: product?.name ?? "",
+        sku: product?.sku ?? "",
+        category: product?.category ?? "",
+      });
+    }
   }, [open, product, reset]);
 
   const pending = create.isPending || update.isPending;
 
   const onSubmit = (values: Values) => {
-    const payload = { name: values.name, sku: values.sku?.trim() || null };
+    // Empty category => let the backend auto-classify from the name.
+    const category = values.category?.trim() ? values.category : null;
+    const payload = { name: values.name, sku: values.sku?.trim() || null, category };
     const opts = { onSuccess: () => onOpenChange(false) };
     if (isEdit && product) update.mutate({ id: product.id, payload }, opts);
     else create.mutate(payload, opts);
@@ -78,6 +94,17 @@ export function ProductFormDialog({ open, onOpenChange, product }: ProductFormDi
           <div className="space-y-2">
             <Label htmlFor="sku">Référence / SKU (optionnel)</Label>
             <Input id="sku" placeholder="TOM-001" {...register("sku")} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="category">Catégorie</Label>
+            <select id="category" className={SELECT_CLASS} {...register("category")}>
+              <option value="">Automatique (selon le nom)</option>
+              {(categories ?? []).map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
