@@ -6,6 +6,7 @@ import '../../common/format.dart';
 import '../../core/api_error.dart';
 import '../../core/providers.dart';
 import '../auth/auth_controller.dart';
+import '../products/product_detail_screen.dart';
 import '../../main.dart' show kMuted, kGood, kWarn, kBad;
 
 /// Invoice detail + full line editing — the mobile equivalent of the web
@@ -504,7 +505,8 @@ class _LineCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               'Qté ${_num(line['qty'])}  ·  PU ${eur(line['unit_price'] as num?)}  ·  '
-              'Total ${eur(line['line_total'] as num?)}',
+              'Total ${eur(line['line_total'] as num?)}'
+              '${line['vat_rate'] != null ? '  ·  TVA ${_num(line['vat_rate'])}%' : ''}',
               style: const TextStyle(fontSize: 12.5, color: kMuted),
             ),
             const SizedBox(height: 6),
@@ -516,30 +518,41 @@ class _LineCard extends StatelessWidget {
                 Text('À revoir', style: TextStyle(fontSize: 12.5, color: kWarn)),
               ])
             else
-              Row(children: [
-                const Icon(Icons.check_circle, size: 15, color: kGood),
-                const SizedBox(width: 4),
-                Flexible(
-                  child: Text(productName ?? 'Produit associé',
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
-                ),
-                if (conf != null) ...[
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: conf >= 80 ? const Color(0xFFE3ECDB) : const Color(0xFFF6EAD4),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text('$conf%',
-                        style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: conf >= 80 ? kGood : kWarn)),
+              // Tap opens the product's detail sheet — navigation from an invoice
+              // line to the product (parité web).
+              InkWell(
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => ProductDetailScreen(
+                    productId: '${line['product_id']}',
+                    productName: productName ?? 'Produit',
                   ),
-                ],
-              ]),
+                )),
+                child: Row(children: [
+                  const Icon(Icons.check_circle, size: 15, color: kGood),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text(productName ?? 'Produit associé',
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                  ),
+                  if (conf != null) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: conf >= 80 ? const Color(0xFFE3ECDB) : const Color(0xFFF6EAD4),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text('$conf%',
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: conf >= 80 ? kGood : kWarn)),
+                    ),
+                  ],
+                  const Icon(Icons.chevron_right, size: 16, color: kMuted),
+                ]),
+              ),
             if (canWrite)
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
@@ -594,6 +607,7 @@ class _LineDialogState extends State<_LineDialog> {
   late final TextEditingController _qty;
   late final TextEditingController _unit;
   late final TextEditingController _price;
+  late final TextEditingController _vat;
 
   @override
   void initState() {
@@ -604,6 +618,8 @@ class _LineDialogState extends State<_LineDialog> {
     _unit = TextEditingController(); // write-only, like the web
     _price = TextEditingController(
         text: l?['unit_price'] == null ? '' : '${l!['unit_price']}'.replaceAll('.', ','));
+    _vat = TextEditingController(
+        text: l?['vat_rate'] == null ? '' : '${l!['vat_rate']}'.replaceAll('.', ','));
   }
 
   @override
@@ -612,6 +628,7 @@ class _LineDialogState extends State<_LineDialog> {
     _qty.dispose();
     _unit.dispose();
     _price.dispose();
+    _vat.dispose();
     super.dispose();
   }
 
@@ -650,10 +667,24 @@ class _LineDialogState extends State<_LineDialog> {
               ],
             ),
             const SizedBox(height: 8),
-            TextField(
-              controller: _price,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(labelText: 'Prix unitaire'),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _price,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'Prix unitaire'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: _vat,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'TVA %'),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -667,6 +698,7 @@ class _LineDialogState extends State<_LineDialog> {
               'qty': _parse(_qty.text),
               'unit': _unit.text.trim().isEmpty ? null : _unit.text.trim(),
               'unit_price': _parse(_price.text),
+              'vat_rate': _parse(_vat.text),
             };
             Navigator.pop(context, fields);
           },
