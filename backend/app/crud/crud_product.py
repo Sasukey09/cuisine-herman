@@ -1,4 +1,5 @@
 from typing import Any, Dict, List, Optional
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.models.models import (
     Product,
@@ -8,7 +9,44 @@ from app.models.models import (
     Unit,
 )
 from app.schemas.schemas import ProductCreate, ProductUpdate
+from app.services.classification.classifier import classify, coerce_category
 import uuid
+
+
+def get_or_create_category(
+    db: Session, tenant_id: str, name: Optional[str]
+) -> Optional[ProductCategory]:
+    """Resolve a category by name within the tenant, creating it if absent.
+
+    Flushes (not commits) so it joins the caller's transaction. Names are mapped
+    onto the canonical taxonomy first ("legumes" -> "Légumes")."""
+    canonical = coerce_category(name)
+    if not canonical:
+        return None
+    existing = (
+        db.query(ProductCategory)
+        .filter(
+            ProductCategory.tenant_id == tenant_id,
+            func.lower(ProductCategory.name) == canonical.lower(),
+        )
+        .first()
+    )
+    if existing is not None:
+        return existing
+    obj = ProductCategory(tenant_id=tenant_id, name=canonical)
+    db.add(obj)
+    db.flush()
+    return obj
+
+
+def _resolve_category_id(
+    db: Session, tenant_id: str, category: Optional[str], product_name: str
+) -> Optional[int]:
+    """The category to store: the one the user gave, else auto-classified from
+    the name. Returns the category row id (creating the row on first use)."""
+    name = category or classify(product_name)
+    cat = get_or_create_category(db, tenant_id, name)
+    return cat.id if cat is not None else None
 
 
 def list_products_enriched(
@@ -84,12 +122,16 @@ def list_products_enriched(
 
 
 def create_product(db: Session, payload: ProductCreate, tenant_id: str) -> Product:
+    category_id = _resolve_category_id(
+        db, tenant_id, getattr(payload, "category", None), payload.name
+    )
     obj = Product(
         id=str(uuid.uuid4()),
         tenant_id=tenant_id,
         name=payload.name,
         sku=payload.sku,
         base_unit_id=payload.base_unit_id,
+        category_id=category_id,
     )
     db.add(obj)
     db.commit()
@@ -124,6 +166,10 @@ def update_product(db: Session, product_id: str, tenant_id: str, payload: Produc
     if obj is None:
         return None
     data = payload.model_dump(exclude_unset=True)
+    # "category" is a name, not a column — resolve it to a category_id row.
+    if "category" in data:
+        cat = get_or_create_category(db, tenant_id, data.pop("category"))
+        obj.category_id = cat.id if cat is not None else None
     for field, value in data.items():
         setattr(obj, field, value)
     db.commit()

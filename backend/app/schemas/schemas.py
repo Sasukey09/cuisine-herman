@@ -60,13 +60,16 @@ class ProductBase(BaseModel):
 
 
 class ProductCreate(ProductBase):
-    pass
+    # A category name from the taxonomy (see /products/categories). Omit it and
+    # the product is auto-classified from its name at creation.
+    category: Optional[str] = Field(default=None, max_length=60)
 
 
 class ProductUpdate(BaseModel):
     name: Optional[str] = Field(default=None, max_length=200)
     sku: Optional[str] = Field(default=None, max_length=100)
     base_unit_id: Optional[int] = None
+    category: Optional[str] = Field(default=None, max_length=60)
 
 
 class ProductRead(ProductBase):

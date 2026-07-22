@@ -24,10 +24,19 @@ from app.crud.crud_product import (
 from app.core.tenancy import assert_product_in_tenant
 from app.crud import crud_price
 from app.services.costing import cost_engine
+from app.services.classification.classifier import CATEGORIES
 from app.services.matching.product_matcher import match_product
 from app.services.purchasing import purchase_service
 
 router = APIRouter()
+
+
+# Declared before the dynamic "/{product_id}/..." routes so "categories" is not
+# swallowed as a product id.
+@router.get("/categories", response_model=List[str])
+def api_list_categories(_tenant_id: str = Depends(get_current_tenant_id)):
+    """The canonical product classification taxonomy (14 categories)."""
+    return CATEGORIES
 
 
 @router.get("/{product_id}/price-history")
