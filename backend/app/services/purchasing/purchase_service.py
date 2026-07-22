@@ -246,6 +246,97 @@ def supplier_comparison(db: Session, tenant_id: str, product_id: str) -> Dict[st
     return {"product_id": product_id, "suppliers": items, "cheapest_supplier_id": cheapest_id}
 
 
+def aggregate_supplier_prices(purchases) -> Dict[str, Dict[str, Any]]:
+    """Per-supplier {last_cost, avg_cost, best_cost, unit_code, currency,
+    last_purchase_date} from purchase-history rows (assumed oldest→newest so the
+    last standardized cost seen is the current one). Pure — unit-tested."""
+    agg: Dict[str, Dict[str, Any]] = {}
+    for p in purchases:
+        sid = str(p.supplier_id) if p.supplier_id is not None else "None"
+        entry = agg.setdefault(
+            sid,
+            {"costs": [], "last_cost": None, "unit_code": None,
+             "currency": None, "last_purchase_date": None},
+        )
+        cost = _f(p.unit_cost_standard)
+        if cost is not None:
+            entry["costs"].append(cost)
+            entry["last_cost"] = cost
+            entry["unit_code"] = p.unit_code
+            entry["currency"] = p.currency
+        if p.purchase_date is not None:
+            iso = p.purchase_date.isoformat()
+            if entry["last_purchase_date"] is None or iso > entry["last_purchase_date"]:
+                entry["last_purchase_date"] = iso
+    out: Dict[str, Dict[str, Any]] = {}
+    for sid, e in agg.items():
+        costs = e["costs"]
+        out[sid] = {
+            "last_cost": e["last_cost"],
+            "avg_cost": round(sum(costs) / len(costs), 4) if costs else None,
+            "best_cost": min(costs) if costs else None,
+            "unit_code": e["unit_code"],
+            "currency": e["currency"],
+            "last_purchase_date": e["last_purchase_date"],
+        }
+    return out
+
+
+def product_suppliers(db: Session, tenant_id: str, product_id: str) -> Dict[str, Any]:
+    """Every supplier of a product for the "Fournisseurs" tab: catalog attributes
+    (availability, preferred, supplier ref, lead time) merged with derived prices
+    (last/avg/best) and the last purchase date. Cheapest (by best cost) flagged.
+    Includes catalog suppliers that have no purchases yet."""
+    from app.crud import crud_supplier_product
+
+    supplier_names = _supplier_names(db, tenant_id)
+    prices = aggregate_supplier_prices(
+        crud_purchase.product_purchases(db, tenant_id, product_id)
+    )
+    links = {
+        str(link.supplier_id): link
+        for link in crud_supplier_product.list_links(db, tenant_id, product_id)
+    }
+
+    ids = (set(prices.keys()) | set(links.keys()))
+    ids.discard("None")
+    items: List[Dict[str, Any]] = []
+    for sid in ids:
+        pr = prices.get(sid, {})
+        link = links.get(sid)
+        items.append(
+            {
+                "supplier_id": sid,
+                "supplier_name": supplier_names.get(sid),
+                "last_cost": pr.get("last_cost"),
+                "avg_cost": pr.get("avg_cost"),
+                "best_cost": pr.get("best_cost"),
+                "unit_code": pr.get("unit_code"),
+                "currency": pr.get("currency"),
+                "last_purchase_date": pr.get("last_purchase_date"),
+                "available": bool(link.available) if link and link.available is not None else True,
+                "preferred": bool(link.preferred) if link and link.preferred else False,
+                "supplier_sku": link.supplier_sku if link else None,
+                "pack_size": link.pack_size if link else None,
+                "lead_time_days": link.lead_time_days if link else None,
+                "link_id": str(link.id) if link else None,
+            }
+        )
+    priced = sorted(
+        (i for i in items if i["best_cost"] is not None), key=lambda i: i["best_cost"]
+    )
+    cheapest_id = priced[0]["supplier_id"] if priced else None
+    for i in items:
+        i["is_cheapest"] = i["best_cost"] is not None and i["supplier_id"] == cheapest_id
+    # Preferred first, then by best price, then unpriced.
+    items.sort(key=lambda i: (not i["preferred"], i["best_cost"] is None, i["best_cost"] or 0))
+    return {
+        "product_id": product_id,
+        "suppliers": items,
+        "cheapest_supplier_id": cheapest_id,
+    }
+
+
 def supplier_purchase_history(db: Session, tenant_id: str, supplier_id: str) -> Dict[str, Any]:
     product_names = _product_names(db, tenant_id)
     rows = []

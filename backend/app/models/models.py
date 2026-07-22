@@ -116,6 +116,7 @@ class Product(Base):
     name = Column(Text, nullable=False)
     base_unit_id = Column(Integer, ForeignKey("units.id"))
     category_id = Column(Integer, ForeignKey("product_categories.id"))
+    vat_rate = Column(Numeric)  # default VAT % for this product (e.g. 5.5, 20)
     allergenes = Column(JSONB)
     meta = Column("metadata", JSONB)
     created_at = Column(TIMESTAMP, server_default=func.now())
@@ -159,6 +160,26 @@ class ProductPrice(Base):
     created_at = Column(TIMESTAMP, server_default=func.now())
 
 
+class SupplierProduct(Base):
+    """First-class product↔supplier catalog link. Per-supplier PRICES already live
+    in product_prices; this row carries the catalog attributes a price row cannot:
+    availability, a preferred flag, the supplier's own reference, and the lead
+    time (reused by the quote comparator). One row per (tenant, product, supplier)."""
+
+    __tablename__ = "supplier_products"
+    id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
+    tenant_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"))
+    product_id = Column(UUID(as_uuid=False), ForeignKey("products.id", ondelete="CASCADE"))
+    supplier_id = Column(UUID(as_uuid=False), ForeignKey("suppliers.id", ondelete="CASCADE"))
+    supplier_sku = Column(Text)  # the supplier's own reference for this product
+    pack_size = Column(Text)  # conditionnement (e.g. "carton de 6")
+    available = Column(Boolean, server_default=text("true"))  # disponibilité
+    preferred = Column(Boolean, server_default=text("false"))  # fournisseur préféré
+    lead_time_days = Column(Integer)  # délai de livraison (jours)
+    notes = Column(Text)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+
 class Invoice(Base):
     __tablename__ = "invoices"
     id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
@@ -188,6 +209,7 @@ class InvoiceLine(Base):
     qty_normalized = Column(Numeric)
     unit_price = Column(Numeric)
     line_total = Column(Numeric)
+    vat_rate = Column(Numeric)  # VAT % for this line (e.g. 5.5, 10, 20)
     currency = Column(Text)
     raw_line = Column(JSONB)
     match_confidence = Column(Numeric)

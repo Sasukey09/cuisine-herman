@@ -57,6 +57,7 @@ class ProductBase(BaseModel):
     name: str = Field(max_length=200)
     sku: Optional[str] = Field(default=None, max_length=100)
     base_unit_id: Optional[int] = None
+    vat_rate: Optional[float] = Field(default=None, ge=0, le=100)
 
 
 class ProductCreate(ProductBase):
@@ -70,10 +71,50 @@ class ProductUpdate(BaseModel):
     sku: Optional[str] = Field(default=None, max_length=100)
     base_unit_id: Optional[int] = None
     category: Optional[str] = Field(default=None, max_length=60)
+    vat_rate: Optional[float] = Field(default=None, ge=0, le=100)
 
 
 class ProductRead(ProductBase):
     id: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# --- Product ↔ Supplier catalog links -------------------------------------
+
+
+class SupplierProductBase(BaseModel):
+    supplier_sku: Optional[str] = Field(default=None, max_length=100)
+    pack_size: Optional[str] = Field(default=None, max_length=100)
+    available: bool = True
+    preferred: bool = False
+    lead_time_days: Optional[int] = Field(default=None, ge=0, le=365)
+    notes: Optional[str] = Field(default=None, max_length=500)
+
+
+class SupplierProductCreate(SupplierProductBase):
+    supplier_id: str
+
+
+class SupplierProductUpdate(BaseModel):
+    supplier_sku: Optional[str] = Field(default=None, max_length=100)
+    pack_size: Optional[str] = Field(default=None, max_length=100)
+    available: Optional[bool] = None
+    preferred: Optional[bool] = None
+    lead_time_days: Optional[int] = Field(default=None, ge=0, le=365)
+    notes: Optional[str] = Field(default=None, max_length=500)
+
+
+class SupplierProductRead(BaseModel):
+    id: str
+    product_id: str
+    supplier_id: str
+    supplier_sku: Optional[str] = None
+    pack_size: Optional[str] = None
+    available: Optional[bool] = None
+    preferred: Optional[bool] = None
+    lead_time_days: Optional[int] = None
+    notes: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

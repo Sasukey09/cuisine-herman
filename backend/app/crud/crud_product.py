@@ -132,6 +132,7 @@ def create_product(db: Session, payload: ProductCreate, tenant_id: str) -> Produ
         sku=payload.sku,
         base_unit_id=payload.base_unit_id,
         category_id=category_id,
+        vat_rate=getattr(payload, "vat_rate", None),
     )
     db.add(obj)
     db.commit()
