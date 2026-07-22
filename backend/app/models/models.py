@@ -478,3 +478,41 @@ class AIMessage(Base):
     role = Column(Text, nullable=False)  # user | assistant
     content = Column(Text, nullable=False)
     created_at = Column(TIMESTAMP, server_default=func.now())
+
+
+class Quote(Base):
+    """A "devis" — a named basket of products to source, compared across
+    suppliers. The comparator (``quote_service``) prices the basket per supplier
+    from purchase history + the supplier catalog; picking a supplier converts the
+    quote into an order (``status='ordered'``), snapshotting the retained line
+    prices so history stays stable even as future prices move."""
+
+    __tablename__ = "quotes"
+    id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
+    tenant_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"))
+    reference = Column(Text)  # human ref, e.g. "DEV-2026-0007"
+    title = Column(Text)
+    status = Column(Text, server_default=text("'draft'"))  # draft | ordered | archived
+    supplier_id = Column(UUID(as_uuid=False), ForeignKey("suppliers.id", ondelete="SET NULL"))
+    total_amount = Column(Numeric)  # snapshot of the chosen basket total, set on order
+    notes = Column(Text)
+    ordered_at = Column(TIMESTAMP)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+    lines = relationship("QuoteLine", back_populates="quote")
+
+
+class QuoteLine(Base):
+    __tablename__ = "quote_lines"
+    id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
+    tenant_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"))
+    quote_id = Column(UUID(as_uuid=False), ForeignKey("quotes.id", ondelete="CASCADE"))
+    product_id = Column(UUID(as_uuid=False), ForeignKey("products.id", ondelete="SET NULL"))
+    description = Column(Text)  # free-text fallback when no product is linked
+    qty = Column(Numeric)
+    unit_id = Column(Integer, ForeignKey("units.id"))
+    unit_price = Column(Numeric)  # retained per-unit price, snapshotted on order
+    supplier_id = Column(UUID(as_uuid=False), ForeignKey("suppliers.id", ondelete="SET NULL"))
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+    quote = relationship("Quote", back_populates="lines")
