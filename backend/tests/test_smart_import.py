@@ -123,3 +123,66 @@ def test_preview_endpoint_enriches_lines_with_category(db, monkeypatch):
             assert "needs_review" in line
     finally:
         app.dependency_overrides.clear()
+
+
+def test_confirm_creates_associates_and_links_supplier(db):
+    """The smart-import commit: a validated line 'create' makes a new product
+    (auto-classified), an 'associate' reuses an existing one, both get linked to
+    the supplier (#7) and priced."""
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    from app.api.deps import get_current_tenant_id, require_writer
+    from app.db.session import get_db
+    from app.crud import crud_product, crud_supplier_product
+    from app.models.models import Invoice, InvoiceLine, Organization
+    from app.schemas.schemas import ProductCreate
+
+    tenant_id = str(uuid.uuid4())
+    db.add(Organization(id=tenant_id, name="Confirm Test"))
+    db.commit()
+    existing = crud_product.create_product(db, ProductCreate(name="Farine T55"), tenant_id)
+
+    app.dependency_overrides[get_current_tenant_id] = lambda: tenant_id
+    app.dependency_overrides[require_writer] = lambda: ["admin"]
+    app.dependency_overrides[get_db] = lambda: db
+    try:
+        client = TestClient(app)
+        resp = client.post(
+            "/api/v1/invoices/confirm",
+            json={
+                "supplier": "Transgourmet",
+                "invoice_number": "SC-1",
+                "date": "2026-02-10",
+                "currency": "EUR",
+                "lines": [
+                    {"description": "Filet de saumon", "qty": 2, "unit": "kg",
+                     "unit_price": 18, "line_total": 36, "vat_rate": 5.5, "action": "create"},
+                    {"description": "Farine", "qty": 5, "unit": "kg", "unit_price": 1.2,
+                     "line_total": 6, "action": "associate", "product_id": str(existing.id)},
+                    {"description": "Ligne ignorée", "action": "skip"},
+                ],
+            },
+        )
+        assert resp.status_code == 201, resp.text
+        data = resp.json()
+        invoice_id = data["invoice_id"]
+        assert data["summary"]["lines"] == 2  # skip excluded
+
+        inv = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+        assert inv is not None and inv.supplier_id is not None  # supplier created + linked
+        lines = db.query(InvoiceLine).filter(InvoiceLine.invoice_id == invoice_id).all()
+        assert len(lines) == 2
+        # The created product was auto-classified + carries the VAT.
+        created = crud_product.get_product(
+            db, str(next(l.product_id for l in lines if str(l.product_id) != str(existing.id))), tenant_id
+        )
+        assert created is not None
+        # Both products are now linked to the supplier (#7).
+        for l in lines:
+            link = crud_supplier_product.get_link_by_supplier(
+                db, tenant_id, str(l.product_id), str(inv.supplier_id)
+            )
+            assert link is not None
+    finally:
+        app.dependency_overrides.clear()

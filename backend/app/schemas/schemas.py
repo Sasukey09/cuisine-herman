@@ -774,6 +774,31 @@ class InvoicePreviewResult(BaseModel):
     lines: List[InvoicePreviewLine] = []
 
 
+class InvoiceConfirmLine(BaseModel):
+    """A line the user validated in the smart-import dialog."""
+
+    description: str
+    qty: Optional[float] = None
+    unit: Optional[str] = None
+    unit_price: Optional[float] = None
+    line_total: Optional[float] = None
+    vat_rate: Optional[float] = Field(default=None, ge=0, le=100)
+    # create a new product, associate to an existing one, or skip the line.
+    action: str = "create"
+    product_id: Optional[str] = None  # for action="associate"
+    category: Optional[str] = None  # for action="create" (else auto-classified)
+
+
+class InvoiceConfirmRequest(BaseModel):
+    supplier: Optional[str] = None
+    supplier_id: Optional[str] = None
+    date: Optional[DateType] = None
+    invoice_number: Optional[str] = None
+    total_amount: Optional[float] = None
+    currency: Optional[str] = "EUR"
+    lines: List[InvoiceConfirmLine] = []
+
+
 class CreateProductFromLine(BaseModel):
     """Optional overrides when turning an invoice line into a new product.
 
