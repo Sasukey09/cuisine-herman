@@ -9,6 +9,7 @@ import '../../common/ui_kit.dart';
 import '../../core/api_error.dart';
 import '../../core/providers.dart';
 import '../../main.dart' show kMuted, kGood, kBad;
+import '../auth/auth_controller.dart';
 import 'recipe_detail_screen.dart';
 
 final _recipesProvider = FutureProvider.autoDispose<Loaded>((ref) async {
@@ -95,6 +96,7 @@ class RecipesScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final canWrite = ref.watch(canWriteProvider);
     return Scaffold(
       body: offlineCardList(
         ref: ref,
@@ -117,7 +119,7 @@ class RecipesScreen extends ConsumerWidget {
             onTap: () => Navigator.of(context).push(MaterialPageRoute(
               builder: (_) => RecipeDetailScreen(recipeId: '${r['id']}', recipeName: name),
             )),
-            onLongPress: () => _actions(context, ref, r),
+            onLongPress: canWrite ? () => _actions(context, ref, r) : null,
             child: Container(
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
@@ -206,7 +208,8 @@ class RecipesScreen extends ConsumerWidget {
           ));
         },
       ),
-      floatingActionButton: GradientFab(onPressed: () => _create(context, ref)),
+      floatingActionButton:
+          canWrite ? GradientFab(onPressed: () => _create(context, ref)) : null,
     );
   }
 }
