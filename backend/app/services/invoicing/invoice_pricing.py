@@ -93,6 +93,18 @@ def _price_and_recompute(
         source_invoice_line_id=str(line.id),
     )
     metrics.PRICE_CHANGES_DETECTED.inc()
+    # #7 — auto-associate the product to the invoice's supplier (the "Fournisseurs"
+    # tab / product↔supplier catalog). Best-effort: an issue here must never break
+    # pricing. Idempotent (get_or_create).
+    if invoice.supplier_id:
+        try:
+            from app.crud import crud_supplier_product
+            crud_supplier_product.get_or_create_link(
+                db, tenant_id, str(line.product_id), str(invoice.supplier_id)
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
     cost_engine.recompute_for_product(db, str(line.product_id), tenant_id)
     # Purchase ledger + price/margin alerts (best-effort; never breaks pricing).
     from app.services.purchasing import purchase_service

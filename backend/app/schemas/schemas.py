@@ -146,6 +146,7 @@ class InvoiceLineRead(BaseModel):
     unit_id: Optional[int] = None
     unit_price: Optional[float] = None
     line_total: Optional[float] = None
+    vat_rate: Optional[float] = None
     match_confidence: Optional[float] = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -726,6 +727,7 @@ class InvoiceLineUpdate(BaseModel):
     unit: Optional[str] = None  # unit code (g, kg, l, ml, piece...)
     unit_price: Optional[float] = None
     line_total: Optional[float] = None
+    vat_rate: Optional[float] = Field(default=None, ge=0, le=100)
 
 
 class InvoiceUpdate(BaseModel):
@@ -741,7 +743,35 @@ class InvoiceLineCreate(BaseModel):
     unit: Optional[str] = None
     unit_price: Optional[float] = None
     line_total: Optional[float] = None
+    vat_rate: Optional[float] = Field(default=None, ge=0, le=100)
     product_id: Optional[str] = None
+
+
+class InvoicePreviewLine(BaseModel):
+    """A detected invoice line enriched for the smart-import validation dialog:
+    the OCR fields + a product-match suggestion + a category suggestion."""
+
+    description: str
+    qty: Optional[float] = None
+    unit: Optional[str] = None
+    unit_price: Optional[float] = None
+    line_total: Optional[float] = None
+    vat_rate: Optional[float] = None
+    matched_product_id: Optional[str] = None
+    matched_product_name: Optional[str] = None
+    match_confidence: Optional[float] = None
+    # True when no confident match was found -> the user should create/associate.
+    needs_review: bool = True
+    suggested_category: Optional[str] = None
+
+
+class InvoicePreviewResult(BaseModel):
+    supplier: Optional[str] = None
+    supplier_id: Optional[str] = None
+    date: Optional[DateType] = None
+    invoice_number: Optional[str] = None
+    total_amount: Optional[float] = None
+    lines: List[InvoicePreviewLine] = []
 
 
 class CreateProductFromLine(BaseModel):
