@@ -37,6 +37,16 @@ from app.services.classification.classifier import classify
 router = APIRouter()
 
 
+def _tenant_name(db, tenant_id: str):
+    """Raison sociale du tenant — sert à ne pas détecter le restaurant comme son
+    propre fournisseur quand son nom figure en tête du document."""
+    from app.models.models import Organization
+
+    row = db.query(Organization.name).filter(Organization.id == tenant_id).first()
+    return row[0] if row else None
+
+
+
 def _detail(db: Session, tenant_id: str, quote) -> dict:
     supplier_names = crud_quote._supplier_names(db, tenant_id)
     line_counts = crud_quote._line_counts(db, tenant_id)
@@ -246,6 +256,13 @@ async def api_preview_quote(
             extraction = extract_invoice(content, ctype)
         except OcrError as exc:
             raise ocr_http_error(exc, "devis")
+
+        # Le nom lu en tête peut être celui du destinataire : on l'écarte.
+        own = _tenant_name(db, tenant_id)
+        if own and extraction.supplier:
+            from app.services.ocr.service import guess_supplier
+
+            extraction.supplier = guess_supplier(extraction.raw_text or "", exclude=own)
 
         supplier_id = None
         if extraction.supplier:
