@@ -536,3 +536,30 @@ def validate(
     db.commit()
     db.refresh(receipt)
     return result
+
+
+def order_progress(db: Session, tenant_id: str, order_id: str) -> Dict[str, Any]:
+    """Avancement d'une commande, toutes ses réceptions confondues.
+
+    Le pendant de ``control``, qui ne regarde qu'une réception. C'est ce que la
+    fiche commande affiche : où en est-on, et que reste-t-il dû.
+    """
+    order = (
+        db.query(PurchaseOrder)
+        .filter(PurchaseOrder.tenant_id == tenant_id, PurchaseOrder.id == order_id)
+        .first()
+    )
+    lines: List[Dict[str, Any]] = []
+    for receipt in (
+        db.query(Receipt)
+        .filter(Receipt.tenant_id == tenant_id, Receipt.order_id == order_id)
+        .all()
+    ):
+        lines.extend(_receipt_lines(db, tenant_id, str(receipt.id)))
+
+    return compare_reception(
+        _order_lines(db, tenant_id, order_id),
+        lines,
+        order_supplier_id=str(order.supplier_id) if order and order.supplier_id else None,
+        receipt_supplier_id=None,  # plusieurs réceptions : l'écart se lit par réception
+    )

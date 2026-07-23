@@ -196,7 +196,7 @@ def _receive(db, shop, order, order_line, qty, condition="ok"):
             receipt_id=receipt_id,
             order_line_id=order_line.id,
             product_id=order_line.product_id,
-            qty_received=Decimal(str(qty)),
+            qty_delivered=Decimal(str(qty)),
             condition=condition,
         )
     )

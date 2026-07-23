@@ -145,7 +145,7 @@ def seeded_tenant(db):
             receipt_id=receipt_id,
             order_line_id=order_line_id,
             product_id=product_id,
-            qty_received=Decimal("10"),
+            qty_delivered=Decimal("10"),
         )
     )
     rgpd.record(db, tenant_id, None, rgpd.ACTION_LOGIN, {"ip": "1.2.3.4"})

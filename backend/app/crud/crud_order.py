@@ -15,10 +15,9 @@ from app.models.models import (
     Product,
     PurchaseOrder,
     PurchaseOrderLine,
-    ReceiptLine,
     Supplier,
 )
-from app.services.purchasing import order_service
+from app.services.purchasing import order_service, reception_service
 
 
 def _f(v: Any) -> Optional[float]:
@@ -103,16 +102,14 @@ def detail(db: Session, tenant_id: str, order: PurchaseOrder) -> Dict[str, Any]:
         .all()
     ) if lines else {}
 
-    # Reçu par ligne : calculé, jamais stocké — une seule vérité.
-    received = dict(
-        db.query(ReceiptLine.order_line_id, func.sum(ReceiptLine.qty_received))
-        .filter(
-            ReceiptLine.tenant_id == tenant_id,
-            ReceiptLine.order_line_id.in_([l.id for l in lines]) if lines else False,
-        )
-        .group_by(ReceiptLine.order_line_id)
-        .all()
-    ) if lines else {}
+    # Reçu par ligne : calculé, jamais stocké — une seule vérité. Et lu par le
+    # service réception, parce que « reçu » veut dire ACCEPTÉ : une somme SQL
+    # brute compterait aussi ce qui est reparti ou a été détruit.
+    received = (
+        reception_service.received_by_order_line(db, tenant_id, str(order.id))
+        if lines
+        else {}
+    )
 
     head = _head(order, supplier_name, len(lines))
     head["lines"] = [
@@ -132,7 +129,7 @@ def detail(db: Session, tenant_id: str, order: PurchaseOrder) -> Dict[str, Any]:
             "source_quote_line_id": str(l.source_quote_line_id)
             if l.source_quote_line_id
             else None,
-            "qty_received": _f(received.get(l.id)) or 0.0,
+            "qty_received": received.get(str(l.id), 0.0),
         }
         for l in lines
     ]
