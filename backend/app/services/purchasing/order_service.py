@@ -44,7 +44,11 @@ STATUSES = (
 #: rouvrir un document d'engagement passé réécrirait l'histoire.
 _TRANSITIONS: Dict[str, tuple] = {
     DRAFT: (SENT, CONFIRMED, CANCELLED),
-    SENT: (CONFIRMED, PREPARING, SHIPPED, CANCELLED),
+    # Une livraison peut arriver dès que la commande est partie, sans passer par
+    # « confirmée » : beaucoup de fournisseurs n'accusent jamais réception, ils
+    # livrent. Sans ces deux issues, une réception constatée sur une commande
+    # « envoyée » ne faisait rien avancer — silencieusement.
+    SENT: (CONFIRMED, PREPARING, SHIPPED, PARTIALLY_RECEIVED, RECEIVED, CANCELLED),
     CONFIRMED: (PREPARING, SHIPPED, PARTIALLY_RECEIVED, RECEIVED, CANCELLED),
     PREPARING: (SHIPPED, PARTIALLY_RECEIVED, RECEIVED, CANCELLED),
     SHIPPED: (PARTIALLY_RECEIVED, RECEIVED, CANCELLED),

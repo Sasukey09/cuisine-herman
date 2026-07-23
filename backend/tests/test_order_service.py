@@ -151,3 +151,25 @@ def test_the_progress_engine_is_not_duplicated():
     assert not hasattr(order_service, "line_progress")
     assert hasattr(reception_service, "compare_reception")
     assert hasattr(reception_service, "order_progress")
+
+
+def test_a_delivery_can_arrive_without_the_supplier_ever_confirming():
+    """Trouvé en validation live : la commande restait « Envoyée » après une
+    livraison partielle. Beaucoup de fournisseurs n'accusent jamais réception,
+    ils livrent — et la réception ne faisait alors rien avancer, sans le dire."""
+    assert can_transition(SENT, PARTIALLY_RECEIVED)
+    assert can_transition(SENT, RECEIVED)
+
+
+def test_every_in_flight_state_accepts_a_delivery():
+    """Une marchandise peut arriver à n'importe quel moment après le départ de
+    la commande. Aucun de ces états ne doit bloquer le constat."""
+    for state in (SENT, CONFIRMED, "preparing", "shipped"):
+        assert can_transition(state, PARTIALLY_RECEIVED), state
+        assert can_transition(state, RECEIVED), state
+
+
+def test_a_delivery_still_cannot_arrive_on_a_draft():
+    """On ne reçoit pas ce qu'on n'a pas commandé."""
+    assert not can_transition(DRAFT, PARTIALLY_RECEIVED)
+    assert not can_transition(DRAFT, RECEIVED)
