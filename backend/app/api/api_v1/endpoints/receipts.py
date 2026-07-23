@@ -29,15 +29,26 @@ _FROZEN = (
 
 # Déclarées AVANT "/{receipt_id}" — sinon « conditions » et « from-order » sont
 # avalés comme des identifiants.
-@router.get("/conditions")
-def api_receipt_conditions(_tenant_id: str = Depends(get_current_tenant_id)):
-    """Les états possibles d'une ligne reçue et leurs libellés.
+@router.get("/quality-checks")
+def api_quality_checks(_tenant_id: str = Depends(get_current_tenant_id)):
+    """Le vocabulaire du poste de contrôle : motifs, issues, états de ligne.
 
-    Servis par l'API pour que web et mobile n'en tiennent aucune copie."""
-    return [
-        {"value": c, "label": reception_service.CONDITION_LABELS[c]}
-        for c in reception_service.CONDITIONS
-    ]
+    Servi par l'API pour que web et mobile n'en tiennent aucune copie — deux
+    tables de traduction finissent par diverger."""
+    return {
+        "reasons": [
+            {"value": r, "label": reception_service.REASON_LABELS[r]}
+            for r in reception_service.REASONS
+        ],
+        "outcomes": [
+            {"value": o, "label": reception_service.OUTCOME_LABELS[o]}
+            for o in reception_service.OUTCOMES
+        ],
+        "line_states": [
+            {"value": s, "label": label}
+            for s, label in reception_service.LINE_STATE_LABELS.items()
+        ],
+    }
 
 
 @router.get("/from-order/{order_id}")
@@ -80,11 +91,11 @@ def api_prefill_from_order(
                 "description": l.description,
                 "qty_ordered": ordered or None,
                 "qty_already_received": float(already.get(str(l.id), 0.0)),
-                "qty_received": remaining or None,
+                "qty_delivered": remaining or None,
                 "unit_id": l.unit_id,
                 "unit_price": float(l.unit_price) if l.unit_price is not None else None,
                 "pack_size": l.pack_size,
-                "condition": reception_service.OK,
+                "issues": [],
             }
         )
     return {

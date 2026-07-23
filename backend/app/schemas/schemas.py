@@ -1095,18 +1095,37 @@ class OrderPlan(BaseModel):
 # --------------------------------------------------------------------------- #
 # Domaine Achats : réceptions de marchandise
 # --------------------------------------------------------------------------- #
+class ReceiptIssueWrite(BaseModel):
+    """Une anomalie sur une PARTIE de la ligne.
+
+    `qty` nulle = toute la ligne, le cas usuel du « tout refusé » qu'on ne veut
+    pas obliger à chiffrer."""
+
+    qty: Optional[float] = Field(default=None, ge=0)
+    reason: str = "other"
+    outcome: str = "rejected"
+    notes: Optional[str] = Field(default=None, max_length=1000)
+
+
+class ReceiptPhotoWrite(BaseModel):
+    url: str = Field(max_length=1000)
+    caption: Optional[str] = Field(default=None, max_length=300)
+
+
 class ReceiptLineWrite(BaseModel):
     order_line_id: Optional[str] = None  # nul = livré hors commande
     product_id: Optional[str] = None
     description: Optional[str] = Field(default=None, max_length=300)
-    qty_received: Optional[float] = Field(default=None, ge=0)
+    # Ce qui est descendu du camion. Accepté / refusé / détruit se calculent
+    # depuis les anomalies : rien à réconcilier.
+    qty_delivered: Optional[float] = Field(default=None, ge=0)
     unit_id: Optional[int] = None
     unit_price: Optional[float] = Field(default=None, ge=0)
     pack_size: Optional[str] = Field(default=None, max_length=100)
-    condition: str = "ok"
     substituted_product_id: Optional[str] = None
     notes: Optional[str] = Field(default=None, max_length=1000)
-    photo_url: Optional[str] = Field(default=None, max_length=1000)
+    issues: List[ReceiptIssueWrite] = []
+    photos: List[ReceiptPhotoWrite] = []
 
 
 class ReceiptCreate(BaseModel):
@@ -1114,6 +1133,9 @@ class ReceiptCreate(BaseModel):
     supplier_id: Optional[str] = None
     received_at: Optional[date] = None
     delivery_note_number: Optional[str] = Field(default=None, max_length=100)
+    # L'appareil de saisie : un téléphone en chambre froide et un poste en
+    # bureau n'expliquent pas de la même façon une saisie douteuse.
+    device_info: Optional[str] = Field(default=None, max_length=300)
     notes: Optional[str] = Field(default=None, max_length=2000)
     file_url: Optional[str] = Field(default=None, max_length=1000)
     lines: List[ReceiptLineWrite] = []
@@ -1133,7 +1155,13 @@ class ReceiptUpdate(BaseModel):
 class ReceiptLineRead(ReceiptLineWrite):
     id: str
     product_name: Optional[str] = None
-    condition_label: Optional[str] = None
+    substituted_product_name: Optional[str] = None
+    # Calculés, jamais stockés.
+    qty_accepted: Optional[float] = None
+    qty_rejected: Optional[float] = None
+    qty_destroyed: Optional[float] = None
+    state: Optional[str] = None
+    state_label: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -1153,6 +1181,7 @@ class ReceiptRead(BaseModel):
     received_by_name: Optional[str] = None
     checked_at: Optional[datetime] = None
     checked_by_name: Optional[str] = None
+    device_info: Optional[str] = None
     notes: Optional[str] = None
     file_url: Optional[str] = None
     line_count: int = 0

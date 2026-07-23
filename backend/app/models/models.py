@@ -660,6 +660,10 @@ class Receipt(Base):
     # d'une NOUVELLE réception corrective.
     checked_by = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"))
     checked_at = Column(TIMESTAMP)
+    # « Sur quoi a-t-elle été saisie ? » aide à expliquer une saisie douteuse :
+    # un téléphone en chambre froide et un poste en bureau ne racontent pas la
+    # même histoire.
+    device_info = Column(Text)
     notes = Column(Text)
     # Le BL photographié : même pipeline OCR que factures et devis, le jour où
     # on le branchera.
@@ -688,22 +692,16 @@ class ReceiptLine(Base):
     )
     product_id = Column(UUID(as_uuid=False), ForeignKey("products.id", ondelete="SET NULL"))
     description = Column(Text)
-    qty_received = Column(Numeric)
+    # Ce qui est descendu du camion. Une seule quantité saisie : accepté,
+    # refusé et détruit se CALCULENT depuis les anomalies, donc il n'y a rien à
+    # réconcilier et aucune dérive possible entre deux vérités.
+    qty_delivered = Column(Numeric)
     unit_id = Column(Integer, ForeignKey("units.id"))
     unit_price = Column(Numeric)
     # Sans lui, l'écart de CONDITIONNEMENT est indétectable : 10 sacs de 10 kg
     # au lieu de 10 sacs de 25 kg, c'est le même nombre de lignes et 150 kg de
     # moins.
     pack_size = Column(Text)
-    # ok | missing | extra | substituted | damaged | rejected
-    #
-    # `damaged` et `rejected` ne se confondent pas : dans un cas la marchandise
-    # est en réserve, dans l'autre elle est repartie. Les mélanger fausserait le
-    # stock le jour où on le branche.
-    condition = Column(Text, server_default=text("'ok'"))
-    # Le fichier porté par la réception est le bon de livraison ; une casse ou
-    # un refus se prouve par une photo DE LA LIGNE.
-    photo_url = Column(Text)
     substituted_product_id = Column(
         UUID(as_uuid=False), ForeignKey("products.id", ondelete="SET NULL")
     )
@@ -711,6 +709,67 @@ class ReceiptLine(Base):
     created_at = Column(TIMESTAMP, server_default=func.now())
 
     receipt = relationship("Receipt", back_populates="lines")
+    issues = relationship(
+        "ReceiptLineIssue",
+        back_populates="line",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    photos = relationship(
+        "ReceiptLinePhoto",
+        back_populates="line",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class ReceiptLineIssue(Base):
+    """Une anomalie constatée sur une PARTIE d'une ligne reçue.
+
+    Le reste de la ligne demeure conforme : c'est tout l'intérêt de ne pas
+    étiqueter la ligne entière. Sur 10 unités, on peut en refuser une pour DLC
+    trop courte et en détruire une pour casse, sans rien dire des huit autres.
+    """
+
+    __tablename__ = "receipt_line_issues"
+    id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
+    tenant_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"))
+    receipt_line_id = Column(
+        UUID(as_uuid=False), ForeignKey("receipt_lines.id", ondelete="CASCADE"), nullable=False
+    )
+    # Sur combien d'unités porte l'anomalie. Nulle = toute la ligne, le cas
+    # usuel d'un « tout refusé » qu'on ne veut pas obliger à chiffrer.
+    qty = Column(Numeric)
+    reason = Column(Text)  # voir reception_service.REASONS
+    # accepted : gardée sous réserve · rejected : repartie · destroyed :
+    # détruite sur place. Les deux dernières ne comptent ni pour la commande ni
+    # pour le stock — on ne les a pas.
+    outcome = Column(Text, server_default=text("'rejected'"))
+    notes = Column(Text)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+    line = relationship("ReceiptLine", back_populates="issues")
+
+
+class ReceiptLinePhoto(Base):
+    """Une preuve. Autant que nécessaire par ligne."""
+
+    __tablename__ = "receipt_line_photos"
+    id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
+    tenant_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"))
+    receipt_line_id = Column(
+        UUID(as_uuid=False), ForeignKey("receipt_lines.id", ondelete="CASCADE"), nullable=False
+    )
+    # Nullable : une photo peut documenter la ligne en général (la palette) ou
+    # une anomalie précise (le carton éventré).
+    issue_id = Column(
+        UUID(as_uuid=False), ForeignKey("receipt_line_issues.id", ondelete="SET NULL")
+    )
+    url = Column(Text, nullable=False)
+    caption = Column(Text)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+    line = relationship("ReceiptLine", back_populates="photos")
 
 
 class StockLocation(Base):
