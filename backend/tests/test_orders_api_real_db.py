@@ -252,3 +252,31 @@ def test_progress_starts_at_nothing_received(db, client_and_shop):
     assert p["nothing_received"] is True
     assert p["lines"][0]["status"] == "pending"
     assert p["suggested_status"] is None
+
+
+def test_an_order_with_receipts_cannot_be_deleted(db, client_and_shop):
+    """Incohérence trouvée au nettoyage des données de test : une réception
+    validée est indestructible, mais la commande qui la porte pouvait, elle,
+    disparaître — laissant un constat signé qui référence une commande
+    inexistante, donc invérifiable. La contrainte doit tenir des deux côtés."""
+    from app.models.models import Receipt
+
+    client, shop = client_and_shop
+    line_id = _quote_line(db, shop, shop["metro"], shop["farine"], 10, 18.5)
+    order_id = client.post(
+        "/api/v1/orders/from-quote-lines", json={"quote_line_ids": [line_id]}
+    ).json()["orders"][0]["id"]
+
+    db.add(
+        Receipt(
+            tenant_id=shop["tenant_id"],
+            reference="REC-TEST-0001",
+            order_id=order_id,
+            status="checked",
+        )
+    )
+    db.commit()
+
+    res = client.delete(f"/api/v1/orders/{order_id}")
+    assert res.status_code == 409
+    assert "réception" in res.json()["detail"].lower()
