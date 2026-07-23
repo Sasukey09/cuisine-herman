@@ -810,3 +810,71 @@ export interface QuoteComparison {
   cheapest_supplier_id?: string | null;
   best_coverage_supplier_id?: string | null;
 }
+
+// --- Import de devis par OCR (miroir de l'import intelligent de facture) ---
+
+export interface QuotePreviewLineData {
+  description: string;
+  qty?: number | null;
+  unit?: string | null;
+  unit_price?: number | null;
+  line_total?: number | null;
+  vat_rate?: number | null;
+  discount_pct?: number | null;
+  pack_size?: string | null;
+  matched_product_id?: string | null;
+  matched_product_name?: string | null;
+  match_confidence?: number | null;
+  needs_review: boolean;
+  suggested_category?: string | null;
+}
+
+export interface QuotePreviewResult {
+  supplier?: string | null;
+  supplier_id?: string | null;
+  date?: string | null;
+  valid_until?: string | null;
+  quote_number?: string | null;
+  total_amount?: number | null;
+  currency?: string | null;
+  discount_total?: number | null;
+  conditions?: string | null;
+  lines: QuotePreviewLineData[];
+}
+
+export interface QuoteConfirmLineData {
+  description: string;
+  qty?: number | null;
+  unit?: string | null;
+  unit_price?: number | null;
+  line_total?: number | null;
+  vat_rate?: number | null;
+  discount_pct?: number | null;
+  pack_size?: string | null;
+  action: "create" | "associate" | "skip";
+  product_id?: string | null;
+  category?: string | null;
+}
+
+export interface QuoteConfirmRequest {
+  title?: string | null;
+  supplier?: string | null;
+  supplier_id?: string | null;
+  date?: string | null;
+  valid_until?: string | null;
+  quote_number?: string | null;
+  total_amount?: number | null;
+  currency?: string | null;
+  discount_total?: number | null;
+  conditions?: string | null;
+  lines: QuoteConfirmLineData[];
+}
+
+export interface QuoteImportResult {
+  quote_id: string;
+  reference?: string | null;
+  lines: number;
+  created_products: number;
+  associated: number;
+  skipped: number;
+}

@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Upload, Wand2, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Loader2, Wand2, CheckCircle2 } from "lucide-react";
 
 import { PageHeader } from "@/components/page-header";
 import { BackButton } from "@/components/back-button";
@@ -17,15 +17,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { ImportFilePicker } from "@/features/imports/import-file-picker";
+import { ImportLineRow, type ImportAction } from "@/features/imports/import-line-row";
 import { useInvoicePreview, useConfirmInvoice } from "@/hooks/use-invoices";
 import { useProductCategories, useProducts } from "@/hooks/use-products";
 import type { InvoicePreviewLineData, InvoiceConfirmLineData } from "@/services/types";
 
-const SELECT_CLASS =
-  "h-9 w-full rounded-md border border-input bg-background px-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
-
 interface Row extends InvoicePreviewLineData {
-  action: "create" | "associate" | "skip";
+  action: ImportAction;
   category: string;
   product_id: string;
 }
@@ -36,17 +35,13 @@ export function InvoiceSmartImportView() {
   const confirm = useConfirmInvoice();
   const { data: categories } = useProductCategories();
   const { data: products } = useProducts();
-  const fileRef = useRef<HTMLInputElement>(null);
 
   const [supplier, setSupplier] = useState("");
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [date, setDate] = useState("");
   const [rows, setRows] = useState<Row[] | null>(null);
 
-  function onFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
+  function onFile(file: File) {
     preview.mutate(file, {
       onSuccess: (res) => {
         setSupplier(res.supplier ?? "");
@@ -99,16 +94,11 @@ export function InvoiceSmartImportView() {
       />
 
       {!rows ? (
-        <>
-          <input ref={fileRef} type="file" accept=".pdf,image/*" className="hidden" onChange={onFile} />
-          <Button onClick={() => fileRef.current?.click()} disabled={preview.isPending}>
-            {preview.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            <span className="ml-2">Choisir une facture (PDF / image)</span>
-          </Button>
-          {preview.isPending && (
-            <p className="mt-3 text-sm text-muted-foreground">Analyse OCR en cours…</p>
-          )}
-        </>
+        <ImportFilePicker
+          label="Choisir une facture (PDF / image)"
+          pending={preview.isPending}
+          onFile={onFile}
+        />
       ) : (
         <div className="space-y-4">
           <Card>
@@ -145,53 +135,13 @@ export function InvoiceSmartImportView() {
             </CardHeader>
             <CardContent className="space-y-3">
               {rows.map((r, i) => (
-                <div key={i} className="rounded-lg border p-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Input
-                      className="min-w-40 flex-1"
-                      value={r.description}
-                      onChange={(e) => update(i, { description: e.target.value })}
-                    />
-                    <Input className="w-16" type="number" value={r.qty ?? ""} onChange={(e) => update(i, { qty: e.target.value === "" ? null : Number(e.target.value) })} placeholder="Qté" />
-                    <Input className="w-16" value={r.unit ?? ""} onChange={(e) => update(i, { unit: e.target.value })} placeholder="unité" />
-                    <Input className="w-20" type="number" value={r.unit_price ?? ""} onChange={(e) => update(i, { unit_price: e.target.value === "" ? null : Number(e.target.value) })} placeholder="PU" />
-                    <Input className="w-16" type="number" value={r.vat_rate ?? ""} onChange={(e) => update(i, { vat_rate: e.target.value === "" ? null : Number(e.target.value) })} placeholder="TVA%" />
-                  </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <select className={`${SELECT_CLASS} w-32`} value={r.action} onChange={(e) => update(i, { action: e.target.value as Row["action"] })}>
-                      <option value="create">➕ Créer</option>
-                      <option value="associate">🔗 Associer</option>
-                      <option value="skip">Ignorer</option>
-                    </select>
-                    {r.action === "create" && (
-                      <select className={`${SELECT_CLASS} w-44`} value={r.category} onChange={(e) => update(i, { category: e.target.value })}>
-                        <option value="">Catégorie auto</option>
-                        {(categories ?? []).map((c) => (
-                          <option key={c} value={c}>{c}</option>
-                        ))}
-                      </select>
-                    )}
-                    {r.action === "associate" && (
-                      <select className={`${SELECT_CLASS} w-64`} value={r.product_id} onChange={(e) => update(i, { product_id: e.target.value })}>
-                        <option value="">Choisir un produit…</option>
-                        {(products ?? []).map((p) => (
-                          <option key={p.id} value={p.id}>{p.name}</option>
-                        ))}
-                      </select>
-                    )}
-                    {r.matched_product_name && r.action === "associate" && (
-                      <span className="text-xs text-muted-foreground">
-                        Suggéré : {r.matched_product_name}
-                        {r.match_confidence != null ? ` (${Math.round(r.match_confidence)}%)` : ""}
-                      </span>
-                    )}
-                    {r.needs_review && r.action === "create" && (
-                      <span className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
-                        <AlertTriangle className="h-3.5 w-3.5" /> nouveau produit
-                      </span>
-                    )}
-                  </div>
-                </div>
+                <ImportLineRow
+                  key={i}
+                  row={r}
+                  onChange={(patch) => update(i, patch)}
+                  categories={categories}
+                  products={products}
+                />
               ))}
             </CardContent>
           </Card>
