@@ -58,6 +58,35 @@ def test_service_invoice_trailing_euro_amounts():
     assert all("TVA" not in d and "prélever" not in d for d in descs)
 
 
+def test_bare_vat_rate_row_is_not_a_product():
+    """Régression : une ligne « TVA 5,5% » remontait comme un article à créer.
+
+    Vu en conditions réelles sur une facture ET sur un devis importés : le filtre
+    exact ne connaissait que "tva" seul, et le substring "dont tva" ne couvre pas
+    cette forme. Le pipeline OCR étant partagé, la correction vaut pour les deux.
+    """
+    table = OcrTable(rows=[
+        ["Designation", "Qte", "PU", "Total"],
+        ["Farine T55", "10", "18,50", "185,00"],
+        ["TVA 5,5%", "", "", "27,22"],
+        ["T.V.A. 20 %", "", "", "12,00"],
+        ["tva : 10", "", "", "3,00"],
+    ])
+    descs = [l.description for l in lines_from_tables([table])]
+    assert descs == ["Farine T55"], descs
+
+
+def test_vat_lookalike_product_is_preserved():
+    """Le filtre reste étroit : un vrai article dont le libellé contient "TVA"
+    ne doit pas disparaître (seule la forme « TVA <taux> » seule est exclue)."""
+    table = OcrTable(rows=[
+        ["Designation", "Qte", "PU", "Total"],
+        ["Etiquettes TVA 5,5% x100", "2", "4,00", "8,00"],
+    ])
+    descs = [l.description for l in lines_from_tables([table])]
+    assert descs == ["Etiquettes TVA 5,5% x100"], descs
+
+
 def test_table_without_header_positional():
     table = OcrTable(rows=[
         ["Oeufs", "6", "0,30", "1,80"],

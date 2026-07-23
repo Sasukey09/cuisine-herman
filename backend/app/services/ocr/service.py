@@ -56,10 +56,23 @@ _SUMMARY_SUBSTRINGS = (
 )
 
 
+# Une description qui n'est QUE un taux de TVA ("TVA 5,5%", "T.V.A. 20 %",
+# "tva : 10") est une ligne de taxe, jamais un article. Le filtre exact
+# `_SKIP_DESC` ne voyait que "tva" tout court, et "dont tva" ne couvre pas cette
+# forme : la ligne remontait donc comme un produit à créer (vu en conditions
+# réelles sur une facture ET sur un devis). Volontairement strict : ancré des
+# deux côtés, pour ne pas avaler un vrai article contenant "TVA".
+_VAT_ONLY_RE = re.compile(
+    r"^t\.?\s*v\.?\s*a\.?\s*[:\-]?\s*\d{1,2}(?:[.,]\d+)?\s*%?$", re.IGNORECASE
+)
+
+
 def _is_summary(desc: str) -> bool:
     """True for total/tax/summary rows that must not become product lines."""
     d = (desc or "").strip().lower()
     if d in _SKIP_DESC:
+        return True
+    if _VAT_ONLY_RE.match(d):
         return True
     return any(k in d for k in _SUMMARY_SUBSTRINGS)
 
