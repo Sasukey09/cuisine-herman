@@ -93,6 +93,7 @@ class QuoteMatrixScreen extends ConsumerWidget {
               children: [
                 _summary(m, names),
                 const SizedBox(height: 12),
+                _supplierTotals(m, suppliers),
                 for (final p in products) _productCard(context, p),
                 const SizedBox(height: 8),
                 _legend(),
@@ -145,6 +146,60 @@ class QuoteMatrixScreen extends ConsumerWidget {
       const SizedBox(width: 8),
       tile(Icons.savings_outlined, kWarn, eur(savings), 'Économies'),
     ]);
+  }
+
+  /// Totaux par fournisseur, port compris.
+  ///
+  /// Sans cette bande, l'écran se contredit : le fournisseur le moins cher au
+  /// kilo porte la cellule verte, mais le trophée désigne l'autre. Ce qui
+  /// réconcilie les deux, ce sont les frais de port — donc il faut les montrer.
+  Widget _supplierTotals(Map<String, dynamic> m, List<Map<String, dynamic>> suppliers) {
+    if (suppliers.length < 2) return const SizedBox.shrink();
+    final hasDelivery = suppliers.any((s) => (s['delivery_fee'] as num?) != null);
+    return MockCard(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(
+          hasDelivery ? 'Total par fournisseur, port compris' : 'Total par fournisseur',
+          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 6),
+        for (final s in suppliers) _supplierTotalRow(s, s['supplier_id'] == m['cheapest_supplier_id']),
+      ]),
+    );
+  }
+
+  Widget _supplierTotalRow(Map<String, dynamic> s, bool cheapest) {
+    final fee = s['delivery_fee'] as num?;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(children: [
+        if (cheapest)
+          const Padding(
+            padding: EdgeInsets.only(right: 4),
+            child: Icon(Icons.emoji_events_outlined, size: 14, color: kGood),
+          ),
+        Expanded(
+          child: Text('${s['supplier_name'] ?? 'Fournisseur'}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: cheapest ? FontWeight.w700 : FontWeight.w500)),
+        ),
+        if (fee != null && fee > 0)
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Text('+${eur(fee)} port',
+                style: const TextStyle(fontSize: 11.5, color: kWarn)),
+          ),
+        Text(eur(s['total_with_delivery'] as num?),
+            style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: cheapest ? kGood : null)),
+      ]),
+    );
   }
 
   Widget _productCard(BuildContext context, Map<String, dynamic> p) {

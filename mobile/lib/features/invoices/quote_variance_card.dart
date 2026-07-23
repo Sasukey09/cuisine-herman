@@ -146,7 +146,9 @@ class QuoteVarianceCard extends ConsumerWidget {
           '${q['qty'] != null ? ' × ${_n(q['qty'], digits: 0)}' : ''}'
           '   →   Facturé ${eur(b['unit_price'] as num?)}'
           '${b['qty'] != null ? ' × ${_n(b['qty'], digits: 0)}' : ''}'
-          '${l['price_delta_pct'] != null ? '  (${(l['price_delta_pct'] as num) > 0 ? '+' : ''}${_n(l['price_delta_pct'])} %)' : ''}',
+          // Un « (0,0 %) » sur une ligne où seule la quantité change contredit
+          // l'écart annoncé juste au-dessus : on ne l'affiche que s'il existe.
+          '${(l['price_delta_pct'] as num?) != null && (l['price_delta_pct'] as num) != 0 ? '  (${(l['price_delta_pct'] as num) > 0 ? '+' : ''}${_n(l['price_delta_pct'])} %)' : ''}',
           style: const TextStyle(fontSize: 11.5, color: kMuted),
         ),
         if (l['vat_mismatch'] == true)
