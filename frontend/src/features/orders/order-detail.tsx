@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Trash2, Truck, FileText } from "lucide-react";
+import { Trash2, Truck, FileText, PackageCheck } from "lucide-react";
 
 import { PageHeader } from "@/components/page-header";
 import { BackButton } from "@/components/back-button";
@@ -24,6 +24,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAuthStore } from "@/stores/auth-store";
+import { useReceipts } from "@/hooks/use-receipts";
 import {
   useDeleteOrder,
   useOrder,
@@ -41,6 +42,7 @@ export function OrderDetail({ orderId }: { orderId: string }) {
   const update = useUpdateOrder();
   const remove = useDeleteOrder();
   const canWrite = useAuthStore((s) => s.hasRole("admin", "manager"));
+  const { data: receipts } = useReceipts({ order_id: orderId });
 
   if (isLoading) {
     return (
@@ -137,6 +139,18 @@ export function OrderDetail({ orderId }: { orderId: string }) {
             </div>
           ) : null}
 
+          {/* Réceptionner : l'action principale d'une commande engagée. Elle
+              n'a pas de sens sur un brouillon — on ne reçoit pas ce qu'on n'a
+              pas commandé. */}
+          {canWrite && order.status !== "draft" && order.status !== "cancelled" ? (
+            <Button asChild size="sm" className="ml-auto">
+              <Link href={`/commandes/${order.id}/reception`}>
+                <PackageCheck className="h-4 w-4" />
+                <span className="ml-1">Réceptionner</span>
+              </Link>
+            </Button>
+          ) : null}
+
           {canWrite && deletable ? (
             <Button
               variant="ghost"
@@ -227,6 +241,39 @@ export function OrderDetail({ orderId }: { orderId: string }) {
           </div>
         </CardContent>
       </Card>
+
+      {receipts && receipts.length > 0 ? (
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle className="text-base">Réceptions</CardTitle>
+            <CardDescription>
+              Une commande peut être livrée en plusieurs fois. Chaque réception reste
+              au dossier, y compris celles qui ont été refusées.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {receipts.map((r) => (
+              <Link
+                key={r.id}
+                href={`/receptions/${r.id}`}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border/60 px-3 py-2 text-sm transition-colors hover:border-primary/40"
+              >
+                <span className="font-medium">{r.reference}</span>
+                <Badge variant="outline">{r.status_label}</Badge>
+                {r.received_at ? (
+                  <span className="text-muted-foreground">{formatDate(r.received_at)}</span>
+                ) : null}
+                <span className="text-muted-foreground">{r.line_count} ligne(s)</span>
+                {r.received_by_name ? (
+                  <span className="ml-auto text-[12.5px] text-muted-foreground">
+                    par {r.received_by_name}
+                  </span>
+                ) : null}
+              </Link>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
 
       {order.lines.some((l) => l.source_quote_line_id) ? (
         <p className="mt-3 inline-flex items-center gap-1.5 text-[12.5px] text-muted-foreground">

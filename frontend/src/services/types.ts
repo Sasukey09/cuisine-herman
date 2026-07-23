@@ -1145,3 +1145,147 @@ export interface PurchaseOrderProgress {
   nothing_received: boolean;
   suggested_status?: OrderStatus | null;
 }
+
+// --- Domaine Achats : réceptions de marchandise ----------------------------
+
+export type IssueOutcome = "accepted" | "rejected" | "destroyed";
+
+export type IssueReason =
+  | "packaging_damaged" | "product_damaged" | "short_shelf_life" | "wrong_grade"
+  | "wrong_temperature" | "wrong_packaging" | "substituted" | "breakage"
+  | "missing" | "other";
+
+export type ReceiptLineState =
+  | "conforme" | "partiellement_conforme" | "refusee" | "remplacee"
+  | "en_attente" | "hors_commande";
+
+export interface LabelledValue<T extends string = string> {
+  value: T;
+  label: string;
+}
+
+/** Le vocabulaire du poste de contrôle, servi par l'API : web et mobile n'en
+ *  tiennent aucune copie. */
+export interface QualityVocabulary {
+  reasons: LabelledValue<IssueReason>[];
+  outcomes: LabelledValue<IssueOutcome>[];
+  line_states: LabelledValue<ReceiptLineState>[];
+}
+
+export interface ReceiptIssue {
+  id?: string;
+  /** Nulle = toute la ligne : le cas usuel du « tout refusé ». */
+  qty?: number | null;
+  reason: IssueReason;
+  outcome: IssueOutcome;
+  reason_label?: string;
+  outcome_label?: string;
+  notes?: string | null;
+}
+
+export interface ReceiptPhoto {
+  id?: string;
+  url: string;
+  caption?: string | null;
+}
+
+export interface ReceiptLine {
+  id?: string;
+  order_line_id?: string | null;
+  product_id?: string | null;
+  product_name?: string | null;
+  description?: string | null;
+  /** Ce qui est descendu du camion. */
+  qty_delivered?: number | null;
+  unit_id?: number | null;
+  unit_price?: number | null;
+  pack_size?: string | null;
+  substituted_product_id?: string | null;
+  substituted_product_name?: string | null;
+  notes?: string | null;
+  issues: ReceiptIssue[];
+  photos: ReceiptPhoto[];
+  /** Calculés par le serveur, jamais saisis. */
+  qty_accepted?: number | null;
+  qty_rejected?: number | null;
+  qty_destroyed?: number | null;
+  state?: ReceiptLineState | null;
+  state_label?: string | null;
+}
+
+export interface Receipt {
+  id: string;
+  reference?: string | null;
+  order_id?: string | null;
+  order_reference?: string | null;
+  supplier_id?: string | null;
+  supplier_name?: string | null;
+  received_at?: string | null;
+  delivery_note_number?: string | null;
+  status?: "draft" | "checked" | null;
+  status_label?: string | null;
+  received_by_name?: string | null;
+  checked_at?: string | null;
+  checked_by_name?: string | null;
+  device_info?: string | null;
+  notes?: string | null;
+  file_url?: string | null;
+  line_count: number;
+  created_at?: string | null;
+}
+
+export interface ReceiptDetail extends Receipt {
+  lines: ReceiptLine[];
+}
+
+/** Le brouillon proposé pour une commande : ce qui RESTE dû. */
+export interface ReceiptPrefill {
+  order_id: string;
+  order_reference?: string | null;
+  supplier_id?: string | null;
+  lines: Array<{
+    order_line_id: string;
+    product_id?: string | null;
+    description?: string | null;
+    qty_ordered?: number | null;
+    qty_already_received: number;
+    qty_delivered?: number | null;
+    unit_id?: number | null;
+    unit_price?: number | null;
+    pack_size?: string | null;
+    issues: ReceiptIssue[];
+  }>;
+}
+
+export interface ReceiptControlLine {
+  order_line_id?: string | null;
+  product_id?: string | null;
+  description?: string | null;
+  qty_ordered?: number | null;
+  qty_received_before: number;
+  qty_delivered_now: number;
+  qty_accepted_now: number;
+  qty_rejected_now: number;
+  qty_destroyed_now: number;
+  qty_received_total: number;
+  qty_remaining: number;
+  unit_price?: number | null;
+  missing_value: number;
+  reasons: IssueReason[];
+  line_states: ReceiptLineState[];
+  anomalies: string[];
+  status: "ok" | "partial" | "over" | "pending" | "extra";
+}
+
+export interface ReceiptControl {
+  lines: ReceiptControlLine[];
+  document_anomalies: string[];
+  issue_count: number;
+  missing_value: number;
+  rejected_count: number;
+  destroyed_count: number;
+  extra_count: number;
+  is_complete: boolean;
+  nothing_received: boolean;
+  suggested_status?: string | null;
+}
