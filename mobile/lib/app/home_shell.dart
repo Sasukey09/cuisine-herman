@@ -13,6 +13,7 @@ import '../features/invoices/invoices_screen.dart';
 import '../features/metrics/metrics_screen.dart';
 import '../features/prix/price_screen.dart';
 import '../features/products/products_screen.dart';
+import '../features/quotes/quotes_screen.dart';
 import '../features/recipes/recipes_screen.dart';
 import '../features/reports/reports_screen.dart';
 import '../features/suppliers/suppliers_screen.dart';
@@ -40,6 +41,8 @@ const _modules = <_Mod>[
   _Mod('recettes', 'Recettes', 'Coût matière & marge',
       Icons.restaurant_menu_outlined, RecipesScreen()),
   // Secondary modules (shown in the "Plus" sheet).
+  _Mod('devis', 'Devis', 'Comparer les fournisseurs',
+      Icons.request_quote_outlined, QuotesScreen()),
   _Mod('fournisseurs', 'Fournisseurs', 'Partenaires & catalogues',
       Icons.local_shipping_outlined, SuppliersScreen()),
   _Mod('prix', 'Variations de prix', 'Évolution des coûts', Icons.trending_up,
@@ -104,11 +107,19 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: theme.scaffoldBackgroundColor,
+      // Scroll-controlled + scrollable content: the module list grows with the
+      // catalogue (adding "Devis" made it overflow a fixed-height sheet). It now
+      // takes up to 80% of the screen and scrolls beyond that.
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (ctx) => SafeArea(
-        child: Padding(
+        child: ConstrainedBox(
+          constraints:
+              BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.8),
+          child: SingleChildScrollView(
+          child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 26),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -174,6 +185,8 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                 ],
               ),
             ],
+          ),
+        ),
           ),
         ),
       ),
