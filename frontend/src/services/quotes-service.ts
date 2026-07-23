@@ -5,6 +5,9 @@ import type {
   QuoteComparison,
   QuoteCreatePayload,
   QuoteLinePayload,
+  QuotePreviewResult,
+  QuoteConfirmRequest,
+  QuoteImportResult,
 } from "./types";
 
 export async function listQuotes(status?: string) {
@@ -60,6 +63,22 @@ export async function deleteQuoteLine(quoteId: string, lineId: string) {
 
 export async function getQuoteComparison(id: string) {
   const { data } = await api.get<QuoteComparison>(`/quotes/${id}/comparison`);
+  return data;
+}
+
+/** Import OCR : aperçu (ne persiste rien) — même pipeline que les factures. */
+export async function previewQuote(file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  const { data } = await api.post<QuotePreviewResult>("/quotes/preview", form, {
+    headers: { "Content-Type": undefined as unknown as string },
+  });
+  return data;
+}
+
+/** Import OCR : validation — crée le devis, ses lignes et les produits manquants. */
+export async function confirmQuote(payload: QuoteConfirmRequest) {
+  const { data } = await api.post<QuoteImportResult>("/quotes/confirm", payload);
   return data;
 }
 

@@ -14,9 +14,15 @@ import {
   deleteQuoteLine,
   getQuoteComparison,
   orderQuote,
+  previewQuote,
+  confirmQuote,
 } from "@/services/quotes-service";
 import { getApiErrorMessage } from "@/lib/api-error";
-import type { QuoteCreatePayload, QuoteLinePayload } from "@/services/types";
+import type {
+  QuoteCreatePayload,
+  QuoteLinePayload,
+  QuoteConfirmRequest,
+} from "@/services/types";
 
 const KEY = ["quotes"];
 
@@ -40,6 +46,31 @@ export function useQuoteComparison(id?: string, enabled = true) {
     queryKey: [...KEY, id, "comparison"],
     queryFn: () => getQuoteComparison(id as string),
     enabled: Boolean(id) && enabled,
+  });
+}
+
+/** Import OCR d'un devis : aperçu (aucune persistance). */
+export function useQuotePreview() {
+  return useMutation({
+    mutationFn: (file: File) => previewQuote(file),
+    onError: (e) => toast.error(getApiErrorMessage(e)),
+  });
+}
+
+/** Import OCR d'un devis : validation. */
+export function useConfirmQuote() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: QuoteConfirmRequest) => confirmQuote(payload),
+    onSuccess: (res) => {
+      toast.success(
+        `Devis ${res.reference ?? ""} importé — ${res.lines} ligne(s), ` +
+          `${res.created_products} produit(s) créé(s).`,
+      );
+      qc.invalidateQueries({ queryKey: KEY });
+      qc.invalidateQueries({ queryKey: ["products"] });
+    },
+    onError: (e) => toast.error(getApiErrorMessage(e)),
   });
 }
 
