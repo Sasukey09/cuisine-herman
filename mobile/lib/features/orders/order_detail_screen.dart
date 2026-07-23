@@ -7,6 +7,9 @@ import '../../core/providers.dart';
 import '../../main.dart' show kMuted, kWarn;
 import '../auth/auth_controller.dart';
 import '../products/product_detail_screen.dart';
+import '../receipts/receipts_screen.dart' show receiptsListProvider;
+import '../receipts/receipt_detail_screen.dart';
+import '../receipts/reception_station_screen.dart';
 import 'orders_screen.dart' show ordersListProvider, orderStatusesProvider, orderStatusColor;
 
 final orderDetailProvider =
@@ -62,9 +65,61 @@ class OrderDetailScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 8),
             for (final l in lines) _line(context, l, anyReceived),
+            _receipts(context, ref, order),
           ]);
         },
       ),
+    );
+  }
+
+  /// Les réceptions de cette commande. Une commande peut être livrée en
+  /// plusieurs fois, et chaque réception reste au dossier — y compris celles
+  /// qui ont été refusées.
+  Widget _receipts(BuildContext context, WidgetRef ref, Map<String, dynamic> order) {
+    final async = ref.watch(receiptsListProvider(orderId));
+    return async.maybeWhen(
+      orElse: () => const SizedBox.shrink(),
+      data: (loaded) {
+        final rows = ((loaded.data as List?) ?? const [])
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
+        if (rows.isEmpty) return const SizedBox.shrink();
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const SizedBox(height: 14),
+          const Text('Réceptions',
+              style: TextStyle(
+                  fontFamily: 'Newsreader', fontSize: 17, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          for (final r in rows)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: GestureDetector(
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => ReceiptDetailScreen(
+                    receiptId: '${r['id']}',
+                    reference: r['reference'] as String?,
+                  ),
+                )),
+                child: MockCard(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  child: Row(children: [
+                    Expanded(
+                      child: Text(
+                        '${r['reference']}  ·  ${r['status_label']}'
+                        '${r['received_at'] != null ? '  ·  ${r['received_at']}' : ''}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12.5),
+                      ),
+                    ),
+                    Text('${r['line_count']} ligne(s)',
+                        style: const TextStyle(fontSize: 11.5, color: kMuted)),
+                  ]),
+                ),
+              ),
+            ),
+        ]);
+      },
     );
   }
 
@@ -101,6 +156,27 @@ class OrderDetailScreen extends ConsumerWidget {
               style: const TextStyle(fontSize: 12, color: kMuted)),
         ],
         const SizedBox(height: 10),
+        // Réceptionner : l'action principale d'une commande engagée. Elle n'a
+        // pas de sens sur un brouillon — on ne reçoit pas ce qu'on n'a pas
+        // commandé.
+        if (canWrite &&
+            order['status'] != 'draft' &&
+            order['status'] != 'cancelled') ...[
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => ReceptionStationScreen(
+                  orderId: orderId,
+                  orderReference: order['reference'] as String?,
+                ),
+              )),
+              icon: const Icon(Icons.inventory_2_outlined, size: 18),
+              label: const Text('Réceptionner'),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
         if (canWrite)
           statuses.maybeWhen(
             orElse: () => const SizedBox.shrink(),
