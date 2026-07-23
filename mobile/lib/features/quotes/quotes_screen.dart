@@ -8,6 +8,7 @@ import '../../core/providers.dart';
 import '../auth/auth_controller.dart';
 import '../../main.dart' show kMuted, kGood, kWarn, kTerracotta;
 import 'quote_detail_screen.dart';
+import 'quote_smart_import_screen.dart';
 
 /// Comparateur de devis (#1) — liste + création. Un devis = un panier de
 /// produits chiffré par fournisseur (voir `quote_detail_screen.dart`).
@@ -96,27 +97,61 @@ class QuotesScreen extends ConsumerWidget {
             ),
           ]),
           data: (quotes) {
-            if (quotes.isEmpty) {
-              return ListView(children: const [
-                SizedBox(height: 120),
-                Icon(Icons.description_outlined, size: 40, color: kMuted),
-                SizedBox(height: 12),
-                Center(
-                  child: Text('Aucun devis. Touchez + pour comparer\nvos fournisseurs sur un panier.',
-                      textAlign: TextAlign.center, style: TextStyle(color: kMuted)),
-                ),
-              ]);
-            }
-            return ListView.builder(
+            return ListView(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
-              itemCount: quotes.length,
-              itemBuilder: (_, i) => _QuoteCard(quote: quotes[i]),
+              children: [
+                if (canWrite) _importBanner(context, ref),
+                if (quotes.isEmpty) ...[
+                  const SizedBox(height: 80),
+                  const Icon(Icons.description_outlined, size: 40, color: kMuted),
+                  const SizedBox(height: 12),
+                  const Center(
+                    child: Text(
+                      'Aucun devis. Importez celui d\'un fournisseur,\nou touchez + pour comparer un panier.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: kMuted),
+                    ),
+                  ),
+                ] else
+                  for (final q in quotes) _QuoteCard(quote: q),
+              ],
             );
           },
         ),
       ),
     );
   }
+}
+
+/// Point d'entrée de l'import OCR — le devis n'est plus seulement saisi à la
+/// main, il s'importe comme une facture.
+Widget _importBanner(BuildContext context, WidgetRef ref) {
+  return Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: MockCard(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Importer un devis',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 3),
+        const Text("PDF ou photo — l'OCR extrait les lignes.",
+            style: TextStyle(fontSize: 12, color: kMuted)),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () async {
+              await Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => const QuoteSmartImportScreen(),
+              ));
+              ref.invalidate(quotesListProvider);
+            },
+            icon: const Icon(Icons.upload_file, size: 18, color: kTerracotta),
+            label: const Text('Choisir un fichier'),
+          ),
+        ),
+      ]),
+    ),
+  );
 }
 
 class _QuoteCard extends StatelessWidget {

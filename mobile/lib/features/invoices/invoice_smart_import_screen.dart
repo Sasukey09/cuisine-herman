@@ -7,44 +7,10 @@ import '../../common/format.dart';
 import '../../common/ui_kit.dart';
 import '../../core/api_error.dart';
 import '../../core/providers.dart';
-import '../../main.dart' show kMuted, kWarn, kProductCategories;
+import '../../main.dart' show kMuted;
+import '../imports/import_line_editor.dart';
 import 'invoice_detail_screen.dart';
 import 'invoices_screen.dart' show invoiceFileTypes;
-
-/// Products for the "associate" picker.
-final _productsForImportProvider = FutureProvider.autoDispose<List<dynamic>>((ref) async {
-  final resp = await ref.read(apiClientProvider).dio.get('/products/enriched', queryParameters: {'limit': 500});
-  return (resp.data as List?) ?? const [];
-});
-
-class _Line {
-  _Line({
-    required this.description,
-    this.qty,
-    this.unit,
-    this.unitPrice,
-    this.vat,
-    this.lineTotal,
-    required this.action,
-    this.category = '',
-    this.productId = '',
-    this.matchedName,
-    this.confidence,
-    this.needsReview = true,
-  });
-  String description;
-  num? qty;
-  String? unit;
-  num? unitPrice;
-  num? vat;
-  num? lineTotal;
-  String action; // create | associate | skip
-  String category;
-  String productId;
-  String? matchedName;
-  num? confidence;
-  bool needsReview;
-}
 
 /// Mobile smart invoice import — the equivalent of the web `/factures/import`
 /// validation dialog: OCR preview + per-line create/associate/skip + edit
@@ -59,7 +25,7 @@ class _State extends ConsumerState<InvoiceSmartImportScreen> {
   final _supplier = TextEditingController();
   final _number = TextEditingController();
   String? _date;
-  List<_Line>? _lines;
+  List<ImportLine>? _lines;
   bool _loading = false;
   bool _saving = false;
 
@@ -94,25 +60,9 @@ class _State extends ConsumerState<InvoiceSmartImportScreen> {
       _number.text = '${data['invoice_number'] ?? ''}';
       _date = data['date'] as String?;
       setState(() {
-        _lines = ((data['lines'] as List?) ?? const []).map((e) {
-          final m = Map<String, dynamic>.from(e as Map);
-          final matched = m['matched_product_id'] != null;
-          final review = m['needs_review'] == true || !matched;
-          return _Line(
-            description: '${m['description'] ?? ''}',
-            qty: m['qty'] as num?,
-            unit: m['unit'] as String?,
-            unitPrice: m['unit_price'] as num?,
-            vat: m['vat_rate'] as num?,
-            lineTotal: m['line_total'] as num?,
-            action: (!review && matched) ? 'associate' : 'create',
-            category: '${m['suggested_category'] ?? ''}',
-            productId: '${m['matched_product_id'] ?? ''}',
-            matchedName: m['matched_product_name'] as String?,
-            confidence: m['match_confidence'] as num?,
-            needsReview: review,
-          );
-        }).toList();
+        _lines = ((data['lines'] as List?) ?? const [])
+            .map((e) => ImportLine.fromPreview(Map<String, dynamic>.from(e as Map)))
+            .toList();
       });
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(apiErrorMessage(e))));
@@ -126,17 +76,7 @@ class _State extends ConsumerState<InvoiceSmartImportScreen> {
     final navigator = Navigator.of(context);
     setState(() => _saving = true);
     try {
-      final lines = _lines!.map((l) => {
-            'description': l.description,
-            'qty': l.qty,
-            'unit': l.unit,
-            'unit_price': l.unitPrice,
-            'line_total': l.lineTotal,
-            'vat_rate': l.vat,
-            'action': l.action,
-            'product_id': l.action == 'associate' ? (l.productId.isEmpty ? null : l.productId) : null,
-            'category': l.action == 'create' ? (l.category.isEmpty ? null : l.category) : null,
-          }).toList();
+      final lines = _lines!.map((l) => l.toConfirmJson()).toList();
       final resp = await ref.read(apiClientProvider).dio.post('/invoices/confirm', data: {
         'supplier': _supplier.text.trim().isEmpty ? null : _supplier.text.trim(),
         'invoice_number': _number.text.trim().isEmpty ? null : _number.text.trim(),
@@ -195,7 +135,7 @@ class _State extends ConsumerState<InvoiceSmartImportScreen> {
     );
   }
 
-  Widget _reviewView(List<_Line> lines) {
+  Widget _reviewView(List<ImportLine> lines) {
     final toCreate = lines.where((l) => l.action == 'create').length;
     final toAssoc = lines.where((l) => l.action == 'associate').length;
     return Column(children: [
@@ -211,12 +151,16 @@ class _State extends ConsumerState<InvoiceSmartImportScreen> {
           ),
           const SizedBox(height: 8),
           Row(children: [
-            _pill('$toAssoc à associer', const Color(0xFFE3ECDB)),
+            importPill('$toAssoc à associer', const Color(0xFFE3ECDB)),
             const SizedBox(width: 6),
-            _pill('$toCreate à créer', const Color(0xFFF6EAD4)),
+            importPill('$toCreate à créer', const Color(0xFFF6EAD4)),
           ]),
           const SizedBox(height: 8),
-          for (var i = 0; i < lines.length; i++) _lineCard(lines[i], i),
+          for (final l in lines)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: ImportLineCard(line: l, onChanged: () => setState(() {})),
+            ),
         ]),
       ),
       SafeArea(
@@ -240,119 +184,4 @@ class _State extends ConsumerState<InvoiceSmartImportScreen> {
     ]);
   }
 
-  Widget _pill(String t, Color bg) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
-        child: Text(t, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-      );
-
-  Widget _lineCard(_Line l, int i) {
-    return MockCard(
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        TextFormField(
-          initialValue: l.description,
-          onChanged: (v) => l.description = v,
-          decoration: const InputDecoration(isDense: true, labelText: 'Désignation'),
-        ),
-        const SizedBox(height: 6),
-        // Wrap (not Row) so the four small fields flow to a second line on narrow
-        // screens instead of overflowing.
-        Wrap(spacing: 6, runSpacing: 6, children: [
-          _numField('Qté', l.qty, (v) => l.qty = v, width: 70),
-          SizedBox(
-            width: 92,
-            child: TextFormField(
-              initialValue: l.unit ?? '',
-              onChanged: (v) => l.unit = v,
-              decoration: const InputDecoration(isDense: true, labelText: 'Unité'),
-            ),
-          ),
-          _numField('PU', l.unitPrice, (v) => l.unitPrice = v, width: 84),
-          _numField('TVA%', l.vat, (v) => l.vat = v, width: 74),
-        ]),
-        const SizedBox(height: 8),
-        Row(children: [
-          SizedBox(
-            width: 150,
-            child: DropdownButtonFormField<String>(
-              initialValue: l.action,
-              isDense: true,
-              isExpanded: true, // let the value ellipsize instead of overflowing
-              decoration: const InputDecoration(isDense: true),
-              items: const [
-                DropdownMenuItem(value: 'create', child: Text('Créer')),
-                DropdownMenuItem(value: 'associate', child: Text('Associer')),
-                DropdownMenuItem(value: 'skip', child: Text('Ignorer')),
-              ],
-              onChanged: (v) => setState(() => l.action = v ?? 'create'),
-            ),
-          ),
-          const SizedBox(width: 8),
-          if (l.action == 'create') Expanded(child: _categoryPicker(l)),
-          if (l.action == 'associate') Expanded(child: _productPicker(l)),
-        ]),
-        if (l.action == 'associate' && l.matchedName != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text('Suggéré : ${l.matchedName}'
-                '${l.confidence != null ? ' (${l.confidence!.round()}%)' : ''}',
-                style: const TextStyle(fontSize: 11.5, color: kMuted)),
-          ),
-        if (l.action == 'create' && l.needsReview)
-          const Padding(
-            padding: EdgeInsets.only(top: 4),
-            child: Text('nouveau produit', style: TextStyle(fontSize: 11.5, color: kWarn)),
-          ),
-      ]),
-    );
-  }
-
-  Widget _numField(String label, num? value, void Function(num?) onChanged, {required double width}) {
-    return SizedBox(
-      width: width,
-      child: TextFormField(
-        initialValue: value != null ? '$value' : '',
-        keyboardType: TextInputType.number,
-        onChanged: (v) => onChanged(v.trim().isEmpty ? null : num.tryParse(v.replaceAll(',', '.'))),
-        decoration: InputDecoration(isDense: true, labelText: label),
-      ),
-    );
-  }
-
-  Widget _categoryPicker(_Line l) {
-    final values = <String>['', ...kProductCategories];
-    return DropdownButtonFormField<String>(
-      initialValue: values.contains(l.category) ? l.category : '',
-      isDense: true,
-      isExpanded: true,
-      decoration: const InputDecoration(isDense: true),
-      items: [
-        const DropdownMenuItem(value: '', child: Text('Catégorie auto')),
-        for (final c in kProductCategories) DropdownMenuItem(value: c, child: Text(c)),
-      ],
-      onChanged: (v) => l.category = v ?? '',
-    );
-  }
-
-  Widget _productPicker(_Line l) {
-    final products = ref.watch(_productsForImportProvider);
-    return products.when(
-      loading: () => const SizedBox(height: 40, child: Center(child: LinearProgressIndicator())),
-      error: (e, _) => Text(apiErrorMessage(e), style: const TextStyle(fontSize: 11.5, color: kMuted)),
-      data: (list) {
-        final ids = list.map((p) => '${(p as Map)['id']}').toList();
-        return DropdownButtonFormField<String>(
-          initialValue: ids.contains(l.productId) ? l.productId : null,
-          isDense: true,
-          isExpanded: true,
-          decoration: const InputDecoration(isDense: true, hintText: 'Produit…'),
-          items: [
-            for (final p in list)
-              DropdownMenuItem(value: '${(p as Map)['id']}', child: Text('${p['name']}', overflow: TextOverflow.ellipsis)),
-          ],
-          onChanged: (v) => setState(() => l.productId = v ?? ''),
-        );
-      },
-    );
-  }
 }
