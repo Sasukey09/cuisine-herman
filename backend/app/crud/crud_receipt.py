@@ -15,6 +15,8 @@ from app.models.models import (
     PurchaseOrder,
     Receipt,
     ReceiptLine,
+    ReceiptLineIssue,
+    ReceiptLinePhoto,
     Supplier,
     User,
 )
@@ -56,6 +58,7 @@ def create(db: Session, tenant_id: str, payload, user_id: Optional[str]) -> Rece
         supplier_id=supplier_id,
         received_at=payload.received_at,
         delivery_note_number=payload.delivery_note_number,
+        device_info=payload.device_info,
         status=reception_service.DRAFT,
         received_by=user_id,
         notes=payload.notes,
@@ -74,27 +77,52 @@ def _replace_lines(db: Session, tenant_id: str, receipt: Receipt, lines) -> None
         ReceiptLine.tenant_id == tenant_id, ReceiptLine.receipt_id == receipt.id
     ).delete(synchronize_session=False)
     for l in lines:
-        db.add(
-            ReceiptLine(
-                tenant_id=tenant_id,
-                receipt_id=receipt.id,
-                order_line_id=l.order_line_id,
-                product_id=l.product_id,
-                description=l.description,
-                qty_received=l.qty_received,
-                unit_id=l.unit_id,
-                unit_price=l.unit_price,
-                pack_size=l.pack_size,
-                condition=l.condition or reception_service.OK,
-                substituted_product_id=l.substituted_product_id,
-                notes=l.notes,
-                photo_url=l.photo_url,
-            )
+        row = ReceiptLine(
+            tenant_id=tenant_id,
+            receipt_id=receipt.id,
+            order_line_id=l.order_line_id,
+            product_id=l.product_id,
+            description=l.description,
+            qty_delivered=l.qty_delivered,
+            unit_id=l.unit_id,
+            unit_price=l.unit_price,
+            pack_size=l.pack_size,
+            substituted_product_id=l.substituted_product_id,
+            notes=l.notes,
         )
+        db.add(row)
+        db.flush()  # besoin de l'id pour les anomalies et les photos
+        for i in l.issues or []:
+            db.add(
+                ReceiptLineIssue(
+                    tenant_id=tenant_id,
+                    receipt_line_id=row.id,
+                    qty=i.qty,
+                    reason=i.reason,
+                    outcome=i.outcome,
+                    notes=i.notes,
+                )
+            )
+        for ph in l.photos or []:
+            db.add(
+                ReceiptLinePhoto(
+                    tenant_id=tenant_id,
+                    receipt_line_id=row.id,
+                    url=ph.url,
+                    caption=ph.caption,
+                )
+            )
 
 
 def update(db: Session, tenant_id: str, receipt: Receipt, payload) -> Receipt:
-    for field in ("received_at", "delivery_note_number", "notes", "file_url", "supplier_id"):
+    for field in (
+        "received_at",
+        "delivery_note_number",
+        "notes",
+        "file_url",
+        "supplier_id",
+        "device_info",
+    ):
         value = getattr(payload, field, None)
         if value is not None:
             setattr(receipt, field, value)
@@ -182,6 +210,7 @@ def _head(
         "received_by_name": user_names.get(receipt.received_by),
         "checked_at": receipt.checked_at,
         "checked_by_name": user_names.get(receipt.checked_by),
+        "device_info": receipt.device_info,
         "notes": receipt.notes,
         "file_url": receipt.file_url,
         "line_count": line_count,
@@ -221,29 +250,56 @@ def detail(db: Session, tenant_id: str, receipt: Receipt) -> Dict[str, Any]:
         len(lines),
         _user_names(db, [receipt.received_by, receipt.checked_by]),
     )
-    head["lines"] = [
-        {
-            "id": str(l.id),
-            "order_line_id": str(l.order_line_id) if l.order_line_id else None,
-            "product_id": str(l.product_id) if l.product_id else None,
-            "product_name": names.get(l.product_id),
-            "description": l.description,
-            "qty_received": _f(l.qty_received),
-            "unit_id": l.unit_id,
-            "unit_price": _f(l.unit_price),
-            "pack_size": l.pack_size,
-            "condition": l.condition,
-            "condition_label": reception_service.CONDITION_LABELS.get(
-                l.condition or "", l.condition
-            ),
-            "substituted_product_id": str(l.substituted_product_id)
-            if l.substituted_product_id
-            else None,
-            "notes": l.notes,
-            "photo_url": l.photo_url,
-        }
-        for l in lines
-    ]
+    out = []
+    for l in lines:
+        # La répartition accepté / refusé / détruit et l'état de la ligne sont
+        # CALCULÉS par le service : les recalculer ici, ou pire les stocker,
+        # créerait une seconde vérité.
+        quality = reception_service.line_quality(reception_service.line_to_dict(l))
+        out.append(
+            {
+                "id": str(l.id),
+                "order_line_id": str(l.order_line_id) if l.order_line_id else None,
+                "product_id": str(l.product_id) if l.product_id else None,
+                "product_name": names.get(l.product_id),
+                "description": l.description,
+                "qty_delivered": _f(l.qty_delivered),
+                "qty_accepted": quality["qty_accepted"],
+                "qty_rejected": quality["qty_rejected"],
+                "qty_destroyed": quality["qty_destroyed"],
+                "state": quality["state"],
+                "state_label": quality["state_label"],
+                "unit_id": l.unit_id,
+                "unit_price": _f(l.unit_price),
+                "pack_size": l.pack_size,
+                "substituted_product_id": str(l.substituted_product_id)
+                if l.substituted_product_id
+                else None,
+                "substituted_product_name": names.get(l.substituted_product_id),
+                "notes": l.notes,
+                "issues": [
+                    {
+                        "id": str(i.id),
+                        "qty": _f(i.qty),
+                        "reason": i.reason,
+                        "reason_label": reception_service.REASON_LABELS.get(
+                            i.reason or "", i.reason
+                        ),
+                        "outcome": i.outcome,
+                        "outcome_label": reception_service.OUTCOME_LABELS.get(
+                            i.outcome or "", i.outcome
+                        ),
+                        "notes": i.notes,
+                    }
+                    for i in (l.issues or [])
+                ],
+                "photos": [
+                    {"id": str(p.id), "url": p.url, "caption": p.caption}
+                    for p in (l.photos or [])
+                ],
+            }
+        )
+    head["lines"] = out
     return head
 
 

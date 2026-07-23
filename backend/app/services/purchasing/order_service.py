@@ -17,7 +17,6 @@ from app.models.models import (
     PurchaseOrderLine,
     Quote,
     QuoteLine,
-    ReceiptLine,
     Supplier,
 )
 from app.services.purchasing import numbering
@@ -174,103 +173,6 @@ def plan_orders(offers: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 # --------------------------------------------------------------------------- #
-# Pur : avancement d'une commande (commandé vs reçu)
-# --------------------------------------------------------------------------- #
-_QTY_EPSILON = 0.001
-
-
-def line_progress(ordered: List[Dict[str, Any]], received: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Confronte les lignes commandées aux lignes réellement reçues.
-
-    ``ordered`` : ``{id, product_id, description, qty_ordered, unit_price}``.
-    ``received`` : ``{order_line_id, product_id, description, qty_received,
-    condition}`` — ``order_line_id`` peut être nul, c'est justement le cas d'un
-    produit livré **hors commande**.
-
-    Rend, par ligne, ce qui manque ou ce qui est en trop, et l'état global de la
-    commande. Aucune quantité reçue n'est stockée sur la commande : elle se
-    calcule ici, donc il n'existe qu'une seule vérité.
-    """
-    got: Dict[Any, float] = {}
-    conditions: Dict[Any, List[str]] = {}
-    extras: List[Dict[str, Any]] = []
-
-    for r in received:
-        key = r.get("order_line_id")
-        qty = _f(r.get("qty_received")) or 0.0
-        if key is None:
-            extras.append(
-                {
-                    "product_id": r.get("product_id"),
-                    "description": r.get("description"),
-                    "qty_received": qty,
-                    "condition": r.get("condition") or "extra",
-                    "status": "extra",
-                }
-            )
-            continue
-        got[key] = got.get(key, 0.0) + qty
-        if r.get("condition") and r["condition"] != "ok":
-            conditions.setdefault(key, []).append(r["condition"])
-
-    lines: List[Dict[str, Any]] = []
-    for o in ordered:
-        key = o.get("id")
-        want = _f(o.get("qty_ordered")) or 0.0
-        have = got.get(key, 0.0)
-        delta = round(have - want, 4)
-        if have <= _QTY_EPSILON:
-            status = "pending" if want > 0 else "ok"
-        elif abs(delta) <= _QTY_EPSILON:
-            status = "ok"
-        elif delta < 0:
-            status = "partial"
-        else:
-            status = "over"
-        lines.append(
-            {
-                "order_line_id": key,
-                "product_id": o.get("product_id"),
-                "description": o.get("description"),
-                "qty_ordered": want or None,
-                "qty_received": have,
-                "qty_missing": round(want - have, 4) if have < want else 0.0,
-                "unit_price": _f(o.get("unit_price")),
-                # Valeur de ce qui manque : c'est le chiffre qu'on oppose au
-                # fournisseur, pas la quantité.
-                "missing_value": (
-                    round((want - have) * (_f(o.get("unit_price")) or 0.0), 2)
-                    if have < want else 0.0
-                ),
-                "conditions": conditions.get(key, []),
-                "status": status,
-            }
-        )
-
-    lines.extend(extras)
-    ordered_lines = [l for l in lines if l.get("status") != "extra"]
-    fully = ordered_lines and all(l["status"] == "ok" for l in ordered_lines)
-    nothing = all(
-        (l.get("qty_received") or 0.0) <= _QTY_EPSILON for l in ordered_lines
-    ) if ordered_lines else True
-
-    return {
-        "lines": lines,
-        "issue_count": sum(
-            1 for l in lines if l.get("status") not in ("ok",)
-        ),
-        "missing_value": round(sum(l.get("missing_value") or 0.0 for l in lines), 2),
-        "extra_count": len(extras),
-        "is_complete": bool(fully),
-        "nothing_received": bool(nothing),
-        # L'état que la commande devrait porter au vu de ses réceptions.
-        "suggested_status": (
-            RECEIVED if fully else (None if nothing else PARTIALLY_RECEIVED)
-        ),
-    }
-
-
-# --------------------------------------------------------------------------- #
 # Enveloppes base de données
 # --------------------------------------------------------------------------- #
 def offers_from_quote_lines(
@@ -355,41 +257,13 @@ def create_orders(
 
 
 def progress_for_order(db: Session, tenant_id: str, order_id: str) -> Dict[str, Any]:
-    """Avancement d'une commande : commandé vs réellement reçu."""
-    ordered = [
-        {
-            "id": str(l.id),
-            "product_id": str(l.product_id) if l.product_id else None,
-            "description": l.description,
-            "qty_ordered": l.qty_ordered,
-            "unit_price": l.unit_price,
-        }
-        for l in db.query(PurchaseOrderLine)
-        .filter(
-            PurchaseOrderLine.tenant_id == tenant_id,
-            PurchaseOrderLine.order_id == order_id,
-        )
-        .all()
-    ]
-    line_ids = [l["id"] for l in ordered]
-    received_rows = (
-        db.query(ReceiptLine)
-        .filter(
-            ReceiptLine.tenant_id == tenant_id,
-            ReceiptLine.order_line_id.in_(line_ids) if line_ids else False,
-        )
-        .all()
-        if line_ids
-        else []
-    )
-    received = [
-        {
-            "order_line_id": str(r.order_line_id) if r.order_line_id else None,
-            "product_id": str(r.product_id) if r.product_id else None,
-            "description": r.description,
-            "qty_received": r.qty_received,
-            "condition": r.condition,
-        }
-        for r in received_rows
-    ]
-    return line_progress(ordered, received)
+    """Avancement d'une commande : commandé face à réellement reçu.
+
+    Délègue au service Réception. Il existait ici une seconde mécanique qui
+    répondait à la même question en ignorant le contrôle qualité : elle
+    comptait comme reçu ce qui était reparti avec le livreur. Deux moteurs pour
+    une question finissent toujours par se contredire.
+    """
+    from app.services.purchasing import reception_service
+
+    return reception_service.order_progress(db, tenant_id, order_id)

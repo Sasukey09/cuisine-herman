@@ -1,7 +1,7 @@
-"""Réception de marchandise : contrôle des écarts et validation.
+"""Réception de marchandise : contrôle qualité, écarts, validation.
 
-Deux principes gouvernent ce module, et ils expliquent la plupart des choix
-qu'on y trouve :
+Trois principes gouvernent ce module, et ils expliquent la plupart des choix
+qu'on y trouve.
 
 **Une réception est un événement.** Tant qu'elle est en brouillon elle se
 corrige librement ; une fois validée elle est figée. Une correction ultérieure
@@ -9,14 +9,18 @@ prend la forme d'une nouvelle réception corrective, jamais d'une réécriture.
 C'est ce qui permet, trois semaines plus tard, de dire ce qui avait été
 constaté le jour de la livraison.
 
-**Les écarts se calculent, ils ne se stockent pas.** Les deux entrées du calcul
-sont immuables — les lignes de commande ne sont modifiées par aucun endpoint,
-et une réception validée est gelée. Un écart recalculé donne donc toujours le
-même résultat. Le stocker créerait une seconde vérité, donc une dérive : ce
-projet a déjà payé deux fois ce type de bug.
+**Ce qui se déduit ne se stocke pas.** Une seule quantité est saisie par ligne :
+``qty_delivered``, ce qui est descendu du camion. Accepté, refusé, détruit et
+l'état de la ligne se calculent depuis les anomalies. Aucune réconciliation à
+tenir, donc aucune dérive possible entre deux vérités — ce projet a déjà payé
+deux fois ce type de bug.
 
-Le cœur (``compare_reception``) est **pur** : il prend des dictionnaires et rend
-des dictionnaires. Les enveloppes qui parlent à Postgres sont en bas.
+**Une anomalie porte sur une PARTIE de la ligne.** Sur 10 unités on peut en
+refuser une pour DLC trop courte et en détruire une pour casse, sans rien dire
+des huit autres. Étiqueter la ligne entière aurait obligé à choisir un motif.
+
+Le cœur (``line_quality``, ``compare_reception``) est **pur** : il prend des
+dictionnaires et rend des dictionnaires.
 """
 from __future__ import annotations
 
@@ -34,25 +38,74 @@ from app.models.models import (
 )
 from app.services.purchasing import order_service
 
-# --- états d'une ligne reçue ------------------------------------------------
-OK = "ok"
-MISSING = "missing"
-EXTRA = "extra"
-SUBSTITUTED = "substituted"
-DAMAGED = "damaged"
-REJECTED = "rejected"
+# --- issue d'une anomalie ---------------------------------------------------
+ACCEPTED = "accepted"    # gardée sous réserve : on l'a, on la paie
+REJECTED = "rejected"    # repartie avec le livreur
+DESTROYED = "destroyed"  # détruite sur place
 
-CONDITIONS = (OK, MISSING, EXTRA, SUBSTITUTED, DAMAGED, REJECTED)
-
-CONDITION_LABELS = {
-    OK: "Conforme",
-    MISSING: "Manquant",
-    EXTRA: "Hors commande",
-    SUBSTITUTED: "Remplacé",
-    DAMAGED: "Abîmé",
-    REJECTED: "Refusé",
+OUTCOMES = (ACCEPTED, REJECTED, DESTROYED)
+OUTCOME_LABELS = {
+    ACCEPTED: "Acceptée sous réserve",
+    REJECTED: "Refusée",
+    DESTROYED: "Détruite",
 }
 
+# --- motifs de contrôle qualité ---------------------------------------------
+PACKAGING_DAMAGED = "packaging_damaged"
+PRODUCT_DAMAGED = "product_damaged"
+SHORT_SHELF_LIFE = "short_shelf_life"
+WRONG_GRADE = "wrong_grade"
+WRONG_TEMPERATURE = "wrong_temperature"
+WRONG_PACKAGING = "wrong_packaging"
+SUBSTITUTED = "substituted"
+BREAKAGE = "breakage"
+MISSING = "missing"
+OTHER = "other"
+
+REASONS = (
+    PACKAGING_DAMAGED,
+    PRODUCT_DAMAGED,
+    SHORT_SHELF_LIFE,
+    WRONG_GRADE,
+    WRONG_TEMPERATURE,
+    WRONG_PACKAGING,
+    SUBSTITUTED,
+    BREAKAGE,
+    MISSING,
+    OTHER,
+)
+
+REASON_LABELS = {
+    PACKAGING_DAMAGED: "Emballage endommagé",
+    PRODUCT_DAMAGED: "Produit abîmé",
+    SHORT_SHELF_LIFE: "DLC/DLUO trop courte",
+    WRONG_GRADE: "Mauvais calibre",
+    WRONG_TEMPERATURE: "Mauvaise température",
+    WRONG_PACKAGING: "Mauvais conditionnement",
+    SUBSTITUTED: "Produit remplacé",
+    BREAKAGE: "Casse",
+    MISSING: "Produit absent",
+    OTHER: "Autre",
+}
+
+# --- état calculé d'une ligne ----------------------------------------------
+CONFORME = "conforme"
+PARTIELLEMENT_CONFORME = "partiellement_conforme"
+REFUSEE = "refusee"
+REMPLACEE = "remplacee"
+EN_ATTENTE = "en_attente"
+HORS_COMMANDE = "hors_commande"
+
+LINE_STATE_LABELS = {
+    CONFORME: "Conforme",
+    PARTIELLEMENT_CONFORME: "Partiellement conforme",
+    REFUSEE: "Refusée",
+    REMPLACEE: "Remplacée",
+    EN_ATTENTE: "En attente",
+    HORS_COMMANDE: "Hors commande",
+}
+
+# --- état d'une réception ---------------------------------------------------
 DRAFT = "draft"
 CHECKED = "checked"
 
@@ -64,13 +117,69 @@ def _f(v: Any) -> Optional[float]:
     return float(v) if v is not None else None
 
 
-def counts_toward_stock(condition: Optional[str]) -> bool:
-    """Une marchandise refusée repart : elle n'entre pas en stock.
+# --------------------------------------------------------------------------- #
+# Pur : la qualité d'une ligne reçue
+# --------------------------------------------------------------------------- #
+def line_quality(line: Dict[str, Any]) -> Dict[str, Any]:
+    """Répartit ce qui est arrivé entre accepté, refusé et détruit.
 
-    Une marchandise abîmée, elle, est bien là — elle entrera puis sortira en
-    perte quand le module Stock existera. Confondre les deux fausserait
-    l'inventaire dès le premier jour."""
-    return condition != REJECTED
+    ``line`` porte ``qty_delivered``, éventuellement ``substituted_product_id``,
+    et ``issues`` : une liste de ``{qty, reason, outcome}``.
+
+    Une anomalie sans quantité porte sur la ligne entière — c'est le cas usuel
+    d'un « tout refusé », qu'on ne veut pas obliger à chiffrer.
+
+    Refusée ou détruite, la marchandise n'est pas là : ni pour la commande, qui
+    reste due, ni pour le stock. La distinction entre les deux se garde pour le
+    dossier et pour la discussion avec le fournisseur.
+    """
+    delivered = _f(line.get("qty_delivered")) or 0.0
+    issues = line.get("issues") or []
+
+    rejected = 0.0
+    destroyed = 0.0
+    flagged = 0.0  # unités touchées par une anomalie, quelle qu'en soit l'issue
+    for i in issues:
+        qty = _f(i.get("qty"))
+        # Pas de quantité : l'anomalie vaut pour toute la ligne.
+        qty = delivered if qty is None else qty
+        flagged += qty
+        outcome = i.get("outcome") or REJECTED
+        if outcome == REJECTED:
+            rejected += qty
+        elif outcome == DESTROYED:
+            destroyed += qty
+
+    lost = min(rejected + destroyed, delivered)
+    accepted = max(delivered - lost, 0.0)
+
+    if line.get("substituted_product_id") or any(
+        i.get("reason") == SUBSTITUTED for i in issues
+    ):
+        state = REMPLACEE
+    elif delivered <= _QTY_EPSILON:
+        state = EN_ATTENTE
+    elif accepted <= _QTY_EPSILON:
+        state = REFUSEE
+    elif flagged > _QTY_EPSILON:
+        state = PARTIELLEMENT_CONFORME
+    else:
+        state = CONFORME
+
+    return {
+        "qty_delivered": round(delivered, 4),
+        "qty_accepted": round(accepted, 4),
+        "qty_rejected": round(min(rejected, delivered), 4),
+        "qty_destroyed": round(min(destroyed, max(delivered - rejected, 0.0)), 4),
+        "state": state,
+        "state_label": LINE_STATE_LABELS[state],
+        "reasons": sorted({i.get("reason") for i in issues if i.get("reason")}),
+    }
+
+
+def accepted_qty(line: Dict[str, Any]) -> float:
+    """Ce qui compte face à la commande et pour le stock."""
+    return line_quality(line)["qty_accepted"]
 
 
 # --------------------------------------------------------------------------- #
@@ -88,10 +197,6 @@ def compare_reception(
     ``previously_received`` porte ce que les réceptions ANTÉRIEURES ont déjà
     apporté par ligne de commande. Sans lui, une commande livrée en deux fois
     afficherait deux livraisons partielles au lieu d'une livraison complète.
-
-    Rend, par ligne : commandé, déjà reçu, reçu maintenant, restant, et la
-    nature de l'écart. Plus, au niveau du document, les anomalies qui ne se
-    lisent pas ligne par ligne — le fournisseur qui n'est pas celui commandé.
     """
     prior = dict(previously_received or {})
     by_order_line: Dict[Any, List[Dict[str, Any]]] = {}
@@ -111,32 +216,24 @@ def compare_reception(
         already = float(prior.get(key, 0.0) or 0.0)
         rows = by_order_line.get(key, [])
 
-        now = sum(_f(r.get("qty_received")) or 0.0 for r in rows)
-        # Le refusé est bien arrivé physiquement, mais il repart : il ne compte
-        # pas comme livré face à la commande.
-        accepted_now = sum(
-            _f(r.get("qty_received")) or 0.0
-            for r in rows
-            if r.get("condition") != REJECTED
-        )
+        qualities = [line_quality(r) for r in rows]
+        delivered_now = sum(q["qty_delivered"] for q in qualities)
+        accepted_now = sum(q["qty_accepted"] for q in qualities)
         total = already + accepted_now
         remaining = round(ordered - total, 4)
 
-        conditions = sorted(
-            {r.get("condition") for r in rows if r.get("condition") and r["condition"] != OK}
-        )
         anomalies: List[str] = []
+        ordered_price = _f(o.get("unit_price"))
 
         # Écart de PRIX : le bon de livraison n'annonce pas ce que la commande
         # avait retenu. Ce n'est pas encore une facture, mais c'est le premier
         # endroit où ça se voit.
-        ordered_price = _f(o.get("unit_price"))
         for r in rows:
-            got_price = _f(r.get("unit_price"))
+            got = _f(r.get("unit_price"))
             if (
                 ordered_price is not None
-                and got_price is not None
-                and abs(got_price - ordered_price) > _PRICE_EPSILON
+                and got is not None
+                and abs(got - ordered_price) > _PRICE_EPSILON
             ):
                 anomalies.append("price")
                 break
@@ -150,27 +247,22 @@ def compare_reception(
                 anomalies.append("pack_size")
                 break
 
-        # Écart de PRODUIT : on a livré autre chose.
-        for r in rows:
-            if r.get("substituted_product_id") or r.get("condition") == SUBSTITUTED:
-                anomalies.append("product")
-                break
+        if any(q["state"] == REMPLACEE for q in qualities):
+            anomalies.append("product")
+        if any(q["qty_rejected"] or q["qty_destroyed"] for q in qualities):
+            anomalies.append("quality")
 
         # Le statut se lit sur ce qui a été ACCEPTÉ, pas sur la présence d'une
-        # ligne de réception. Une livraison entièrement refusée a bien eu lieu,
-        # mais elle n'a rien apporté : l'annoncer « partielle » ferait croire
-        # qu'une partie est en réserve. Le refus lui-même reste visible dans
-        # `conditions`, il ne disparaît pas.
+        # ligne de réception : une livraison entièrement refusée a bien eu lieu,
+        # mais elle n'a rien apporté.
         if ordered <= _QTY_EPSILON:
-            # Rien n'était dû : la ligne n'a pas à retenir la commande. Sans
-            # cette sortie, une ligne saisie sans quantité resterait « en
-            # attente » pour toujours et la commande ne pourrait jamais se
-            # clore.
-            status = OK
+            # Rien n'était dû : la ligne ne doit pas retenir la commande
+            # ouverte pour toujours.
+            status = "ok"
         elif total <= _QTY_EPSILON:
             status = "pending"
         elif abs(remaining) <= _QTY_EPSILON:
-            status = OK
+            status = "ok"
         elif remaining > 0:
             status = "partial"
         else:
@@ -183,7 +275,10 @@ def compare_reception(
                 "description": o.get("description"),
                 "qty_ordered": ordered or None,
                 "qty_received_before": round(already, 4),
-                "qty_received_now": round(now, 4),
+                "qty_delivered_now": round(delivered_now, 4),
+                "qty_accepted_now": round(accepted_now, 4),
+                "qty_rejected_now": round(sum(q["qty_rejected"] for q in qualities), 4),
+                "qty_destroyed_now": round(sum(q["qty_destroyed"] for q in qualities), 4),
                 "qty_received_total": round(total, 4),
                 "qty_remaining": max(remaining, 0.0),
                 "unit_price": ordered_price,
@@ -191,13 +286,15 @@ def compare_reception(
                 "missing_value": (
                     round(remaining * (ordered_price or 0.0), 2) if remaining > 0 else 0.0
                 ),
-                "conditions": conditions,
+                "reasons": sorted({r for q in qualities for r in q["reasons"]}),
+                "line_states": [q["state"] for q in qualities],
                 "anomalies": sorted(set(anomalies)),
                 "status": status,
             }
         )
 
     for r in extras:
+        q = line_quality(r)
         lines.append(
             {
                 "order_line_id": None,
@@ -205,14 +302,18 @@ def compare_reception(
                 "description": r.get("description"),
                 "qty_ordered": None,
                 "qty_received_before": 0.0,
-                "qty_received_now": _f(r.get("qty_received")) or 0.0,
-                "qty_received_total": _f(r.get("qty_received")) or 0.0,
+                "qty_delivered_now": q["qty_delivered"],
+                "qty_accepted_now": q["qty_accepted"],
+                "qty_rejected_now": q["qty_rejected"],
+                "qty_destroyed_now": q["qty_destroyed"],
+                "qty_received_total": q["qty_accepted"],
                 "qty_remaining": 0.0,
                 "unit_price": _f(r.get("unit_price")),
                 "missing_value": 0.0,
-                "conditions": [r.get("condition")] if r.get("condition") else [],
+                "reasons": q["reasons"],
+                "line_states": [HORS_COMMANDE],
                 "anomalies": ["unordered"],
-                "status": EXTRA,
+                "status": "extra",
             }
         )
 
@@ -225,21 +326,25 @@ def compare_reception(
     ):
         document_anomalies.append("supplier")
 
-    ordered_only = [l for l in lines if l["status"] != EXTRA]
-    complete = bool(ordered_only) and all(l["status"] == OK for l in ordered_only)
-    nothing = all(l["qty_received_total"] <= _QTY_EPSILON for l in ordered_only) if ordered_only else True
+    ordered_only = [l for l in lines if l["status"] != "extra"]
+    complete = bool(ordered_only) and all(l["status"] == "ok" for l in ordered_only)
+    nothing = (
+        all(l["qty_received_total"] <= _QTY_EPSILON for l in ordered_only)
+        if ordered_only
+        else True
+    )
 
     return {
         "lines": lines,
         "document_anomalies": document_anomalies,
         "issue_count": sum(
-            1
-            for l in lines
-            if l["status"] not in (OK,) or l["conditions"] or l["anomalies"]
+            1 for l in lines if l["status"] != "ok" or l["reasons"] or l["anomalies"]
         )
         + len(document_anomalies),
         "missing_value": round(sum(l["missing_value"] for l in lines), 2),
-        "extra_count": sum(1 for l in lines if l["status"] == EXTRA),
+        "rejected_count": sum(1 for l in lines if l["qty_rejected_now"] > 0),
+        "destroyed_count": sum(1 for l in lines if l["qty_destroyed_now"] > 0),
+        "extra_count": sum(1 for l in lines if l["status"] == "extra"),
         "is_complete": complete,
         "nothing_received": nothing,
         "suggested_status": (
@@ -274,23 +379,37 @@ def _order_lines(db: Session, tenant_id: str, order_id: str) -> List[Dict[str, A
     ]
 
 
+def line_to_dict(line: ReceiptLine) -> Dict[str, Any]:
+    """Forme attendue par le cœur pur, depuis une ligne de la base."""
+    return {
+        "id": str(line.id),
+        "order_line_id": str(line.order_line_id) if line.order_line_id else None,
+        "product_id": str(line.product_id) if line.product_id else None,
+        "description": line.description,
+        "qty_delivered": line.qty_delivered,
+        "unit_id": line.unit_id,
+        "unit_price": line.unit_price,
+        "pack_size": line.pack_size,
+        "substituted_product_id": str(line.substituted_product_id)
+        if line.substituted_product_id
+        else None,
+        "notes": line.notes,
+        "issues": [
+            {
+                "id": str(i.id),
+                "qty": _f(i.qty),
+                "reason": i.reason,
+                "outcome": i.outcome,
+                "notes": i.notes,
+            }
+            for i in (line.issues or [])
+        ],
+    }
+
+
 def _receipt_lines(db: Session, tenant_id: str, receipt_id: str) -> List[Dict[str, Any]]:
     return [
-        {
-            "id": str(l.id),
-            "order_line_id": str(l.order_line_id) if l.order_line_id else None,
-            "product_id": str(l.product_id) if l.product_id else None,
-            "description": l.description,
-            "qty_received": l.qty_received,
-            "unit_price": l.unit_price,
-            "pack_size": l.pack_size,
-            "condition": l.condition,
-            "substituted_product_id": str(l.substituted_product_id)
-            if l.substituted_product_id
-            else None,
-            "notes": l.notes,
-            "photo_url": l.photo_url,
-        }
+        line_to_dict(l)
         for l in db.query(ReceiptLine)
         .filter(ReceiptLine.tenant_id == tenant_id, ReceiptLine.receipt_id == receipt_id)
         .order_by(ReceiptLine.created_at)
@@ -304,35 +423,30 @@ def received_by_order_line(
     order_id: str,
     exclude_receipt_id: Optional[str] = None,
 ) -> Dict[str, float]:
-    """Ce que les réceptions de cette commande ont déjà apporté, par ligne.
+    """Ce que les réceptions de cette commande ont déjà **accepté**, par ligne.
 
     ``exclude_receipt_id`` écarte la réception en cours de contrôle, pour ne pas
-    compter deux fois ce qu'elle apporte. Nul quand on veut le total (c'est le
-    cas du pré-remplissage d'un nouveau brouillon).
+    compter deux fois ce qu'elle apporte. Nul quand on veut le total — c'est le
+    cas du pré-remplissage d'un nouveau brouillon.
 
-    Le refusé est exclu : il est reparti, la commande reste due.
+    Refusé et détruit sont exclus : on ne les a pas, la commande reste due.
     """
     q = (
         db.query(ReceiptLine)
         .join(Receipt, Receipt.id == ReceiptLine.receipt_id)
-        .filter(
-            ReceiptLine.tenant_id == tenant_id,
-            Receipt.order_id == order_id,
-            ReceiptLine.condition != REJECTED,
-        )
+        .filter(ReceiptLine.tenant_id == tenant_id, Receipt.order_id == order_id)
     )
     if exclude_receipt_id:
         # Comparer un UUID à une chaîne vide ferait échouer Postgres à
         # l'exécution : le filtre ne se pose que s'il y a quelque chose à exclure.
         q = q.filter(Receipt.id != exclude_receipt_id)
-    rows = q.all()
+
     out: Dict[str, float] = {}
-    for r in rows:
-        if r.order_line_id is None:
+    for line in q.all():
+        if line.order_line_id is None:
             continue
-        out[str(r.order_line_id)] = out.get(str(r.order_line_id), 0.0) + float(
-            r.qty_received or 0
-        )
+        key = str(line.order_line_id)
+        out[key] = out.get(key, 0.0) + accepted_qty(line_to_dict(line))
     return out
 
 
@@ -367,6 +481,10 @@ def validate(
     Les mouvements naissent ici et pas au brouillon : une quantité mal saisie
     dans un brouillon entrerait sinon au stock, et il faudrait un mouvement
     compensatoire pour la reprendre. Une réception validée, elle, est un fait.
+
+    **Seul l'ACCEPTÉ entre en stock.** Ce qui est reparti ou a été détruit n'a
+    jamais été à nous : l'entrer puis le sortir laisserait deux mouvements pour
+    un fait qui n'a pas eu lieu.
     """
     receipt.status = CHECKED
     receipt.checked_at = datetime.now()
@@ -377,16 +495,16 @@ def validate(
         .filter(ReceiptLine.tenant_id == tenant_id, ReceiptLine.receipt_id == receipt.id)
         .all()
     ):
-        qty = float(line.qty_received or 0)
-        if qty <= 0 or line.product_id is None:
+        if line.product_id is None:
             continue
-        if not counts_toward_stock(line.condition):
+        accepted = accepted_qty(line_to_dict(line))
+        if accepted <= _QTY_EPSILON:
             continue
         db.add(
             StockMovement(
                 tenant_id=tenant_id,
                 product_id=line.product_id,
-                qty=line.qty_received,  # signée : + entrée
+                qty=accepted,  # signée : + entrée
                 unit_id=line.unit_id,
                 movement_type="receipt",
                 source_type="receipt_line",
@@ -418,3 +536,30 @@ def validate(
     db.commit()
     db.refresh(receipt)
     return result
+
+
+def order_progress(db: Session, tenant_id: str, order_id: str) -> Dict[str, Any]:
+    """Avancement d'une commande, toutes ses réceptions confondues.
+
+    Le pendant de ``control``, qui ne regarde qu'une réception. C'est ce que la
+    fiche commande affiche : où en est-on, et que reste-t-il dû.
+    """
+    order = (
+        db.query(PurchaseOrder)
+        .filter(PurchaseOrder.tenant_id == tenant_id, PurchaseOrder.id == order_id)
+        .first()
+    )
+    lines: List[Dict[str, Any]] = []
+    for receipt in (
+        db.query(Receipt)
+        .filter(Receipt.tenant_id == tenant_id, Receipt.order_id == order_id)
+        .all()
+    ):
+        lines.extend(_receipt_lines(db, tenant_id, str(receipt.id)))
+
+    return compare_reception(
+        _order_lines(db, tenant_id, order_id),
+        lines,
+        order_supplier_id=str(order.supplier_id) if order and order.supplier_id else None,
+        receipt_supplier_id=None,  # plusieurs réceptions : l'écart se lit par réception
+    )

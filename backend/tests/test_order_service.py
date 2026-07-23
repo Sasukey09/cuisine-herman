@@ -4,7 +4,6 @@ Pur : tourne sans base. Le round-trip contre un vrai Postgres est dans
 ``test_purchasing.py``.
 """
 
-import pytest
 
 from app.services.purchasing.order_service import (
     CANCELLED,
@@ -15,7 +14,7 @@ from app.services.purchasing.order_service import (
     RECEIVED,
     SENT,
     can_transition,
-    line_progress,
+
     plan_orders,
 )
 
@@ -142,92 +141,13 @@ def test_an_unknown_status_is_refused():
     assert not can_transition(DRAFT, "en_cours_peut_etre")
 
 
-# --- avancement : commandé vs reçu ----------------------------------------
-def ordered_line(lid, qty, price=10.0, product=None):
-    return {
-        "id": lid,
-        "product_id": product or lid,
-        "description": lid,
-        "qty_ordered": qty,
-        "unit_price": price,
-    }
+def test_the_progress_engine_is_not_duplicated():
+    """Régression d'architecture : `order_service` portait sa propre mécanique
+    « commandé vs reçu », qui ignorait le contrôle qualité et comptait comme
+    reçu ce qui était reparti avec le livreur. Une seule question, un seul
+    moteur — celui du service Réception."""
+    from app.services.purchasing import order_service, reception_service
 
-
-def received_line(lid, qty, condition="ok", product=None):
-    return {
-        "order_line_id": lid,
-        "product_id": product,
-        "description": product or lid,
-        "qty_received": qty,
-        "condition": condition,
-    }
-
-
-def test_everything_delivered_closes_the_order():
-    r = line_progress([ordered_line("l1", 10)], [received_line("l1", 10)])
-    assert r["is_complete"] is True
-    assert r["issue_count"] == 0
-    assert r["suggested_status"] == RECEIVED
-
-
-def test_a_partial_delivery_is_valued_not_just_counted():
-    """Ce qu'on oppose au fournisseur, c'est un montant, pas une quantité."""
-    r = line_progress([ordered_line("l1", 10, price=18.5)], [received_line("l1", 6)])
-    line = r["lines"][0]
-    assert line["status"] == "partial"
-    assert line["qty_missing"] == 4
-    assert line["missing_value"] == 74.0
-    assert r["suggested_status"] == PARTIALLY_RECEIVED
-
-
-def test_several_deliveries_add_up_on_the_same_line():
-    """Une commande livrée en deux fois est complète, pas partielle."""
-    r = line_progress(
-        [ordered_line("l1", 10)],
-        [received_line("l1", 4), received_line("l1", 6)],
-    )
-    assert r["is_complete"] is True
-
-
-def test_nothing_received_yet_suggests_no_status_change():
-    r = line_progress([ordered_line("l1", 10)], [])
-    assert r["nothing_received"] is True
-    assert r["suggested_status"] is None
-    assert r["lines"][0]["status"] == "pending"
-
-
-def test_a_product_delivered_outside_the_order_is_flagged():
-    r = line_progress(
-        [ordered_line("l1", 10)],
-        [received_line("l1", 10), received_line(None, 3, product="Crème")],
-    )
-    assert r["extra_count"] == 1
-    extra = [l for l in r["lines"] if l["status"] == "extra"][0]
-    assert extra["description"] == "Crème"
-    # La commande reste complète : le surplus n'enlève rien à ce qui était dû.
-    assert r["is_complete"] is True
-
-
-def test_an_over_delivery_is_not_a_shortage():
-    r = line_progress([ordered_line("l1", 10)], [received_line("l1", 12)])
-    assert r["lines"][0]["status"] == "over"
-    assert r["lines"][0]["missing_value"] == 0.0
-
-
-def test_a_damaged_delivery_is_reported_even_at_the_right_quantity():
-    r = line_progress(
-        [ordered_line("l1", 10)],
-        [received_line("l1", 10, condition="damaged")],
-    )
-    assert r["lines"][0]["conditions"] == ["damaged"]
-
-
-def test_rounding_noise_is_not_a_shortage():
-    r = line_progress([ordered_line("l1", 10)], [received_line("l1", 9.9999)])
-    assert r["lines"][0]["status"] == "ok"
-
-
-@pytest.mark.parametrize("qty", [0, None])
-def test_a_line_ordered_with_no_quantity_does_not_block_completion(qty):
-    r = line_progress([ordered_line("l1", qty)], [])
-    assert r["lines"][0]["status"] == "ok"
+    assert not hasattr(order_service, "line_progress")
+    assert hasattr(reception_service, "compare_reception")
+    assert hasattr(reception_service, "order_progress")
