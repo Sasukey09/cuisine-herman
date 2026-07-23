@@ -106,6 +106,12 @@ class QuoteMatrixScreen extends ConsumerWidget {
 
   Widget _summary(Map<String, dynamic> m, Map<String, dynamic> names) {
     final cheapest = names['${m['cheapest_supplier_id']}'];
+    // Le classement se fait panier + port : on affiche donc le total réellement
+    // payé, sinon l'utilisateur qui recompte à la main croit à une erreur.
+    final cheapestRow = ((m['suppliers'] as List?) ?? const [])
+        .cast<Map<String, dynamic>>()
+        .where((s) => s['supplier_id'] == m['cheapest_supplier_id'])
+        .firstOrNull;
     final fastest = names['${m['fastest_supplier_id']}'];
     final savings = m['potential_savings'] as num?;
     Widget tile(IconData icon, Color color, String value, String label) => Expanded(
@@ -123,7 +129,17 @@ class QuoteMatrixScreen extends ConsumerWidget {
           ),
         );
     return Row(children: [
-      tile(Icons.emoji_events_outlined, kGood, '${cheapest ?? '—'}', 'Le moins cher'),
+      tile(
+        Icons.emoji_events_outlined,
+        kGood,
+        '${cheapest ?? '—'}',
+        cheapestRow == null
+            ? 'Le moins cher'
+            : (cheapestRow['delivery_fee'] as num?) != null &&
+                    (cheapestRow['delivery_fee'] as num) > 0
+                ? '${eur(cheapestRow['total_with_delivery'] as num?)} port inclus'
+                : eur(cheapestRow['total_with_delivery'] as num?),
+      ),
       const SizedBox(width: 8),
       tile(Icons.local_shipping_outlined, kTerracotta, '${fastest ?? '—'}', 'Le plus rapide'),
       const SizedBox(width: 8),
@@ -222,6 +238,8 @@ class QuoteMatrixScreen extends ConsumerWidget {
             if (o['vat_rate'] != null) 'TVA ${_num(o['vat_rate'], digits: 1)} %',
             if (o['discount_pct'] != null) '−${_num(o['discount_pct'], digits: 1)} %',
             if (o['lead_time_days'] != null) '${o['lead_time_days']} j',
+            if (o['min_qty'] != null) 'min. ${_num(o['min_qty'], digits: 0)}',
+            if (o['brand'] != null) '${o['brand']}',
           ].join('  ·  '),
           style: const TextStyle(fontSize: 11.5, color: kMuted),
         ),

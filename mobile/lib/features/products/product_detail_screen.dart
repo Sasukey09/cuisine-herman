@@ -6,6 +6,7 @@ import '../../common/edit_delete.dart';
 import '../../common/format.dart';
 import '../../core/api_error.dart';
 import '../../core/providers.dart';
+import 'product_quote_history.dart';
 import '../../main.dart' show kMuted, kGood, kTerracotta, kProductCategories;
 import '../auth/auth_controller.dart';
 import '../invoices/invoice_detail_screen.dart';
@@ -496,7 +497,15 @@ class _PricesTab extends ConsumerWidget {
             .whereType<double>()
             .toList();
         if (purchases.isEmpty) {
-          return const _EmptyLine('Aucun achat enregistré pour ce produit.');
+          // Aucun achat ne veut pas dire aucune information : les devis reçus
+          // pour ce produit restent à afficher.
+          return ListView(
+            padding: const EdgeInsets.all(12),
+            children: [
+              const _EmptyLine('Aucun achat enregistré pour ce produit.'),
+              ProductQuoteHistorySection(productId: productId),
+            ],
+          );
         }
         final unit = purchases.isNotEmpty ? purchases.first['unit_code'] : null;
         return ListView(
@@ -544,6 +553,9 @@ class _PricesTab extends ConsumerWidget {
                   ),
                 ),
               ),
+            // « Proposé » se lit juste sous « payé » : c'est la comparaison
+            // des deux qui a de la valeur.
+            ProductQuoteHistorySection(productId: productId),
           ],
         );
       },

@@ -91,7 +91,14 @@ function Kpis({ data }: { data: QuoteMatrix }) {
               {cheapest?.supplier_name ?? "—"}
             </div>
             <div className="text-xs text-muted-foreground">
-              Le moins cher · {cheapest ? formatCurrency(cheapest.total) : "—"}
+              Le moins cher · {cheapest ? formatCurrency(cheapest.total_with_delivery) : "—"}
+              {/* Le port est intégré au classement : l'afficher évite de faire
+                  douter l'utilisateur qui recompte le panier à la main. */}
+              {cheapest?.delivery_fee ? (
+                <span title="Frais de livraison inclus dans le total">
+                  {" "}(dont {formatCurrency(cheapest.delivery_fee)} de port)
+                </span>
+              ) : null}
             </div>
           </div>
         </CardContent>
@@ -151,6 +158,14 @@ function MatrixTable({ data }: { data: QuoteMatrix }) {
                 <div className="mt-0.5 text-[11px] font-normal text-muted-foreground">
                   {s.best_count} meilleure(s) · {s.covered}/{data.product_count}
                   {s.max_lead_time_days != null ? ` · ${s.max_lead_time_days} j` : ""}
+                </div>
+                <div className="mt-0.5 text-[11px] font-normal tabular-nums text-muted-foreground">
+                  {formatCurrency(s.total_with_delivery)}
+                  {s.delivery_fee ? (
+                    <span className="ml-1 text-amber-600 dark:text-amber-400">
+                      +{formatCurrency(s.delivery_fee)} port
+                    </span>
+                  ) : null}
                 </div>
               </th>
             ))}
@@ -237,7 +252,9 @@ function OfferCell({ offer, product }: { offer: MatrixOffer; product: MatrixProd
           {offer.vat_rate != null ? <span>TVA {formatNumber(offer.vat_rate, 1)} %</span> : null}
           {offer.discount_pct ? <span>−{formatNumber(offer.discount_pct, 1)} %</span> : null}
           {offer.lead_time_days != null ? <span>{offer.lead_time_days} j</span> : null}
+          {offer.min_qty ? <span>min. {formatNumber(offer.min_qty, 0)}</span> : null}
         </div>
+        {offer.brand ? <div className="truncate italic">{offer.brand}</div> : null}
         {offer.expired ? (
           <Badge variant="destructive" className="mt-1">Périmée</Badge>
         ) : !offer.available ? (

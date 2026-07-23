@@ -64,6 +64,7 @@ import {
   useDeleteProductSupplier,
 } from "@/hooks/use-products";
 import { useProductPriceHistory } from "@/hooks/use-purchasing";
+import { ProductQuoteHistory } from "./product-quote-history";
 import { useAuthStore } from "@/stores/auth-store";
 import { formatCurrency, formatDate, formatNumber } from "@/lib/utils";
 import type { ProductSupplierRow } from "@/services/types";
@@ -386,6 +387,9 @@ export function ProductDetail({ productId }: { productId: string }) {
               </div>
             </CardContent>
           </Card>
+          {/* Les offres se lisent juste sous les achats : c'est la comparaison
+              « proposé / payé » qui a de la valeur, pas chaque liste isolée. */}
+          <ProductQuoteHistory productId={productId} />
         </TabsContent>
 
         {/* ---------- Factures ---------- */}

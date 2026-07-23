@@ -113,6 +113,7 @@ def create_imported_quote(
         currency=payload.currency or "EUR",
         total_amount=payload.total_amount,
         discount_total=payload.discount_total,
+        delivery_fee=getattr(payload, "delivery_fee", None),
         conditions=payload.conditions,
         parsed=True,
         ocr_status="confirmed",
@@ -146,6 +147,8 @@ def add_import_line(
         vat_rate=line.vat_rate,
         discount_pct=line.discount_pct,
         pack_size=line.pack_size,
+        brand=getattr(line, "brand", None),
+        min_qty=getattr(line, "min_qty", None),
         supplier_id=supplier_id,
     )
     db.add(obj)
@@ -286,6 +289,7 @@ def to_read(quote: Quote, supplier_names: Dict[str, str], line_counts: Dict[str,
         "valid_until": quote.valid_until,
         "currency": quote.currency,
         "discount_total": _f(quote.discount_total),
+        "delivery_fee": _f(quote.delivery_fee),
         "conditions": quote.conditions,
     }
 
@@ -311,6 +315,8 @@ def line_to_read(line: QuoteLine, product_names: Dict[str, str]) -> Dict[str, An
         "line_total": _f(line.line_total),
         "discount_pct": _f(line.discount_pct),
         "pack_size": line.pack_size,
+        "brand": line.brand,
+        "min_qty": _f(line.min_qty),
     }
 
 

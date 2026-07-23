@@ -865,6 +865,8 @@ class QuoteLineRead(BaseModel):
     line_total: Optional[float] = None
     discount_pct: Optional[float] = None
     pack_size: Optional[str] = None
+    brand: Optional[str] = None
+    min_qty: Optional[float] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -900,6 +902,7 @@ class QuoteRead(BaseModel):
     valid_until: Optional[DateType] = None
     currency: Optional[str] = None
     discount_total: Optional[float] = None
+    delivery_fee: Optional[float] = None
     conditions: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -926,6 +929,8 @@ class QuotePreviewLine(BaseModel):
     vat_rate: Optional[float] = None
     discount_pct: Optional[float] = None
     pack_size: Optional[str] = None
+    brand: Optional[str] = None
+    min_qty: Optional[float] = None
     matched_product_id: Optional[str] = None
     matched_product_name: Optional[str] = None
     match_confidence: Optional[float] = None
@@ -942,6 +947,7 @@ class QuotePreviewResult(BaseModel):
     total_amount: Optional[float] = None
     currency: Optional[str] = None
     discount_total: Optional[float] = None
+    delivery_fee: Optional[float] = None
     conditions: Optional[str] = None
     lines: List[QuotePreviewLine] = []
 
@@ -957,6 +963,8 @@ class QuoteConfirmLine(BaseModel):
     vat_rate: Optional[float] = Field(default=None, ge=0, le=100)
     discount_pct: Optional[float] = Field(default=None, ge=0, le=100)
     pack_size: Optional[str] = Field(default=None, max_length=100)
+    brand: Optional[str] = Field(default=None, max_length=100)
+    min_qty: Optional[float] = Field(default=None, ge=0)
     # créer un produit, associer un produit existant, ou ignorer la ligne.
     action: str = "create"
     product_id: Optional[str] = None  # pour action="associate"
@@ -973,6 +981,7 @@ class QuoteConfirmRequest(BaseModel):
     total_amount: Optional[float] = None
     currency: Optional[str] = "EUR"
     discount_total: Optional[float] = None
+    delivery_fee: Optional[float] = Field(default=None, ge=0)
     conditions: Optional[str] = Field(default=None, max_length=2000)
     lines: List[QuoteConfirmLine] = []
 

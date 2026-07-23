@@ -34,6 +34,7 @@ from app.services.costing import cost_engine
 from app.services.classification.classifier import CATEGORIES
 from app.services.matching.product_matcher import match_product
 from app.services.purchasing import purchase_service
+from app.services.quotes import quote_history
 
 router = APIRouter()
 
@@ -57,6 +58,21 @@ def api_product_price_history(
     if not get_product(db, product_id, tenant_id):
         raise HTTPException(status_code=404, detail="Product not found")
     return purchase_service.product_price_history(db, tenant_id, product_id)
+
+
+@router.get("/{product_id}/quote-history")
+def api_product_quote_history(
+    product_id: str,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """Historique des OFFRES reçues (devis) pour ce produit — distinct de
+    ``/price-history``, qui retrace ce qui a été réellement payé. Les prix
+    proposés mais non retenus ne doivent pas entrer dans le food cost, mais ils
+    éclairent une négociation."""
+    if not get_product(db, product_id, tenant_id):
+        raise HTTPException(status_code=404, detail="Product not found")
+    return quote_history.product_quote_history(db, tenant_id, product_id)
 
 
 @router.get("/{product_id}/supplier-comparison")

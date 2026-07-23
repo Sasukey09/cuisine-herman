@@ -17,6 +17,7 @@ import {
   previewQuote,
   confirmQuote,
   getQuoteMatrix,
+  getProductQuoteHistory,
 } from "@/services/quotes-service";
 import { getApiErrorMessage } from "@/lib/api-error";
 import type {
@@ -167,5 +168,13 @@ export function useOrderQuote(quoteId: string) {
       qc.invalidateQueries({ queryKey: KEY });
     },
     onError: (e) => toast.error(getApiErrorMessage(e)),
+  });
+}
+
+export function useProductQuoteHistory(productId: string) {
+  return useQuery({
+    queryKey: ["product-quote-history", productId],
+    queryFn: () => getProductQuoteHistory(productId),
+    enabled: Boolean(productId),
   });
 }
