@@ -47,6 +47,7 @@ from app.services.classification.classifier import classify
 from app.services.ocr.errors import OcrError, AllProvidersFailedError
 from app.services.ocr.http_errors import ocr_http_error
 from app.services.invoicing import invoice_pricing
+from app.services.quotes import quote_invoice_match
 from app.services.storage import s3_storage
 
 router = APIRouter()
@@ -426,6 +427,36 @@ def api_update_line(
     return updated
 
 
+@router.get("/{invoice_id}/quote-variance")
+def api_invoice_quote_variance(
+    invoice_id: str,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """Écarts entre le devis commandé et cette facture (§9).
+
+    Utilise le devis déjà rattaché ; à défaut, tente le rapprochement (même
+    fournisseur + recouvrement de produits). Rend ``linked: false`` plutôt que
+    d'inventer un rapprochement douteux."""
+    invoice = get_invoice(db, invoice_id, tenant_id)
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    quote = None
+    if getattr(invoice, "quote_id", None):
+        from app.crud import crud_quote
+
+        quote = crud_quote.get_quote(db, tenant_id, str(invoice.quote_id))
+    if quote is None:
+        quote = quote_invoice_match.find_matching_quote(db, tenant_id, invoice)
+    if quote is None:
+        return {"linked": False, "invoice_id": invoice_id}
+
+    report = quote_invoice_match.variance_for_invoice(db, tenant_id, invoice, quote)
+    report["linked"] = True
+    return report
+
+
 @router.post("/extract", response_model=InvoiceExtractionResult)
 async def api_extract_invoice(
     file: UploadFile = File(...),
@@ -592,6 +623,16 @@ def api_confirm_invoice(
         # product to the invoice's supplier (#7) + recomputes recipe costs.
         if product_id and l.unit_price is not None:
             invoice_pricing.reprice_line(db, tenant_id, line)
+
+    # Rattachement au devis commandé correspondant (§9). Best-effort : un
+    # rapprochement impossible ne doit jamais faire échouer l'import.
+    try:
+        matched = quote_invoice_match.find_matching_quote(db, tenant_id, invoice)
+        if matched is not None:
+            invoice.quote_id = matched.id
+            db.commit()
+    except Exception:
+        db.rollback()
 
     return {
         "invoice_id": invoice_id,

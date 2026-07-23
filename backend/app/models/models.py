@@ -194,6 +194,9 @@ class Invoice(Base):
     ocr_status = Column(Text)
     meta = Column("metadata", JSONB)
     created_at = Column(TIMESTAMP, server_default=func.now())
+    # Devis commandé auquel cette facture se rattache : permet de confronter
+    # prix / quantités / TVA prévus et facturés (§9).
+    quote_id = Column(UUID(as_uuid=False), ForeignKey("quotes.id", ondelete="SET NULL"))
 
     lines = relationship("InvoiceLine", back_populates="invoice")
 
@@ -498,6 +501,9 @@ class Quote(Base):
     notes = Column(Text)
     ordered_at = Column(TIMESTAMP)
     created_at = Column(TIMESTAMP, server_default=func.now())
+    # Référence propre à la COMMANDE issue du devis retenu (CMD-AAAA-NNNN),
+    # distincte de `reference` qui identifie le devis lui-même.
+    order_reference = Column(Text)
 
     # --- Imported quote (OCR) --------------------------------------------
     # A quote can now come from a supplier's document instead of manual entry,

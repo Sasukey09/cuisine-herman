@@ -32,6 +32,19 @@ def _next_reference(db: Session, tenant_id: str) -> str:
     return f"{prefix}{count + 1:04d}"
 
 
+def _next_order_reference(db: Session, tenant_id: str) -> str:
+    """Référence de COMMANDE, ex. ``CMD-2026-0003``. Une commande a sa propre
+    numérotation : le devis est une offre, la commande un engagement."""
+    prefix = f"CMD-{datetime.now().year}-"
+    count = (
+        db.query(func.count(Quote.id))
+        .filter(Quote.tenant_id == tenant_id, Quote.order_reference.like(prefix + "%"))
+        .scalar()
+        or 0
+    )
+    return f"{prefix}{count + 1:04d}"
+
+
 def list_quotes(db: Session, tenant_id: str, status: Optional[str] = None) -> List[Quote]:
     q = db.query(Quote).filter(Quote.tenant_id == tenant_id)
     if status:
@@ -210,6 +223,8 @@ def mark_ordered(
     quote.supplier_id = supplier_id
     quote.total_amount = total
     quote.ordered_at = datetime.now()
+    if not quote.order_reference:
+        quote.order_reference = _next_order_reference(db, quote.tenant_id)
     for line in get_lines(db, quote.tenant_id, quote.id):
         if line.product_id is None:
             continue
@@ -263,6 +278,7 @@ def to_read(quote: Quote, supplier_names: Dict[str, str], line_counts: Dict[str,
         "notes": quote.notes,
         "line_count": line_counts.get(str(quote.id), 0),
         "ordered_at": quote.ordered_at,
+        "order_reference": quote.order_reference,
         "created_at": quote.created_at,
         # Import OCR
         "quote_number": quote.quote_number,
