@@ -50,6 +50,7 @@ import { getInvoiceFileUrl } from "@/services/invoices-service";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useProducts } from "@/hooks/use-products";
 import { InvoiceControlCard } from "./invoice-control-card";
+import { SafeBoundary } from "@/components/safe-boundary";
 import { useAuthStore } from "@/stores/auth-store";
 import { formatCurrency, formatDate, formatNumber } from "@/lib/utils";
 import type { InvoiceLine } from "@/services/types";
@@ -198,7 +199,9 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
       </Card>
 
       {/* Contrôle prévu / facturé — ne s'affiche que si un devis est rattaché. */}
-      <InvoiceControlCard invoiceId={invoiceId} />
+      <SafeBoundary>
+        <InvoiceControlCard invoiceId={invoiceId} />
+      </SafeBoundary>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
