@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_tenant_id, require_writer
 from app.crud import crud_order
 from app.db.session import get_db
+from app.models.models import Receipt
 from app.schemas.schemas import (
     OrderFromQuoteLinesRequest,
     OrderPlan,
@@ -190,6 +191,23 @@ def api_delete_order(
         raise HTTPException(
             status_code=409,
             detail="Une commande déjà engagée s'annule, elle ne se supprime pas",
+        )
+    # Une réception validée est indestructible — c'est la règle du module. Sans
+    # cette vérification, supprimer la commande laissait des réceptions
+    # orphelines : des constats signés qui référencent une commande disparue,
+    # donc invérifiables. La contrainte doit tenir des deux côtés du lien.
+    received = (
+        db.query(Receipt)
+        .filter(Receipt.tenant_id == tenant_id, Receipt.order_id == order_id)
+        .count()
+    )
+    if received:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Cette commande porte {received} réception(s). "
+                "Supprimez-les d'abord, ou annulez simplement la commande."
+            ),
         )
     crud_order.delete_order(db, order)
     return None
