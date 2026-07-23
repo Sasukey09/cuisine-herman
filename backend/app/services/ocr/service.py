@@ -267,12 +267,132 @@ def normalize_units(unit: Optional[str], qty: Optional[float] = None) -> Tuple[O
     return unit.upper(), qty
 
 
+# --------------------------------------------------------------------------- #
+# Détection du fournisseur
+# --------------------------------------------------------------------------- #
+# Aucun document réel n'écrit « Fournisseur : … » : le nom du fournisseur est
+# l'EN-TÊTE de la page. On garde l'étiquette explicite quand elle existe (c'est
+# le signal le plus sûr) et, à défaut, on lit le haut du document.
+
+# Types de document : une ligne « FACTURE N° 123 » n'est pas une raison sociale.
+_DOC_WORDS = (
+    "facture", "devis", "proforma", "avoir", "bon de commande", "bon de livraison",
+    "note de credit", "note de crédit", "commande", "livraison", "ticket",
+    "reçu", "recu", "invoice", "quotation", "quote", "purchase order",
+    "delivery note", "credit note", "estimate",
+)
+
+# Formes juridiques : très bon indice qu'on tient bien une raison sociale.
+_LEGAL_FORMS = (
+    "sarl", "sasu", "sas", "eurl", "sa", "sci", "snc", "scop", "gie", "sem",
+    "gmbh", "ltd", "llc", "inc", "bv", "spa", "srl", "ag", "nv",
+    "& cie", "et cie", "et fils", "& fils",
+)
+
+# Lignes de contact / identifiants : jamais la raison sociale elle-même.
+_NOISE_RE = re.compile(
+    r"(@|https?://|www\.|\btel\b|\btél\b|\bfax\b|\bsiret\b|\bsiren\b|\brcs\b|"
+    r"\bape\b|\bnaf\b|\btva\s*(intra|n)|\biban\b|\bbic\b|\bcapital\b)",
+    re.IGNORECASE,
+)
+# « 75001 Paris », « 12 rue des Halles » : adresse, pas raison sociale.
+_ADDRESS_RE = re.compile(r"^\s*(\d{5}\s+\w|\d+\s*(bis|ter)?\s*,?\s*(rue|av|avenue|bd|boulevard|imp|impasse|route|chemin|place|zone|za|zi)\b)", re.IGNORECASE)
+_DATE_RE = re.compile(r"\d{1,4}[/\-.]\d{1,2}[/\-.]\d{2,4}")
+
+
+def _clean_line(raw: str) -> str:
+    """Retire le balisage markdown que certains OCR ajoutent (#, **, |)."""
+    s = (raw or "").strip()
+    s = s.strip("#").strip()
+    s = re.sub(r"\*+", "", s)
+    s = re.sub(r"\s{2,}", " ", s)
+    return s.strip(" \t|;:.-")
+
+
+def _looks_like_company(line: str) -> bool:
+    low = line.lower()
+    if len(line) < 3 or len(line) > 60:
+        return False
+    if sum(c.isalpha() for c in line) < 3:
+        return False
+    if _NOISE_RE.search(line) or _ADDRESS_RE.match(line) or _DATE_RE.search(line):
+        return False
+    # « Total TTC 90,00 € », « Net à payer … » : lignes de pied de document.
+    # On réutilise le filtre de synthèse déjà en place plutôt que d'en écrire
+    # un second qui divergerait.
+    if _is_summary(line):
+        return False
+    # Toute ligne portant un montant est un chiffre, pas une raison sociale.
+    if re.search(r"\d[\d  .,]*\s*(?:€|eur\b|\$|ht\b|ttc\b)", low):
+        return False
+    # « FACTURE », « DEVIS N° 12 » … : type de document, pas fournisseur.
+    if any(low.startswith(w) or low == w for w in _DOC_WORDS):
+        return False
+    # Une ligne surtout numérique est un montant / une référence.
+    digits = sum(c.isdigit() for c in line)
+    if digits > len(line) / 3:
+        return False
+    return True
+
+
+def guess_supplier(
+    text: str, max_lines: int = 14, exclude: Optional[str] = None
+) -> Optional[str]:
+    """Raison sociale du fournisseur, lue en haut du document.
+
+    Priorité à l'étiquette explicite ; sinon on parcourt les premières lignes et
+    on retient la meilleure candidate : une forme juridique (SARL, SAS…) ou une
+    ligne en capitales l'emportent, et à égalité la plus haute gagne — sur un
+    document commercial, l'émetteur est en tête de page.
+
+    ``exclude`` est la raison sociale du tenant : sur certains documents c'est
+    le DESTINATAIRE qui figure en tête. Détecter le restaurant comme son propre
+    fournisseur créerait un fournisseur fantôme portant son nom.
+
+    Rend ``None`` plutôt qu'une ligne douteuse : le champ est éditable côté
+    écran, mais un mauvais fournisseur pré-rempli est pire qu'un champ vide
+    (il serait validé sans être relu).
+    """
+    if not text:
+        return None
+
+    def _is_self(value: str) -> bool:
+        if not exclude:
+            return False
+        a = re.sub(r"[^a-z0-9]", "", value.lower())
+        b = re.sub(r"[^a-z0-9]", "", exclude.lower())
+        return bool(a) and bool(b) and (a == b or a in b or b in a)
+
+    m = re.search(r"(?:Fournisseur|Supplier|Vendeur|Émetteur|Emetteur)\s*[:\-]\s*(.+)",
+                  text, re.IGNORECASE)
+    if m:
+        label = _clean_line(m.group(1))
+        if label and not _is_self(label):
+            return label
+
+    best, best_score = None, 0
+    for idx, raw in enumerate([l for l in text.splitlines() if l.strip()][:max_lines]):
+        line = _clean_line(raw)
+        if not _looks_like_company(line) or _is_self(line):
+            continue
+        low = line.lower()
+        score = 1
+        if any(re.search(rf"\b{re.escape(f)}\b", low) for f in _LEGAL_FORMS):
+            score += 3
+        letters = [c for c in line if c.isalpha()]
+        if letters and all(c.isupper() for c in letters) and len(letters) >= 4:
+            score += 2
+        if idx < 3:
+            score += 1
+        if score > best_score:
+            best, best_score = line, score
+    return best
+
+
 def _parse_header(text: str):
     supplier = invoice_date = invoice_number = None
 
-    m_sup = re.search(r"(?:Fournisseur|Supplier)[:\s]+(.+)", text, re.IGNORECASE)
-    if m_sup:
-        supplier = m_sup.group(1).strip()
+    supplier = guess_supplier(text)
 
     m_date = re.search(
         r"Date[:\s]+([0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{4}/[0-9]{2}/[0-9]{2}|[0-9]{2}/[0-9]{2}/[0-9]{4})",
