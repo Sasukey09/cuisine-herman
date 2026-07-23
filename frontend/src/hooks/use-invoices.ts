@@ -18,6 +18,7 @@ import {
   deleteInvoiceLine,
   previewInvoice,
   confirmInvoice,
+  getInvoiceQuoteVariance,
 } from "@/services/invoices-service";
 import { getApiErrorMessage } from "@/lib/api-error";
 import type { InvoiceConfirmRequest } from "@/services/types";
@@ -40,6 +41,15 @@ export function useConfirmInvoice() {
       qc.invalidateQueries({ queryKey: KEY });
     },
     onError: (e) => toast.error(getApiErrorMessage(e)),
+  });
+}
+
+/** Écarts devis ↔ facture. Rend `linked: false` si aucun devis ne correspond. */
+export function useInvoiceQuoteVariance(id?: string) {
+  return useQuery({
+    queryKey: [...KEY, id, "quote-variance"],
+    queryFn: () => getInvoiceQuoteVariance(id as string),
+    enabled: Boolean(id),
   });
 }
 

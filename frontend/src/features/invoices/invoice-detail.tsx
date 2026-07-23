@@ -49,6 +49,7 @@ import {
 import { getInvoiceFileUrl } from "@/services/invoices-service";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useProducts } from "@/hooks/use-products";
+import { QuoteVarianceCard } from "./quote-variance-card";
 import { useAuthStore } from "@/stores/auth-store";
 import { formatCurrency, formatDate, formatNumber } from "@/lib/utils";
 import type { InvoiceLine } from "@/services/types";
@@ -195,6 +196,9 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
           </CardContent>
         )}
       </Card>
+
+      {/* Contrôle prévu / facturé — ne s'affiche que si un devis est rattaché. */}
+      <QuoteVarianceCard invoiceId={invoiceId} />
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0">

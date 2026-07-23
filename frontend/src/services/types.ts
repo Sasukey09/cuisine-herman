@@ -870,6 +870,46 @@ export interface QuoteConfirmRequest {
   lines: QuoteConfirmLineData[];
 }
 
+// --- Écarts devis ↔ facture (§9) ------------------------------------------
+
+export type VarianceStatus =
+  | "ok" | "price_up" | "price_down" | "qty_diff" | "missing" | "extra";
+
+export interface VarianceSide {
+  qty?: number | null;
+  unit_price?: number | null;
+  vat_rate?: number | null;
+  total?: number | null;
+}
+
+export interface VarianceLine {
+  product_id?: string | null;
+  product_name?: string | null;
+  quoted: VarianceSide;
+  billed: VarianceSide;
+  qty_delta?: number | null;
+  price_delta?: number | null;
+  price_delta_pct?: number | null;
+  total_delta?: number | null;
+  vat_mismatch: boolean;
+  status: VarianceStatus;
+}
+
+export interface QuoteVariance {
+  linked: boolean;
+  invoice_id: string;
+  invoice_number?: string | null;
+  quote_id?: string;
+  quote_reference?: string | null;
+  lines?: VarianceLine[];
+  quoted_total?: number;
+  billed_total?: number;
+  total_delta?: number;
+  total_delta_pct?: number | null;
+  issue_count?: number;
+  is_conform?: boolean;
+}
+
 // --- Tableau comparatif multi-devis (produit × fournisseur) ---------------
 
 /** Rang d'une offre : vert / orange / rouge. `null` = hors classement
