@@ -26,7 +26,7 @@ from app.schemas.schemas import (
     QuoteImportResult,
 )
 from app.crud import crud_quote, crud_product, crud_supplier
-from app.services.quotes import quote_service, quote_import
+from app.services.quotes import quote_service, quote_import, quote_matrix
 # --- Pipeline PARTAGE avec les factures (jamais duplique) ------------------
 from app.services.ocr.service import extract_invoice
 from app.services.ocr.errors import OcrError
@@ -202,6 +202,23 @@ def api_delete_line(
 # Strictement le pipeline des factures : validate_upload -> extract_invoice ->
 # match_product + classify. Rien n'est redéveloppé ici ; seul l'en-tête propre
 # au devis (validité / remise / conditions) est enrichi par `quote_import`.
+
+
+@router.get("/matrix")
+def api_quote_matrix(
+    status: str = Query("draft", description="Statut des devis à comparer"),
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """Tableau comparatif multi-devis : une ligne = un produit, une colonne = un
+    fournisseur (§7).
+
+    Chaque offre porte son prix affiché, son **prix à l'unité de base** (le seul
+    comparable entre conditionnements différents), TVA, remise, délai, dispo,
+    validité, son rang (best / mid / worst) et l'écart % avec la meilleure.
+    Voir `quote_matrix.build_matrix` pour les garde-fous (conditionnement
+    illisible, offre périmée)."""
+    return quote_matrix.build_for_tenant(db, tenant_id, statuses=(status,))
 
 
 @router.post("/preview", response_model=QuotePreviewResult)
