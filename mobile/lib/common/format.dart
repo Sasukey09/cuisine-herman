@@ -18,6 +18,20 @@ String pctSigned(num? v) {
 /// Rounded percent: 76.0 -> "76 %".
 String pctRound(num? v) => v == null ? '—' : '${v.round()} %';
 
+/// Nombre destiné à un CHAMP DE SAISIE : 300.0 -> "300", 18.5 -> "18.5".
+///
+/// L'API rend les quantités en flottants, donc une quantité ronde arrive à
+/// `300.0` et s'affichait telle quelle — « 300.0 g » là où la fiche, elle,
+/// affiche « 300 ». Le point décimal est conservé (et non remplacé par une
+/// virgule) parce que la valeur retourne dans un champ éditable : le clavier
+/// numérique Android n'offre pas toujours la virgule.
+String plainNumber(num? v) {
+  if (v == null) return '';
+  final d = v.toDouble();
+  if (d.isNaN || d.isInfinite) return '';
+  return d == d.roundToDouble() ? d.toInt().toString() : '$v';
+}
+
 /// Pill badge: red for a rise, green for a drop (matches the mockup).
 class TrendBadge extends StatelessWidget {
   const TrendBadge(this.pct, {super.key});
