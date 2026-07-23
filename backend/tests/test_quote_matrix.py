@@ -149,3 +149,23 @@ def test_empty_input():
     assert res["suppliers"] == []
     assert res["cheapest_supplier_id"] is None
     assert res["potential_savings"] == 0.0
+
+
+def test_matrix_route_declared_before_quote_id():
+    """Régression (constatée en production) : déclarée APRÈS `/{quote_id}`, la
+    route `/quotes/matrix` était capturée par le paramètre de chemin. Postgres
+    recevait alors « matrix » comme UUID et l'appel finissait en 500.
+
+    FastAPI résout les routes dans l'ordre de déclaration : toute route littérale
+    doit précéder la route paramétrée de même profondeur.
+    """
+    from app.api.api_v1.endpoints.quotes import router
+
+    get_paths = [
+        r.path for r in router.routes if "GET" in getattr(r, "methods", set())
+    ]
+    assert "/matrix" in get_paths
+    assert "/{quote_id}" in get_paths
+    assert get_paths.index("/matrix") < get_paths.index("/{quote_id}"), (
+        "/quotes/matrix doit être déclarée avant /quotes/{quote_id}"
+    )
