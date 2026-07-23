@@ -321,3 +321,93 @@ def test_confirm_import_never_writes_purchase_history_or_prices(db):
         db.query(PurchaseHistory).filter(PurchaseHistory.tenant_id == tenant_id).count()
         == before_history
     ), "un devis ne doit pas créer d'historique d'achat"
+
+
+def test_ordering_an_imported_quote_keeps_the_offered_prices(db):
+    """Régression (trouvée à l'audit global) : commander un devis IMPORTÉ
+    écrasait le prix offert par le fournisseur avec notre historique d'achat.
+
+    Deux dégâts : la commande ne gardait plus les prix du devis (§8), et le
+    contrôle devis/facture (§9) devenait circulaire — on comparait la facture
+    à un prix que cette facture avait elle-même alimenté par l'historique."""
+    tenant_id, sup_a, sup_b, p1, p2 = _seed(db)
+
+    payload = QuoteConfirmRequest(
+        title="Devis importé",
+        supplier_id=sup_a,
+        quote_number="DV-901",
+        date=date(2026, 7, 23),
+        lines=[
+            QuoteConfirmLine(
+                description="Farine T55",
+                qty=10,
+                unit_price=18.50,  # le prix OFFERT, lu sur le document
+                action="associate",
+                product_id=p1,
+            )
+        ],
+    )
+    result = quote_import.confirm_import(db, tenant_id, payload)
+    quote = crud_quote.get_quote(db, tenant_id, result["quote_id"])
+
+    lines = crud_quote.get_lines(db, tenant_id, str(quote.id))
+    totals = quote_service.supplier_totals(db, tenant_id, lines, sup_a)
+    history_price = {l["product_id"]: l["unit_cost"] for l in totals["lines"]}
+    # Le décor n'a d'intérêt que si l'historique dit autre chose que l'offre.
+    assert history_price.get(p1) not in (None, 18.50), (
+        "le seed doit fournir un prix d'historique différent du prix offert"
+    )
+
+    crud_quote.mark_ordered(db, quote, sup_a, totals["total"], history_price)
+
+    line = crud_quote.get_lines(db, tenant_id, str(quote.id))[0]
+    assert float(line.unit_price) == 18.50, "le prix offert par le fournisseur doit survivre"
+    assert str(line.supplier_id) == sup_a
+
+
+def test_ordering_from_another_supplier_drops_a_stale_offer(db):
+    """Retenir un AUTRE fournisseur rend l'offre caduque : on ne peut pas payer
+    le prix de Metro en commandant chez Transgourmet."""
+    tenant_id, sup_a, sup_b, p1, p2 = _seed(db)
+
+    payload = QuoteConfirmRequest(
+        title="Devis importé",
+        supplier_id=sup_a,
+        lines=[
+            QuoteConfirmLine(
+                description="Farine T55", qty=10, unit_price=18.50,
+                action="associate", product_id=p1,
+            )
+        ],
+    )
+    result = quote_import.confirm_import(db, tenant_id, payload)
+    quote = crud_quote.get_quote(db, tenant_id, result["quote_id"])
+
+    lines = crud_quote.get_lines(db, tenant_id, str(quote.id))
+    totals = quote_service.supplier_totals(db, tenant_id, lines, sup_b)
+    cost = {l["product_id"]: l["unit_cost"] for l in totals["lines"]}
+
+    crud_quote.mark_ordered(db, quote, sup_b, totals["total"], cost)
+
+    line = crud_quote.get_lines(db, tenant_id, str(quote.id))[0]
+    assert float(line.unit_price) == cost[p1], "on paie le prix du fournisseur retenu"
+    assert str(line.supplier_id) == sup_b
+
+
+def test_manual_basket_still_gets_its_price_from_history(db):
+    """Non-régression du chantier #1 : un panier monté à la main n'a pas de prix
+    propre, il doit continuer d'être chiffré depuis l'historique."""
+    tenant_id, sup_a, sup_b, p1, p2 = _seed(db)
+
+    quote = crud_quote.create_quote(
+        db, tenant_id, QuoteCreate(title="Panier", lines=[QuoteLineCreate(product_id=p1, qty=5)])
+    )
+    lines = crud_quote.get_lines(db, tenant_id, str(quote.id))
+    assert lines[0].unit_price is None, "une ligne manuelle n'a pas de prix propre"
+
+    totals = quote_service.supplier_totals(db, tenant_id, lines, sup_a)
+    cost = {l["product_id"]: l["unit_cost"] for l in totals["lines"]}
+    crud_quote.mark_ordered(db, quote, sup_a, totals["total"], cost)
+
+    line = crud_quote.get_lines(db, tenant_id, str(quote.id))[0]
+    assert line.unit_price is not None and float(line.unit_price) == cost[p1]
