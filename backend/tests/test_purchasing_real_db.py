@@ -176,8 +176,10 @@ def _order_with_line(db, shop, qty=10, price=18.5):
     return order, order_line
 
 
-def _receive(db, shop, order, order_line, qty, condition="ok"):
-    receipt_id = str(uuid.uuid4())
+def _receive(db, shop, order, order_line, qty, issue=None):
+    """Une réception. ``issue`` est un ``{qty, reason, outcome}`` optionnel —
+    la qualité vit dans des lignes filles, plus dans une colonne d'état."""
+    receipt_id, line_id = str(uuid.uuid4()), str(uuid.uuid4())
     db.add(
         Receipt(
             id=receipt_id,
@@ -192,14 +194,26 @@ def _receive(db, shop, order, order_line, qty, condition="ok"):
     )
     db.add(
         ReceiptLine(
+            id=line_id,
             tenant_id=shop["tenant_id"],
             receipt_id=receipt_id,
             order_line_id=order_line.id,
             product_id=order_line.product_id,
             qty_delivered=Decimal(str(qty)),
-            condition=condition,
         )
     )
+    if issue:
+        from app.models.models import ReceiptLineIssue
+
+        db.add(
+            ReceiptLineIssue(
+                tenant_id=shop["tenant_id"],
+                receipt_line_id=line_id,
+                qty=Decimal(str(issue["qty"])) if issue.get("qty") is not None else None,
+                reason=issue.get("reason", "other"),
+                outcome=issue.get("outcome", "rejected"),
+            )
+        )
     db.commit()
     return receipt_id
 
