@@ -221,7 +221,20 @@ def mark_ordered(
     cost_by_product: Dict[str, Optional[float]],
 ) -> Quote:
     """Convert to an order: stamp the retained supplier + total on the quote and
-    snapshot each line's unit price (from ``cost_by_product``) and supplier."""
+    snapshot each line's unit price (from ``cost_by_product``) and supplier.
+
+    Un prix DÉJÀ porté par la ligne est conservé. Deux origines coexistent :
+
+    - le panier monté à la main n'a pas de prix propre, il est chiffré depuis
+      l'historique d'achat — c'est ``cost_by_product`` qui fait foi ;
+    - la ligne issue d'un devis IMPORTÉ porte le prix offert par le
+      fournisseur, lu sur son document. L'écraser avec notre historique
+      détruirait l'offre (§8 : la commande garde les prix du devis) et rendrait
+      circulaire le contrôle devis/facture — on comparerait la facture à un
+      prix que cette facture a elle-même alimenté.
+
+    Le prix offert n'est gardé que si on commande bien AUPRÈS du fournisseur qui
+    l'a proposé : retenir un autre fournisseur rend son offre caduque."""
     quote.status = "ordered"
     quote.supplier_id = supplier_id
     quote.total_amount = total
@@ -230,6 +243,12 @@ def mark_ordered(
         quote.order_reference = _next_order_reference(db, quote.tenant_id)
     for line in get_lines(db, quote.tenant_id, quote.id):
         if line.product_id is None:
+            continue
+        offered_by_retained_supplier = line.unit_price is not None and (
+            line.supplier_id is None or str(line.supplier_id) == str(supplier_id)
+        )
+        if offered_by_retained_supplier:
+            line.supplier_id = supplier_id
             continue
         price = cost_by_product.get(str(line.product_id))
         if price is not None:
