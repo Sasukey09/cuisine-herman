@@ -9,6 +9,7 @@ import type {
   QuoteConfirmRequest,
   QuoteImportResult,
   QuoteMatrix,
+  ProductQuoteHistory,
 } from "./types";
 
 export async function listQuotes(status?: string) {
@@ -93,5 +94,13 @@ export async function orderQuote(id: string, supplierId: string) {
   const { data } = await api.post<QuoteDetail>(`/quotes/${id}/order`, {
     supplier_id: supplierId,
   });
+  return data;
+}
+
+/** Les offres reçues pour un produit — l'autre moitié de son historique. */
+export async function getProductQuoteHistory(productId: string) {
+  const { data } = await api.get<ProductQuoteHistory>(
+    `/products/${productId}/quote-history`,
+  );
   return data;
 }
