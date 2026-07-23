@@ -892,6 +892,7 @@ class QuoteRead(BaseModel):
     notes: Optional[str] = None
     line_count: Optional[int] = None
     ordered_at: Optional[datetime] = None
+    order_reference: Optional[str] = None
     created_at: Optional[datetime] = None
     # Import OCR : ce que le document du fournisseur dit
     quote_number: Optional[str] = None
