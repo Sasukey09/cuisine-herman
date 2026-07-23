@@ -8,9 +8,10 @@ import '../../common/format.dart';
 import '../../common/ui_kit.dart';
 import '../../core/api_error.dart';
 import '../../core/providers.dart';
-import '../../main.dart' show kMuted, kGood, kBad;
+import '../../main.dart' show kMuted, kGood, kBad, kTerracotta;
 import '../auth/auth_controller.dart';
 import 'recipe_detail_screen.dart';
+import 'recipe_pdf_import_screen.dart';
 
 final _recipesProvider = FutureProvider.autoDispose<Loaded>((ref) async {
   return fetchWithCache(ref, cacheKey: 'recipes', request: () async {
@@ -100,7 +101,10 @@ class RecipesScreen extends ConsumerWidget {
     return Scaffold(
       body: offlineCardList(
         ref: ref,
-        header: const PendingWritesBanner(),
+        header: Column(children: [
+          const PendingWritesBanner(),
+          if (canWrite) _importBanner(context, ref),
+        ]),
         provider: _recipesProvider,
         empty: 'Aucune recette. Touchez + (ou créez-en via l\'assistant / l\'import vidéo).',
         itemBuilder: (r) {
@@ -212,4 +216,35 @@ class RecipesScreen extends ConsumerWidget {
           canWrite ? GradientFab(onPressed: () => _create(context, ref)) : null,
     );
   }
+}
+
+/// Point d'entrée de l'import PDF — parité avec le bouton « Importer une
+/// recette PDF » de la page Recettes du web.
+Widget _importBanner(BuildContext context, WidgetRef ref) {
+  return Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: MockCard(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Importer une recette',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 3),
+        const Text("PDF ou photo — l'IA en tire une fiche technique chiffrée.",
+            style: TextStyle(fontSize: 12, color: kMuted)),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () async {
+              await Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => const RecipePdfImportScreen(),
+              ));
+              ref.invalidate(_recipesProvider);
+            },
+            icon: const Icon(Icons.picture_as_pdf_outlined, size: 18, color: kTerracotta),
+            label: const Text('Choisir un fichier'),
+          ),
+        ),
+      ]),
+    ),
+  );
 }

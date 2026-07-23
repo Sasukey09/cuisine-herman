@@ -113,7 +113,7 @@ Widget importNumField(
   return SizedBox(
     width: width,
     child: TextFormField(
-      initialValue: value != null ? '$value' : '',
+      initialValue: plainNumber(value),
       keyboardType: TextInputType.number,
       onChanged: (v) =>
           onChanged(v.trim().isEmpty ? null : num.tryParse(v.replaceAll(',', '.'))),
