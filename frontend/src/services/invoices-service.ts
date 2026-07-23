@@ -8,7 +8,7 @@ import type {
   Product,
   InvoicePreviewResult,
   InvoiceConfirmRequest,
-  QuoteVariance,
+  InvoiceControl,
 } from "./types";
 
 export async function previewInvoice(file: File) {
@@ -140,7 +140,9 @@ export async function mapLineProduct(
 }
 
 /** Écarts entre le devis commandé et cette facture (§9). */
-export async function getInvoiceQuoteVariance(invoiceId: string) {
-  const { data } = await api.get<QuoteVariance>(`/invoices/${invoiceId}/quote-variance`);
+export async function getInvoiceControl(invoiceId: string) {
+  // /control : commandé → livré → facturé. (L'ancien /quote-variance survit en
+  // alias déprécié côté serveur pour l'app iOS déjà déployée.)
+  const { data } = await api.get<InvoiceControl>(`/invoices/${invoiceId}/control`);
   return data;
 }

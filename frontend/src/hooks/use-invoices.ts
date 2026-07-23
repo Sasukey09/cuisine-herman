@@ -18,7 +18,7 @@ import {
   deleteInvoiceLine,
   previewInvoice,
   confirmInvoice,
-  getInvoiceQuoteVariance,
+  getInvoiceControl,
 } from "@/services/invoices-service";
 import { getApiErrorMessage } from "@/lib/api-error";
 import type { InvoiceConfirmRequest } from "@/services/types";
@@ -45,10 +45,10 @@ export function useConfirmInvoice() {
 }
 
 /** Écarts devis ↔ facture. Rend `linked: false` si aucun devis ne correspond. */
-export function useInvoiceQuoteVariance(id?: string) {
+export function useInvoiceControl(id?: string) {
   return useQuery({
-    queryKey: [...KEY, id, "quote-variance"],
-    queryFn: () => getInvoiceQuoteVariance(id as string),
+    queryKey: [...KEY, id, "control"],
+    queryFn: () => getInvoiceControl(id as string),
     enabled: Boolean(id),
   });
 }

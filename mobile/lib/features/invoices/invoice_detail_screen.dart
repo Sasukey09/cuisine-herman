@@ -7,7 +7,7 @@ import '../../core/api_error.dart';
 import '../../core/providers.dart';
 import '../auth/auth_controller.dart';
 import '../products/product_detail_screen.dart';
-import 'quote_variance_card.dart';
+import 'invoice_control_card.dart';
 import '../../main.dart' show kMuted, kGood, kWarn, kBad;
 
 /// Invoice detail + full line editing — the mobile equivalent of the web
@@ -213,7 +213,7 @@ class InvoiceDetailScreen extends ConsumerWidget {
                 ),
                 // Contrôle prévu / facturé — ne s'affiche que si un devis est
                 // rattaché à cette facture.
-                QuoteVarianceCard(invoiceId: invoiceId),
+                InvoiceControlCard(invoiceId: invoiceId),
                 const SizedBox(height: 16),
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 4),

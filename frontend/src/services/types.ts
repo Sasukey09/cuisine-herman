@@ -877,43 +877,55 @@ export interface QuoteConfirmRequest {
   lines: QuoteConfirmLineData[];
 }
 
-// --- Écarts devis ↔ facture (§9) ------------------------------------------
+// --- Contrôle facture : commandé → livré → facturé (Phase 4) ---------------
 
-export type VarianceStatus =
-  | "ok" | "price_up" | "price_down" | "qty_diff" | "missing" | "extra";
+export type ControlFlag =
+  | "billed_not_received" | "extra" | "over_billed" | "not_received"
+  | "price_up" | "vat_diff" | "qty_diff" | "price_down" | "missing";
 
-export interface VarianceSide {
+export type ControlStatus = "ok" | ControlFlag;
+
+export interface ControlOrdered {
+  qty?: number | null;
+  unit_price?: number | null;
+  vat_rate?: number | null;
+}
+export interface ControlReceived {
+  qty?: number | null;
+}
+export interface ControlBilled {
   qty?: number | null;
   unit_price?: number | null;
   vat_rate?: number | null;
   total?: number | null;
 }
 
-export interface VarianceLine {
+export interface InvoiceControlLine {
   product_id?: string | null;
-  product_name?: string | null;
-  quoted: VarianceSide;
-  billed: VarianceSide;
-  qty_delta?: number | null;
+  description?: string | null;
+  ordered?: ControlOrdered | null;
+  received?: ControlReceived | null;
+  billed?: ControlBilled | null;
   price_delta?: number | null;
-  price_delta_pct?: number | null;
   total_delta?: number | null;
-  vat_mismatch: boolean;
-  status: VarianceStatus;
+  flags: ControlFlag[];
+  status: ControlStatus;
 }
 
-export interface QuoteVariance {
+export interface InvoiceControl {
   linked: boolean;
   invoice_id: string;
   invoice_number?: string | null;
-  quote_id?: string;
-  quote_reference?: string | null;
-  lines?: VarianceLine[];
-  quoted_total?: number;
+  order_id?: string | null;
+  order_reference?: string | null;
+  order_status?: string | null;
+  lines?: InvoiceControlLine[];
+  ordered_total?: number;
   billed_total?: number;
   total_delta?: number;
-  total_delta_pct?: number | null;
   issue_count?: number;
+  /** Le compteur qui doit alerter : on paie ce qu'on n'a pas reçu. */
+  billed_not_received_count?: number;
   is_conform?: boolean;
 }
 
