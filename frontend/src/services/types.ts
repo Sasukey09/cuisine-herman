@@ -870,6 +870,70 @@ export interface QuoteConfirmRequest {
   lines: QuoteConfirmLineData[];
 }
 
+// --- Tableau comparatif multi-devis (produit × fournisseur) ---------------
+
+/** Rang d'une offre : vert / orange / rouge. `null` = hors classement
+ *  (offre périmée ou produit indisponible). */
+export type OfferRank = "best" | "mid" | "worst" | null;
+
+export interface MatrixOffer {
+  supplier_id: string | null;
+  supplier_name?: string | null;
+  quote_id?: string | null;
+  quote_reference?: string | null;
+  unit_price?: number | null;
+  qty?: number | null;
+  vat_rate?: number | null;
+  discount_pct?: number | null;
+  pack_size?: string | null;
+  /** Le seul prix comparable entre conditionnements différents. */
+  price_per_base_unit?: number | null;
+  base_unit?: string | null;
+  lead_time_days?: number | null;
+  available: boolean;
+  preferred: boolean;
+  valid_until?: string | null;
+  expired: boolean;
+  rank: OfferRank;
+  delta_pct_vs_best?: number | null;
+}
+
+export interface MatrixProduct {
+  product_id: string;
+  product_name?: string | null;
+  /** "base_unit" = classement au prix/kg ; "unit_price" = repli fragile. */
+  basis: "base_unit" | "unit_price";
+  mixed_packaging: boolean;
+  offers: MatrixOffer[];
+  best_supplier_id?: string | null;
+  best_price?: number | null;
+  history: {
+    last_paid?: number | null;
+    avg_paid?: number | null;
+    best_paid?: number | null;
+  };
+  vs_last_paid_pct?: number | null;
+}
+
+export interface MatrixSupplier {
+  supplier_id: string;
+  supplier_name?: string | null;
+  covered: number;
+  best_count: number;
+  total: number;
+  max_lead_time_days?: number | null;
+  preferred: boolean;
+}
+
+export interface QuoteMatrix {
+  products: MatrixProduct[];
+  suppliers: MatrixSupplier[];
+  product_count: number;
+  cheapest_supplier_id?: string | null;
+  fastest_supplier_id?: string | null;
+  potential_savings: number;
+}
+
 export interface QuoteImportResult {
   quote_id: string;
   reference?: string | null;

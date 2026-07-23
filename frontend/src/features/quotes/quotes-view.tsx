@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, Trash2, ClipboardList, Loader2, Upload } from "lucide-react";
+import { Plus, Trash2, ClipboardList, Loader2, Upload, Table2 } from "lucide-react";
 
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -52,18 +52,25 @@ export function QuotesView() {
         title="Devis"
         description="Comparez vos fournisseurs sur un panier de produits, puis commandez au meilleur."
         action={
-          canWrite ? (
-            <>
-              <Button variant="outline" asChild>
-                <Link href="/devis/import">
-                  <Upload /> Importer un devis
-                </Link>
-              </Button>
-              <Button variant="gradient" onClick={() => setOpen(true)}>
-                <Plus /> Nouveau devis
-              </Button>
-            </>
-          ) : null
+          <>
+            <Button variant="outline" asChild>
+              <Link href="/devis/comparatif">
+                <Table2 /> Comparatif
+              </Link>
+            </Button>
+            {canWrite ? (
+              <>
+                <Button variant="outline" asChild>
+                  <Link href="/devis/import">
+                    <Upload /> Importer un devis
+                  </Link>
+                </Button>
+                <Button variant="gradient" onClick={() => setOpen(true)}>
+                  <Plus /> Nouveau devis
+                </Button>
+              </>
+            ) : null}
+          </>
         }
       />
 
