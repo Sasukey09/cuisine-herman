@@ -95,6 +95,9 @@ def build_matrix(
                     "vat_rate": _f(o.get("vat_rate")),
                     "discount_pct": discount,
                     "pack_size": o.get("pack_size"),
+                    "brand": o.get("brand"),
+                    "min_qty": _f(o.get("min_qty")),
+                    "delivery_fee": _f(o.get("delivery_fee")),
                     "price_per_base_unit": ppu[0] if ppu else None,
                     "base_unit": ppu[1] if ppu else None,
                     "lead_time_days": cat.get("lead_time_days"),
@@ -180,6 +183,8 @@ def build_matrix(
                     "covered": 0,
                     "best_count": 0,
                     "total": 0.0,
+                    "delivery_fee": None,
+                    "total_with_delivery": 0.0,
                     "max_lead_time_days": None,
                     "preferred": False,
                 },
@@ -191,6 +196,10 @@ def build_matrix(
                 agg["best_count"] += 1
             if r["unit_price"] is not None and r["qty"]:
                 agg["total"] += r["unit_price"] * r["qty"]
+            if r["delivery_fee"] is not None:
+                # Les frais de port s'appliquent à la commande entière : on
+                # retient ceux du devis, pas une somme par ligne.
+                agg["delivery_fee"] = max(agg["delivery_fee"] or 0.0, r["delivery_fee"])
             if r["lead_time_days"] is not None:
                 agg["max_lead_time_days"] = max(
                     agg["max_lead_time_days"] or 0, r["lead_time_days"]
@@ -201,12 +210,14 @@ def build_matrix(
     suppliers = list(supplier_totals.values())
     for s in suppliers:
         s["total"] = round(s["total"], 2)
-    suppliers.sort(key=lambda s: (-s["best_count"], s["total"]))
+        # Le « moins cher » se juge sur ce qu'on paie réellement : panier + port.
+        s["total_with_delivery"] = round(s["total"] + (s["delivery_fee"] or 0.0), 2)
+    suppliers.sort(key=lambda s: (-s["best_count"], s["total_with_delivery"]))
 
     priceable = len(products)
     full = [s for s in suppliers if s["covered"] == priceable and priceable > 0]
-    cheapest = min(full, key=lambda s: s["total"], default=None) or (
-        min(suppliers, key=lambda s: s["total"], default=None)
+    cheapest = min(full, key=lambda s: s["total_with_delivery"], default=None) or (
+        min(suppliers, key=lambda s: s["total_with_delivery"], default=None)
     )
     with_lead = [s for s in suppliers if s["max_lead_time_days"] is not None]
     fastest = min(with_lead, key=lambda s: s["max_lead_time_days"], default=None)
@@ -295,6 +306,9 @@ def build_for_tenant(db, tenant_id: str, statuses=("draft",)) -> Dict[str, Any]:
                 "vat_rate": _f(l.vat_rate),
                 "discount_pct": _f(l.discount_pct),
                 "pack_size": l.pack_size,
+                "brand": l.brand,
+                "min_qty": _f(l.min_qty),
+                "delivery_fee": _f(q.delivery_fee) if q else None,
                 "valid_until": q.valid_until if q else None,
             }
         )

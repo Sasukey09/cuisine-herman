@@ -2,9 +2,9 @@
 
 Le pipeline OCR partage avec les factures (`ocr.service.extract_invoice`) rend
 fournisseur / date / numero / total / lignes. Un devis porte en plus une
-**validite**, une **remise globale** et des **conditions** — trois choses qui
-n'ont pas de sens sur une facture et qui ne justifient donc pas de toucher au
-coeur OCR commun.
+**validite**, une **remise globale**, des **frais de port** et des
+**conditions** — des choses qui n'ont pas de sens sur une facture deja emise et
+qui ne justifient donc pas de toucher au coeur OCR commun.
 
 Tout ici est **pur** (texte -> valeurs) : teste sans BDD ni reseau.
 """
@@ -29,6 +29,34 @@ _VALID_UNTIL_REL = re.compile(
 _DISCOUNT = re.compile(
     r"remise[^\n\d%]{0,30}?" + _MONEY + r"\s*(?:€|eur)", re.IGNORECASE
 )
+# "Frais de port : 45,00 €", "Livraison 25 EUR", "Participation aux frais de
+# transport 18,00 €". Le mot "franco" (ou "offerts"/"inclus") signifie 0 € : il
+# faut le distinguer d'une absence d'information, qui laisse le champ vide.
+_DELIVERY_FEE = re.compile(
+    r"(?:frais\s+de\s+(?:port|livraison|transport)"
+    r"|port\s+et\s+emballage"
+    r"|(?:co[uû]t|montant)\s+(?:de\s+)?(?:la\s+)?livraison"
+    # En début de ligne seulement : une ligne de tableau « Livraison 25,00 € ».
+    # Sans cette ancre, « Total TTC livraison comprise 240,00 € » ferait passer
+    # le total de la commande pour des frais de port.
+    r"|^[ \t|*]*(?:port|livraison|transport)\b)"
+    r"[^\n\d%]{0,40}?" + _MONEY + r"\s*(?:€|eur\b)",
+    re.IGNORECASE | re.MULTILINE,
+)
+_DELIVERY_FREE = re.compile(
+    r"(?:franco(?:\s+de\s+port)?"
+    r"|(?:frais\s+de\s+)?(?:port|livraison|transport)[^\n]{0,20}?"
+    r"(?:offerts?|gratuits?|inclus(?:e?s)?|compris(?:es?)?))",
+    re.IGNORECASE,
+)
+# « Franco à partir de 300 € » : la gratuité est conditionnelle, elle dépend du
+# panier final. On préfère ne rien dire plutôt que promettre 0 € au comparateur.
+_DELIVERY_CONDITIONAL = re.compile(
+    r"(?:à\s+partir\s+de|a\s+partir\s+de|d[èe]s\b|au[- ]del[àa]\s+de|"
+    r"pour\s+toute\s+commande|si\s+)",
+    re.IGNORECASE,
+)
+
 _CONDITIONS = re.compile(
     r"(?:conditions?(?:\s+de)?\s+(?:paiement|r[èe]glement|livraison)|modalit[ée]s?"
     r"\s+de\s+(?:paiement|r[èe]glement))\s*[:\-]?\s*(.+)",
@@ -90,6 +118,32 @@ def parse_discount_total(text: str) -> Optional[float]:
     return _to_float(m.group(1)) if m else None
 
 
+def parse_delivery_fee(text: str) -> Optional[float]:
+    """Frais de port du devis.
+
+    Ils s'appliquent à la commande entière, pas à une ligne : un fournisseur 2 %
+    moins cher au panier mais facturant 50 € de port n'est pas le moins cher.
+
+    « Franco de port » / « livraison offerte » rendent **0.0**, et non ``None`` :
+    la gratuité est une information, l'absence de mention n'en est pas une. En
+    revanche « franco à partir de 300 € » rend ``None`` : la gratuité dépend du
+    panier final, la promettre fausserait le comparatif.
+    """
+    if not text:
+        return None
+    free = _DELIVERY_FREE.search(text)
+    # La gratuité conditionnelle se teste AVANT le montant : dans « livraison
+    # offerte dès 200 € », les 200 € sont le seuil de commande, pas le port.
+    if free and _DELIVERY_CONDITIONAL.search(text[free.start() : free.end() + 60]):
+        return None
+    m = _DELIVERY_FEE.search(text)
+    if m:
+        value = _to_float(m.group(1))
+        if value is not None:
+            return value
+    return 0.0 if free else None
+
+
 def parse_conditions(text: str, max_len: int = 300) -> Optional[str]:
     """Conditions de paiement / règlement / livraison, en une ligne."""
     if not text:
@@ -106,6 +160,7 @@ def enrich_header(text: str, quote_date: Optional[date] = None) -> dict:
     return {
         "valid_until": parse_valid_until(text, quote_date),
         "discount_total": parse_discount_total(text),
+        "delivery_fee": parse_delivery_fee(text),
         "conditions": parse_conditions(text),
     }
 

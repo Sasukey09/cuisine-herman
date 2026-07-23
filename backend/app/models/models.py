@@ -517,6 +517,10 @@ class Quote(Base):
     ocr_status = Column(Text)  # confirmed | error | … (mirrors invoices)
     parsed = Column(Boolean, default=False)
     discount_total = Column(Numeric)  # global discount granted on the quote
+    # Frais de port : ils portent sur la COMMANDE entière, pas sur une ligne.
+    # Un fournisseur 2 % moins cher avec 50 € de port peut coûter plus qu'un
+    # concurrent en franco — le comparateur doit en tenir compte (§5).
+    delivery_fee = Column(Numeric)
     conditions = Column(Text)  # payment/delivery terms, free text from the doc
 
     # delete-orphan + passive_deletes: deleting a quote must remove its lines.
@@ -552,5 +556,7 @@ class QuoteLine(Base):
     line_total = Column(Numeric)
     discount_pct = Column(Numeric)  # per-line discount (remise)
     pack_size = Column(Text)  # conditionnement as quoted ("carton de 6", "5 kg")
+    brand = Column(Text)  # marque proposée (distributeur vs marque nationale)
+    min_qty = Column(Numeric)  # quantité minimale de commande
 
     quote = relationship("Quote", back_populates="lines")

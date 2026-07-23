@@ -169,3 +169,53 @@ def test_matrix_route_declared_before_quote_id():
     assert get_paths.index("/matrix") < get_paths.index("/{quote_id}"), (
         "/quotes/matrix doit être déclarée avant /quotes/{quote_id}"
     )
+
+
+# --- §5 : frais de livraison, marque, quantité minimale --------------------
+def test_delivery_fee_changes_who_is_cheapest():
+    """Le cas qui justifie de modéliser le port : moins cher au panier, plus
+    cher une fois livré."""
+    res = build_matrix(
+        [
+            offer("p1", "A", 10.0, pack_size="sac 10kg", qty=10, delivery_fee=0),
+            offer("p1", "B", 9.5, pack_size="sac 10kg", qty=10, delivery_fee=50),
+        ],
+        supplier_names=NAMES,
+    )
+    by = {s["supplier_id"]: s for s in res["suppliers"]}
+    # B est moins cher sur le panier…
+    assert by["B"]["total"] < by["A"]["total"]
+    # …mais 50 € de port l'emportent : 95 + 50 = 145 contre 100.
+    assert by["B"]["total_with_delivery"] == 145.0
+    assert by["A"]["total_with_delivery"] == 100.0
+    assert res["cheapest_supplier_id"] == "A", "le moins cher est celui qu'on paie le moins"
+
+
+def test_delivery_fee_is_counted_once_not_per_line():
+    res = build_matrix(
+        [
+            offer("p1", "A", 10.0, pack_size="sac 10kg", qty=1, delivery_fee=20),
+            offer("p2", "A", 10.0, pack_size="sac 10kg", qty=1, delivery_fee=20),
+        ],
+        supplier_names=NAMES,
+    )
+    a = res["suppliers"][0]
+    assert a["delivery_fee"] == 20.0, "le port porte sur la commande, pas sur chaque ligne"
+    assert a["total_with_delivery"] == 40.0  # 20 de panier + 20 de port
+
+
+def test_brand_and_min_qty_are_exposed():
+    res = build_matrix(
+        [offer("p1", "A", 5.0, pack_size="sac 5kg", brand="Marque Distributeur", min_qty=6)],
+        supplier_names=NAMES,
+    )
+    o = res["products"][0]["offers"][0]
+    assert o["brand"] == "Marque Distributeur"
+    assert o["min_qty"] == 6.0
+
+
+def test_no_delivery_fee_keeps_totals_identical():
+    res = build_matrix([offer("p1", "A", 10.0, pack_size="sac 10kg", qty=3)], supplier_names=NAMES)
+    a = res["suppliers"][0]
+    assert a["delivery_fee"] is None
+    assert a["total_with_delivery"] == a["total"] == 30.0

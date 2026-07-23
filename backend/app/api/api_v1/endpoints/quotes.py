@@ -308,6 +308,7 @@ async def api_preview_quote(
             quote_number=extraction.invoice_number,
             total_amount=getattr(extraction, "total_amount", None),
             discount_total=header["discount_total"],
+            delivery_fee=header["delivery_fee"],
             conditions=header["conditions"],
             lines=lines,
         )

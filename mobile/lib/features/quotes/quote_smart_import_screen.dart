@@ -30,6 +30,7 @@ class _State extends ConsumerState<QuoteSmartImportScreen> {
   final _number = TextEditingController();
   final _conditions = TextEditingController();
   final _discount = TextEditingController();
+  final _delivery = TextEditingController();
   String? _date;
   String? _validUntil;
   List<ImportLine>? _lines;
@@ -42,6 +43,7 @@ class _State extends ConsumerState<QuoteSmartImportScreen> {
     _number.dispose();
     _conditions.dispose();
     _discount.dispose();
+    _delivery.dispose();
     super.dispose();
   }
 
@@ -74,6 +76,7 @@ class _State extends ConsumerState<QuoteSmartImportScreen> {
       _number.text = '${data['quote_number'] ?? ''}';
       _conditions.text = '${data['conditions'] ?? ''}';
       _discount.text = data['discount_total'] == null ? '' : '${data['discount_total']}';
+      _delivery.text = data['delivery_fee'] == null ? '' : '${data['delivery_fee']}';
       _date = data['date'] as String?;
       _validUntil = data['valid_until'] as String?;
       setState(() {
@@ -99,6 +102,10 @@ class _State extends ConsumerState<QuoteSmartImportScreen> {
         'date': _date,
         'valid_until': _validUntil,
         'conditions': _conditions.text.trim().isEmpty ? null : _conditions.text.trim(),
+        // Le port entre dans le comparatif : il décide qui est le moins cher.
+        'delivery_fee': _delivery.text.trim().isEmpty
+            ? null
+            : num.tryParse(_delivery.text.replaceAll(',', '.')),
         'discount_total': _discount.text.trim().isEmpty
             ? null
             : num.tryParse(_discount.text.replaceAll(',', '.')),
@@ -205,13 +212,18 @@ class _State extends ConsumerState<QuoteSmartImportScreen> {
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  flex: 2,
                   child: TextField(
-                    controller: _conditions,
-                    decoration: const InputDecoration(labelText: 'Conditions'),
+                    controller: _delivery,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'Livraison (€)'),
                   ),
                 ),
               ]),
+              const SizedBox(height: 6),
+              TextField(
+                controller: _conditions,
+                decoration: const InputDecoration(labelText: 'Conditions'),
+              ),
             ]),
           ),
           const SizedBox(height: 8),

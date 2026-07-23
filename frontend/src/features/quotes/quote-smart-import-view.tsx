@@ -42,6 +42,7 @@ export function QuoteSmartImportView() {
   const [validUntil, setValidUntil] = useState("");
   const [discountTotal, setDiscountTotal] = useState("");
   const [conditions, setConditions] = useState("");
+  const [deliveryFee, setDeliveryFee] = useState("");
   const [rows, setRows] = useState<Row[] | null>(null);
 
   function onFile(file: File) {
@@ -53,6 +54,7 @@ export function QuoteSmartImportView() {
         setValidUntil(res.valid_until ?? "");
         setDiscountTotal(res.discount_total != null ? String(res.discount_total) : "");
         setConditions(res.conditions ?? "");
+        setDeliveryFee(res.delivery_fee != null ? String(res.delivery_fee) : "");
         setRows(
           res.lines.map((l) => ({
             ...l,
@@ -92,6 +94,7 @@ export function QuoteSmartImportView() {
         valid_until: validUntil || null,
         discount_total: discountTotal === "" ? null : Number(discountTotal),
         conditions: conditions || null,
+        delivery_fee: deliveryFee === "" ? null : Number(deliveryFee),
         currency: "EUR",
         lines,
       },
@@ -171,6 +174,19 @@ export function QuoteSmartImportView() {
                   onChange={(e) => setDiscountTotal(e.target.value)}
                   placeholder="0"
                 />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="qi-delivery">Frais de livraison (€)</Label>
+                <Input
+                  id="qi-delivery"
+                  type="number"
+                  value={deliveryFee}
+                  onChange={(e) => setDeliveryFee(e.target.value)}
+                  placeholder="0"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Comptés dans le comparatif : ils changent qui est le moins cher.
+                </p>
               </div>
               <div className="space-y-1">
                 <Label htmlFor="qi-conditions">Conditions</Label>

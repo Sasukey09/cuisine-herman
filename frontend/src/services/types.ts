@@ -822,6 +822,8 @@ export interface QuotePreviewLineData {
   vat_rate?: number | null;
   discount_pct?: number | null;
   pack_size?: string | null;
+  brand?: string | null;
+  min_qty?: number | null;
   matched_product_id?: string | null;
   matched_product_name?: string | null;
   match_confidence?: number | null;
@@ -838,6 +840,7 @@ export interface QuotePreviewResult {
   total_amount?: number | null;
   currency?: string | null;
   discount_total?: number | null;
+  delivery_fee?: number | null;
   conditions?: string | null;
   lines: QuotePreviewLineData[];
 }
@@ -851,6 +854,8 @@ export interface QuoteConfirmLineData {
   vat_rate?: number | null;
   discount_pct?: number | null;
   pack_size?: string | null;
+  brand?: string | null;
+  min_qty?: number | null;
   action: "create" | "associate" | "skip";
   product_id?: string | null;
   category?: string | null;
@@ -866,6 +871,8 @@ export interface QuoteConfirmRequest {
   total_amount?: number | null;
   currency?: string | null;
   discount_total?: number | null;
+  /** Frais de port du devis : ils portent sur la commande entière. */
+  delivery_fee?: number | null;
   conditions?: string | null;
   lines: QuoteConfirmLineData[];
 }
@@ -926,6 +933,9 @@ export interface MatrixOffer {
   vat_rate?: number | null;
   discount_pct?: number | null;
   pack_size?: string | null;
+  brand?: string | null;
+  min_qty?: number | null;
+  delivery_fee?: number | null;
   /** Le seul prix comparable entre conditionnements différents. */
   price_per_base_unit?: number | null;
   base_unit?: string | null;
@@ -961,6 +971,10 @@ export interface MatrixSupplier {
   covered: number;
   best_count: number;
   total: number;
+  delivery_fee?: number | null;
+  /** Panier + frais de port : ce qu'on paie vraiment, et ce sur quoi se juge
+   *  le « moins cher ». */
+  total_with_delivery: number;
   max_lead_time_days?: number | null;
   preferred: boolean;
 }
@@ -981,4 +995,40 @@ export interface QuoteImportResult {
   created_products: number;
   associated: number;
   skipped: number;
+}
+
+// --- Historique des offres reçues pour un produit (§10) ---------------------
+// Distinct de l'historique d'ACHAT : ce sont des prix proposés, pas payés.
+export interface ProductQuoteOffer {
+  quote_id?: string | null;
+  quote_reference?: string | null;
+  quote_number?: string | null;
+  status?: string | null;
+  date?: string | null;
+  valid_until?: string | null;
+  supplier_id?: string | null;
+  supplier_name?: string | null;
+  unit_price?: number | null;
+  /** Prix remise de ligne déduite : le prix réellement offert. */
+  net_unit_price?: number | null;
+  discount_pct?: number | null;
+  vat_rate?: number | null;
+  qty?: number | null;
+  pack_size?: string | null;
+  brand?: string | null;
+  min_qty?: number | null;
+  /** Écart avec l'offre précédente DU MÊME fournisseur. */
+  delta_pct_vs_previous?: number | null;
+  is_best: boolean;
+}
+
+export interface ProductQuoteHistory {
+  offers: ProductQuoteOffer[];
+  count: number;
+  supplier_count: number;
+  best_price?: number | null;
+  best_supplier_id?: string | null;
+  best_supplier_name?: string | null;
+  latest_price?: number | null;
+  avg_price?: number | null;
 }
