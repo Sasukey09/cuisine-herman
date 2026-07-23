@@ -20,7 +20,6 @@ from app.models.models import (
     Organization,
     Product,
     ProductPrice,
-    Purchase,
     PurchaseHistory,
     Recipe,
     RecipeIngredient,
@@ -135,7 +134,6 @@ def test_typing_a_price_never_invents_a_purchase(db, restaurant):
 
     tid = restaurant["tenant_id"]
     assert db.query(ProductPrice).filter(ProductPrice.tenant_id == tid).count() == 1
-    assert db.query(Purchase).filter(Purchase.tenant_id == tid).count() == 0
     assert db.query(PurchaseHistory).filter(PurchaseHistory.tenant_id == tid).count() == 0
 
 

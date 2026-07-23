@@ -21,7 +21,10 @@ from app.models.models import (
     Organization,
     Product,
     ProductPrice,
-    Purchase,
+    PurchaseOrder,
+    PurchaseOrderLine,
+    Receipt,
+    ReceiptLine,
     Recipe,
     RecipeIngredient,
     RecipeVersion,
@@ -100,13 +103,49 @@ def seeded_tenant(db):
             qty=Decimal("0.2"),
         )
     )
+    # Le domaine Achats : une commande passée, reçue. Un restaurant réel en a ;
+    # une coquille vide, non — et c'est justement sur une coquille vide que
+    # l'effacement réussissait avant qu'un test contre une vraie base ne le dise.
+    order_id = str(uuid.uuid4())
+    order_line_id = str(uuid.uuid4())
+    receipt_id = str(uuid.uuid4())
     db.add(
-        Purchase(
+        PurchaseOrder(
+            id=order_id,
+            tenant_id=tenant_id,
+            reference="CMD-2026-0001",
+            supplier_id=supplier_id,          # → suppliers
+            status="received",
+        )
+    )
+    db.add(
+        PurchaseOrderLine(
+            id=order_line_id,
+            tenant_id=tenant_id,
+            order_id=order_id,
+            product_id=product_id,            # → products
+            description="Beurre doux AOP",
+            qty_ordered=Decimal("10"),
+            unit_price=Decimal("8.5"),
+        )
+    )
+    db.add(
+        Receipt(
+            id=receipt_id,
+            tenant_id=tenant_id,
+            reference="REC-2026-0001",
+            order_id=order_id,
+            supplier_id=supplier_id,
+        )
+    )
+    db.add(
+        ReceiptLine(
             id=str(uuid.uuid4()),
             tenant_id=tenant_id,
-            product_id=product_id,            # → products, NO cascade
-            supplier_id=supplier_id,          # → suppliers, NO cascade
-            qty=Decimal("10"),
+            receipt_id=receipt_id,
+            order_line_id=order_line_id,
+            product_id=product_id,
+            qty_received=Decimal("10"),
         )
     )
     rgpd.record(db, tenant_id, None, rgpd.ACTION_LOGIN, {"ip": "1.2.3.4"})
@@ -169,7 +208,7 @@ def test_erasure_really_erases_a_restaurant_that_has_actually_been_used(db, seed
     """
     tenant_id = seeded_tenant
     assert db.query(Product).filter(Product.tenant_id == tenant_id).count() == 1
-    assert db.query(Purchase).filter(Purchase.tenant_id == tenant_id).count() == 1
+    assert db.query(PurchaseOrder).filter(PurchaseOrder.tenant_id == tenant_id).count() == 1
 
     assert rgpd.delete_organization(db, tenant_id) is True
 
@@ -179,7 +218,10 @@ def test_erasure_really_erases_a_restaurant_that_has_actually_been_used(db, seed
         (Supplier, "suppliers"),
         (Invoice, "invoices"),
         (Recipe, "recipes"),
-        (Purchase, "purchases"),
+        (PurchaseOrder, "purchase orders"),
+        (PurchaseOrderLine, "order lines"),
+        (Receipt, "goods receipts"),
+        (ReceiptLine, "receipt lines"),
         (User, "staff accounts"),
     ):
         assert db.query(model).filter(model.tenant_id == tenant_id).count() == 0, (

@@ -27,8 +27,11 @@ from app.models.models import (
     PriceAlert,
     Product,
     ProductPrice,
-    Purchase,
+    PurchaseOrder,
+    PurchaseOrderLine,
     PurchaseHistory,
+    Receipt,
+    ReceiptLine,
     Recipe,
     RecipeIngredient,
     RecipeVersion,
@@ -174,6 +177,10 @@ def export_organization(db: Session, tenant_id: str) -> Dict[str, Any]:
         "recipe_ingredients": _by_ids(
             RecipeIngredient, RecipeIngredient.recipe_version_id, version_ids
         ),
+        "purchase_orders": _rows(db, PurchaseOrder, tenant_id),
+        "purchase_order_lines": _rows(db, PurchaseOrderLine, tenant_id),
+        "receipts": _rows(db, Receipt, tenant_id),
+        "receipt_lines": _rows(db, ReceiptLine, tenant_id),
         "purchase_history": _rows(db, PurchaseHistory, tenant_id),
         "price_alerts": _rows(db, PriceAlert, tenant_id),
         "ai_conversations": _rows(db, AIConversation, tenant_id),
@@ -234,8 +241,9 @@ def delete_organization(db: Session, tenant_id: str) -> bool:
             RecipeIngredient.recipe_version_id.in_(version_ids)
         ).delete(synchronize_session=False)
 
-    # purchases.product_id → products, purchases.supplier_id → suppliers
-    db.query(Purchase).filter(Purchase.tenant_id == tenant_id).delete(synchronize_session=False)
+    # Le domaine Achats (commandes, réceptions, mouvements de stock) ne bloque
+    # pas : chacune de ses clés étrangères vers produits et fournisseurs porte un
+    # ON DELETE explicite, et tenant_id cascade depuis l'organisation.
 
     if recipe_ids:
         # recipe_versions.author_id → users
