@@ -8,6 +8,7 @@ import type {
   Product,
   InvoicePreviewResult,
   InvoiceConfirmRequest,
+  QuoteVariance,
 } from "./types";
 
 export async function previewInvoice(file: File) {
@@ -135,5 +136,11 @@ export async function mapLineProduct(
     `/invoices/${invoiceId}/lines/${lineId}/map-product`,
     { product_id: productId },
   );
+  return data;
+}
+
+/** Écarts entre le devis commandé et cette facture (§9). */
+export async function getInvoiceQuoteVariance(invoiceId: string) {
+  const { data } = await api.get<QuoteVariance>(`/invoices/${invoiceId}/quote-variance`);
   return data;
 }
