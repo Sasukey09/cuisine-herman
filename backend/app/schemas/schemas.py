@@ -993,3 +993,100 @@ class QuoteImportResult(BaseModel):
     created_products: int
     associated: int
     skipped: int
+
+
+# --------------------------------------------------------------------------- #
+# Domaine Achats : commandes fournisseur
+# --------------------------------------------------------------------------- #
+class PurchaseOrderLineRead(BaseModel):
+    id: str
+    product_id: Optional[str] = None
+    product_name: Optional[str] = None
+    description: Optional[str] = None
+    qty_ordered: Optional[float] = None
+    unit_id: Optional[int] = None
+    unit_price: Optional[float] = None
+    vat_rate: Optional[float] = None
+    discount_pct: Optional[float] = None
+    line_total: Optional[float] = None
+    pack_size: Optional[str] = None
+    brand: Optional[str] = None
+    source_quote_line_id: Optional[str] = None
+    # Calculé depuis les réceptions : la commande ne stocke aucun compteur.
+    qty_received: Optional[float] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PurchaseOrderRead(BaseModel):
+    id: str
+    reference: Optional[str] = None
+    supplier_id: Optional[str] = None
+    supplier_name: Optional[str] = None
+    status: Optional[str] = None
+    status_label: Optional[str] = None
+    expected_date: Optional[date] = None
+    ordered_at: Optional[datetime] = None
+    total_amount: Optional[float] = None
+    currency: Optional[str] = None
+    delivery_fee: Optional[float] = None
+    discount_total: Optional[float] = None
+    conditions: Optional[str] = None
+    notes: Optional[str] = None
+    line_count: int = 0
+    created_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PurchaseOrderDetail(PurchaseOrderRead):
+    lines: List[PurchaseOrderLineRead] = []
+
+
+class OrderFromQuoteLinesRequest(BaseModel):
+    """Commander les offres retenues dans le comparateur.
+
+    On envoie des identifiants de LIGNES de devis, pas un devis : le
+    comparateur désigne le moins cher produit par produit, donc le panier
+    retenu traverse plusieurs devis et plusieurs fournisseurs. Le serveur
+    regroupe par fournisseur — une commande par fournisseur.
+    """
+
+    quote_line_ids: List[str] = Field(min_length=1, max_length=500)
+    expected_date: Optional[date] = None
+    # `draft` laisse la main pour relire avant d'engager ; `sent` engage tout de
+    # suite. Le défaut est prudent.
+    status: str = "draft"
+
+
+class PurchaseOrderUpdate(BaseModel):
+    status: Optional[str] = None
+    expected_date: Optional[date] = None
+    notes: Optional[str] = Field(default=None, max_length=2000)
+    conditions: Optional[str] = Field(default=None, max_length=2000)
+
+
+class OrderPlanLine(BaseModel):
+    product_id: Optional[str] = None
+    description: Optional[str] = None
+    qty_ordered: Optional[float] = None
+    unit_price: Optional[float] = None
+    line_total: Optional[float] = None
+    pack_size: Optional[str] = None
+    brand: Optional[str] = None
+    source_quote_line_id: Optional[str] = None
+
+
+class OrderPlan(BaseModel):
+    """Ce qui SERA commandé, avant de l'être. L'aperçu évite d'engager trois
+    commandes pour découvrir ensuite qu'on s'est trompé de lignes."""
+
+    supplier_id: Optional[str] = None
+    supplier_name: Optional[str] = None
+    currency: Optional[str] = None
+    delivery_fee: Optional[float] = None
+    discount_total: Optional[float] = None
+    conditions: Optional[str] = None
+    lines_total: float = 0
+    total_amount: float = 0
+    lines: List[OrderPlanLine] = []

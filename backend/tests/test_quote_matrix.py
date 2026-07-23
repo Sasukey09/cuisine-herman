@@ -219,3 +219,13 @@ def test_no_delivery_fee_keeps_totals_identical():
     a = res["suppliers"][0]
     assert a["delivery_fee"] is None
     assert a["total_with_delivery"] == a["total"] == 30.0
+
+
+def test_each_offer_carries_the_id_of_the_line_it_comes_from():
+    """Sans l'identifiant de la ligne, le comparateur peut désigner un gagnant
+    mais pas le commander : il n'y a rien à envoyer au serveur."""
+    res = build_matrix(
+        [offer("p1", "A", 10.0, pack_size="sac 10kg", quote_line_id="ql-42")],
+        supplier_names=NAMES,
+    )
+    assert res["products"][0]["offers"][0]["quote_line_id"] == "ql-42"
