@@ -194,8 +194,13 @@ class Invoice(Base):
     ocr_status = Column(Text)
     meta = Column("metadata", JSONB)
     created_at = Column(TIMESTAMP, server_default=func.now())
-    # Devis commandé auquel cette facture se rattache : permet de confronter
-    # prix / quantités / TVA prévus et facturés (§9).
+    # La facture se rattache à la COMMANDE, et atteint le devis à travers elle :
+    # c'est la commande qui dit ce qu'on s'était engagé à payer.
+    order_id = Column(
+        UUID(as_uuid=False), ForeignKey("purchase_orders.id", ondelete="SET NULL")
+    )
+    # Conservé le temps de la bascule (expand/contract) : la version en
+    # production lit encore cette colonne.
     quote_id = Column(UUID(as_uuid=False), ForeignKey("quotes.id", ondelete="SET NULL"))
 
     lines = relationship("InvoiceLine", back_populates="invoice")
@@ -219,20 +224,6 @@ class InvoiceLine(Base):
     created_at = Column(TIMESTAMP, server_default=func.now())
 
     invoice = relationship("Invoice", back_populates="lines")
-
-
-class Purchase(Base):
-    __tablename__ = "purchases"
-    id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
-    tenant_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"))
-    product_id = Column(UUID(as_uuid=False), ForeignKey("products.id"))
-    supplier_id = Column(UUID(as_uuid=False), ForeignKey("suppliers.id"))
-    invoice_line_id = Column(UUID(as_uuid=False), ForeignKey("invoice_lines.id", ondelete="SET NULL"))
-    qty = Column(Numeric)
-    unit_id = Column(Integer, ForeignKey("units.id"))
-    price = Column(Numeric)
-    currency = Column(Text)
-    purchased_at = Column(TIMESTAMP, server_default=func.now())
 
 
 class Recipe(Base):
@@ -560,3 +551,183 @@ class QuoteLine(Base):
     min_qty = Column(Numeric)  # quantité minimale de commande
 
     quote = relationship("Quote", back_populates="lines")
+
+
+# --------------------------------------------------------------------------- #
+# Domaine Achats : devis → commande → réception → facture
+# --------------------------------------------------------------------------- #
+class PurchaseOrder(Base):
+    """Une COMMANDE : l'engagement pris auprès d'un fournisseur.
+
+    Distincte du devis, qui est une offre *reçue*. Trois raisons, dont la
+    première est fonctionnelle et non esthétique :
+
+    - le comparateur désigne le moins cher **produit par produit**, donc
+      possiblement plusieurs fournisseurs. Une commande porte un seul
+      fournisseur, mais ses lignes peuvent venir de **plusieurs devis** (voir
+      ``PurchaseOrderLine.source_quote_line_id``) : c'est ce qui rend le conseil
+      du comparateur exécutable ;
+    - une commande a dix états, un devis en a trois ;
+    - une offre reçue est un fait daté. Commander ne doit rien réécrire dedans.
+    """
+
+    __tablename__ = "purchase_orders"
+    id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
+    tenant_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"))
+    reference = Column(Text)  # CMD-2026-0001
+    supplier_id = Column(UUID(as_uuid=False), ForeignKey("suppliers.id", ondelete="SET NULL"))
+    # draft | sent | confirmed | preparing | shipped | partially_received |
+    # received | invoiced | closed | cancelled
+    status = Column(Text, server_default=text("'draft'"))
+    expected_date = Column(Date)  # livraison annoncée par le fournisseur
+    ordered_at = Column(TIMESTAMP)
+    sent_at = Column(TIMESTAMP)
+    confirmed_at = Column(TIMESTAMP)
+    closed_at = Column(TIMESTAMP)
+    total_amount = Column(Numeric)
+    currency = Column(Text)
+    # Repris du devis retenu : portent sur la commande entière, pas sur une ligne.
+    delivery_fee = Column(Numeric)
+    discount_total = Column(Numeric)
+    conditions = Column(Text)
+    notes = Column(Text)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+    # Même raison que sur Quote.lines : order_lines.order_id est NOT NULL, donc
+    # laisser l'ORM annuler les enfants violerait la contrainte. On laisse le
+    # ON DELETE CASCADE de la base faire le travail.
+    lines = relationship(
+        "PurchaseOrderLine",
+        back_populates="order",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class PurchaseOrderLine(Base):
+    __tablename__ = "purchase_order_lines"
+    id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
+    tenant_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"))
+    order_id = Column(
+        UUID(as_uuid=False), ForeignKey("purchase_orders.id", ondelete="CASCADE"), nullable=False
+    )
+    product_id = Column(UUID(as_uuid=False), ForeignKey("products.id", ondelete="SET NULL"))
+    description = Column(Text)
+    qty_ordered = Column(Numeric)
+    unit_id = Column(Integer, ForeignKey("units.id"))
+    unit_price = Column(Numeric)
+    vat_rate = Column(Numeric)
+    discount_pct = Column(Numeric)
+    line_total = Column(Numeric)
+    pack_size = Column(Text)
+    brand = Column(Text)
+    # La traçabilité offre → engagement. SET NULL : supprimer un vieux devis ne
+    # doit pas effacer la commande qui en est née.
+    source_quote_line_id = Column(
+        UUID(as_uuid=False), ForeignKey("quote_lines.id", ondelete="SET NULL")
+    )
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+    order = relationship("PurchaseOrder", back_populates="lines")
+
+
+class Receipt(Base):
+    """Une RÉCEPTION de marchandise (bon de livraison).
+
+    Document séparé, et non un drapeau sur la commande : une commande peut être
+    livrée en plusieurs fois. La quantité reçue d'une ligne de commande se
+    **calcule** depuis les lignes de réception au lieu d'être dénormalisée —
+    une seule vérité, donc pas de dérive possible entre les deux.
+    """
+
+    __tablename__ = "receipts"
+    id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
+    tenant_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"))
+    reference = Column(Text)  # REC-2026-0001
+    # Nullable : on peut recevoir une livraison sans commande enregistrée.
+    order_id = Column(UUID(as_uuid=False), ForeignKey("purchase_orders.id", ondelete="SET NULL"))
+    supplier_id = Column(UUID(as_uuid=False), ForeignKey("suppliers.id", ondelete="SET NULL"))
+    received_at = Column(Date)
+    delivery_note_number = Column(Text)  # numéro du BL fournisseur
+    status = Column(Text, server_default=text("'draft'"))  # draft | checked
+    notes = Column(Text)
+    # Le BL photographié : même pipeline OCR que factures et devis, le jour où
+    # on le branchera.
+    file_url = Column(Text)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+    lines = relationship(
+        "ReceiptLine",
+        back_populates="receipt",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class ReceiptLine(Base):
+    __tablename__ = "receipt_lines"
+    id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
+    tenant_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"))
+    receipt_id = Column(
+        UUID(as_uuid=False), ForeignKey("receipts.id", ondelete="CASCADE"), nullable=False
+    )
+    # Nullable : une ligne livrée HORS commande est justement l'anomalie qu'on
+    # veut pouvoir enregistrer.
+    order_line_id = Column(
+        UUID(as_uuid=False), ForeignKey("purchase_order_lines.id", ondelete="SET NULL")
+    )
+    product_id = Column(UUID(as_uuid=False), ForeignKey("products.id", ondelete="SET NULL"))
+    description = Column(Text)
+    qty_received = Column(Numeric)
+    unit_id = Column(Integer, ForeignKey("units.id"))
+    unit_price = Column(Numeric)
+    # ok | missing | extra | substituted | damaged
+    condition = Column(Text, server_default=text("'ok'"))
+    substituted_product_id = Column(
+        UUID(as_uuid=False), ForeignKey("products.id", ondelete="SET NULL")
+    )
+    notes = Column(Text)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+    receipt = relationship("Receipt", back_populates="lines")
+
+
+class StockLocation(Base):
+    """Emplacement de stockage. Posé maintenant, exploité plus tard."""
+
+    __tablename__ = "stock_locations"
+    id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
+    tenant_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"))
+    name = Column(Text)
+    kind = Column(Text)  # reserve | chambre_froide | congelateur | bar
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+
+class StockMovement(Base):
+    """Un mouvement de stock. **Fondation posée, sans logique métier.**
+
+    L'écrire maintenant évite de rouvrir la base plus tard : réception →
+    entrée, consommation d'une recette → sortie, inventaire, perte,
+    valorisation. Tant que rien n'écrit ici, la table reste vide et inerte.
+    """
+
+    __tablename__ = "stock_movements"
+    id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
+    tenant_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"))
+    product_id = Column(UUID(as_uuid=False), ForeignKey("products.id", ondelete="CASCADE"))
+    location_id = Column(UUID(as_uuid=False), ForeignKey("stock_locations.id", ondelete="SET NULL"))
+    # Quantité SIGNÉE : + entrée, − sortie. Un seul champ, donc pas de colonne
+    # « sens » à maintenir cohérente avec le signe.
+    qty = Column(Numeric)
+    unit_id = Column(Integer, ForeignKey("units.id"))
+    movement_type = Column(Text)  # receipt | consumption | inventory | loss | adjustment | transfer
+    # Origine, sans FK dure : la source peut être une ligne de réception, une
+    # version de recette, un inventaire… Une FK par type aurait ajouté six
+    # colonnes toujours nulles sauf une.
+    source_type = Column(Text)
+    source_id = Column(UUID(as_uuid=False))
+    # Valorisation figée au moment du mouvement : le coût d'un produit bouge, la
+    # valeur d'un mouvement passé, non.
+    unit_cost = Column(Numeric)
+    moved_at = Column(TIMESTAMP, server_default=func.now())
+    created_at = Column(TIMESTAMP, server_default=func.now())
