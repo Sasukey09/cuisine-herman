@@ -13,6 +13,7 @@ import '../features/invoices/invoices_screen.dart';
 import '../features/metrics/metrics_screen.dart';
 import '../features/prix/price_screen.dart';
 import '../features/products/products_screen.dart';
+import '../features/orders/orders_screen.dart';
 import '../features/quotes/quotes_screen.dart';
 import '../features/recipes/recipes_screen.dart';
 import '../features/reports/reports_screen.dart';
@@ -43,6 +44,9 @@ const _modules = <_Mod>[
   // Secondary modules (shown in the "Plus" sheet).
   _Mod('devis', 'Devis', 'Comparer les fournisseurs',
       Icons.request_quote_outlined, QuotesScreen()),
+  // Juste apres Devis : la feuille suit l'ordre du cycle d'achat.
+  _Mod('commandes', 'Commandes', 'Suivi des engagements',
+      Icons.shopping_cart_outlined, OrdersScreen()),
   _Mod('fournisseurs', 'Fournisseurs', 'Partenaires & catalogues',
       Icons.local_shipping_outlined, SuppliersScreen()),
   _Mod('prix', 'Variations de prix', 'Évolution des coûts', Icons.trending_up,
