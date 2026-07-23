@@ -47,7 +47,7 @@ from app.services.classification.classifier import classify
 from app.services.ocr.errors import OcrError, AllProvidersFailedError
 from app.services.ocr.http_errors import ocr_http_error
 from app.services.invoicing import invoice_pricing
-from app.services.quotes import quote_invoice_match
+from app.services.purchasing import invoice_control, order_service
 from app.services.storage import s3_storage
 
 router = APIRouter()
@@ -437,34 +437,36 @@ def api_update_line(
     return updated
 
 
-@router.get("/{invoice_id}/quote-variance")
+@router.get("/{invoice_id}/control")
+def api_invoice_control(
+    invoice_id: str,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """Contrôle facture : commandé → livré → facturé, en une vue.
+
+    Rattache la facture à sa commande (déjà liée, ou par recouvrement
+    fournisseur + produits), puis confronte les trois. Met en évidence, du plus
+    grave au moins grave : facturé mais non reçu, facturé hors commande, prix,
+    TVA, quantités. Rend ``linked: false`` plutôt qu'un rapprochement douteux."""
+    invoice = get_invoice(db, invoice_id, tenant_id)
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    return invoice_control.control_for_invoice(db, tenant_id, invoice)
+
+
+# Rétrocompatibilité : l'application iOS déjà en production appelle encore
+# `/quote-variance`. On la sert avec le NOUVEAU contrôle (commandé → livré →
+# facturé) plutôt que l'ancien rapprochement au devis, qui est mort depuis que
+# la commande est un objet à part entière. Un seul moteur, deux chemins d'accès
+# le temps que les clients basculent.
+@router.get("/{invoice_id}/quote-variance", deprecated=True)
 def api_invoice_quote_variance(
     invoice_id: str,
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant_id),
 ):
-    """Écarts entre le devis commandé et cette facture (§9).
-
-    Utilise le devis déjà rattaché ; à défaut, tente le rapprochement (même
-    fournisseur + recouvrement de produits). Rend ``linked: false`` plutôt que
-    d'inventer un rapprochement douteux."""
-    invoice = get_invoice(db, invoice_id, tenant_id)
-    if not invoice:
-        raise HTTPException(status_code=404, detail="Invoice not found")
-
-    quote = None
-    if getattr(invoice, "quote_id", None):
-        from app.crud import crud_quote
-
-        quote = crud_quote.get_quote(db, tenant_id, str(invoice.quote_id))
-    if quote is None:
-        quote = quote_invoice_match.find_matching_quote(db, tenant_id, invoice)
-    if quote is None:
-        return {"linked": False, "invoice_id": invoice_id}
-
-    report = quote_invoice_match.variance_for_invoice(db, tenant_id, invoice, quote)
-    report["linked"] = True
-    return report
+    return api_invoice_control(invoice_id, db, tenant_id)
 
 
 @router.post("/extract", response_model=InvoiceExtractionResult)
@@ -641,12 +643,21 @@ def api_confirm_invoice(
         if product_id and l.unit_price is not None:
             invoice_pricing.reprice_line(db, tenant_id, line)
 
-    # Rattachement au devis commandé correspondant (§9). Best-effort : un
-    # rapprochement impossible ne doit jamais faire échouer l'import.
+    # Rattachement à la COMMANDE correspondante, et avancement de son cycle.
+    # Best-effort : un rapprochement impossible ne doit jamais faire échouer
+    # l'import. La facture se rattache à la commande — et atteint le devis à
+    # travers elle —, ce qui donne le contrôle à trois colonnes commandé →
+    # livré → facturé.
     try:
-        matched = quote_invoice_match.find_matching_quote(db, tenant_id, invoice)
+        matched = invoice_control.find_matching_order(db, tenant_id, invoice)
         if matched is not None:
-            invoice.quote_id = matched.id
+            invoice.order_id = matched.id
+            # Une commande reçue devient facturée : dernier pas avant la clôture.
+            # On ne force pas depuis un état antérieur — une facture peut arriver
+            # avant que la réception ne soit saisie, ce n'est pas à elle de
+            # décréter la livraison faite.
+            if order_service.can_transition(matched.status, order_service.INVOICED):
+                matched.status = order_service.INVOICED
             db.commit()
     except Exception:
         db.rollback()
