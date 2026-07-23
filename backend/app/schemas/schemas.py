@@ -1090,3 +1090,76 @@ class OrderPlan(BaseModel):
     lines_total: float = 0
     total_amount: float = 0
     lines: List[OrderPlanLine] = []
+
+
+# --------------------------------------------------------------------------- #
+# Domaine Achats : réceptions de marchandise
+# --------------------------------------------------------------------------- #
+class ReceiptLineWrite(BaseModel):
+    order_line_id: Optional[str] = None  # nul = livré hors commande
+    product_id: Optional[str] = None
+    description: Optional[str] = Field(default=None, max_length=300)
+    qty_received: Optional[float] = Field(default=None, ge=0)
+    unit_id: Optional[int] = None
+    unit_price: Optional[float] = Field(default=None, ge=0)
+    pack_size: Optional[str] = Field(default=None, max_length=100)
+    condition: str = "ok"
+    substituted_product_id: Optional[str] = None
+    notes: Optional[str] = Field(default=None, max_length=1000)
+    photo_url: Optional[str] = Field(default=None, max_length=1000)
+
+
+class ReceiptCreate(BaseModel):
+    order_id: Optional[str] = None
+    supplier_id: Optional[str] = None
+    received_at: Optional[date] = None
+    delivery_note_number: Optional[str] = Field(default=None, max_length=100)
+    notes: Optional[str] = Field(default=None, max_length=2000)
+    file_url: Optional[str] = Field(default=None, max_length=1000)
+    lines: List[ReceiptLineWrite] = []
+
+
+class ReceiptUpdate(BaseModel):
+    received_at: Optional[date] = None
+    delivery_note_number: Optional[str] = Field(default=None, max_length=100)
+    notes: Optional[str] = Field(default=None, max_length=2000)
+    file_url: Optional[str] = Field(default=None, max_length=1000)
+    supplier_id: Optional[str] = None
+    # Remplace l'intégralité des lignes. Une réception en brouillon est un
+    # travail en cours ; tant qu'elle n'est pas validée, elle se réécrit.
+    lines: Optional[List[ReceiptLineWrite]] = None
+
+
+class ReceiptLineRead(ReceiptLineWrite):
+    id: str
+    product_name: Optional[str] = None
+    condition_label: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ReceiptRead(BaseModel):
+    id: str
+    reference: Optional[str] = None
+    order_id: Optional[str] = None
+    order_reference: Optional[str] = None
+    supplier_id: Optional[str] = None
+    supplier_name: Optional[str] = None
+    received_at: Optional[date] = None
+    delivery_note_number: Optional[str] = None
+    status: Optional[str] = None
+    status_label: Optional[str] = None
+    received_by: Optional[str] = None
+    received_by_name: Optional[str] = None
+    checked_at: Optional[datetime] = None
+    checked_by_name: Optional[str] = None
+    notes: Optional[str] = None
+    file_url: Optional[str] = None
+    line_count: int = 0
+    created_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ReceiptDetail(ReceiptRead):
+    lines: List[ReceiptLineRead] = []

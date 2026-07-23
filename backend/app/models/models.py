@@ -649,7 +649,17 @@ class Receipt(Base):
     supplier_id = Column(UUID(as_uuid=False), ForeignKey("suppliers.id", ondelete="SET NULL"))
     received_at = Column(Date)
     delivery_note_number = Column(Text)  # numéro du BL fournisseur
-    status = Column(Text, server_default=text("'draft'"))  # draft | checked
+    # draft : se corrige librement · checked : figé.
+    status = Column(Text, server_default=text("'draft'"))
+    # Qui a réceptionné. Sans auteur, une réception n'est pas opposable :
+    # « qui a signé ce bon de livraison ? » est exactement la question posée
+    # trois semaines plus tard, quand le fournisseur conteste un manquant.
+    received_by = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"))
+    # `checked_at` EST la frontière d'immutabilité : tant qu'elle est nulle la
+    # réception se corrige ; une fois posée, une correction prend la forme
+    # d'une NOUVELLE réception corrective.
+    checked_by = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"))
+    checked_at = Column(TIMESTAMP)
     notes = Column(Text)
     # Le BL photographié : même pipeline OCR que factures et devis, le jour où
     # on le branchera.
@@ -681,8 +691,19 @@ class ReceiptLine(Base):
     qty_received = Column(Numeric)
     unit_id = Column(Integer, ForeignKey("units.id"))
     unit_price = Column(Numeric)
-    # ok | missing | extra | substituted | damaged
+    # Sans lui, l'écart de CONDITIONNEMENT est indétectable : 10 sacs de 10 kg
+    # au lieu de 10 sacs de 25 kg, c'est le même nombre de lignes et 150 kg de
+    # moins.
+    pack_size = Column(Text)
+    # ok | missing | extra | substituted | damaged | rejected
+    #
+    # `damaged` et `rejected` ne se confondent pas : dans un cas la marchandise
+    # est en réserve, dans l'autre elle est repartie. Les mélanger fausserait le
+    # stock le jour où on le branche.
     condition = Column(Text, server_default=text("'ok'"))
+    # Le fichier porté par la réception est le bon de livraison ; une casse ou
+    # un refus se prouve par une photo DE LA LIGNE.
+    photo_url = Column(Text)
     substituted_product_id = Column(
         UUID(as_uuid=False), ForeignKey("products.id", ondelete="SET NULL")
     )
