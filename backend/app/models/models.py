@@ -490,7 +490,7 @@ class Quote(Base):
     __tablename__ = "quotes"
     id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
     tenant_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"))
-    reference = Column(Text)  # human ref, e.g. "DEV-2026-0007"
+    reference = Column(Text)  # OUR ref, e.g. "DEV-2026-0007"
     title = Column(Text)
     status = Column(Text, server_default=text("'draft'"))  # draft | ordered | archived
     supplier_id = Column(UUID(as_uuid=False), ForeignKey("suppliers.id", ondelete="SET NULL"))
@@ -498,6 +498,20 @@ class Quote(Base):
     notes = Column(Text)
     ordered_at = Column(TIMESTAMP)
     created_at = Column(TIMESTAMP, server_default=func.now())
+
+    # --- Imported quote (OCR) --------------------------------------------
+    # A quote can now come from a supplier's document instead of manual entry,
+    # through the SAME pipeline as invoices (see endpoints/quotes.py preview
+    # /confirm). These carry what the document says, as extracted.
+    quote_number = Column(Text)  # the SUPPLIER's own number, not our `reference`
+    date = Column(Date)  # date of the quote
+    valid_until = Column(Date)  # offer expiry — a stale quote must not be trusted
+    currency = Column(Text)
+    file_url = Column(Text)  # the imported document
+    ocr_status = Column(Text)  # confirmed | error | … (mirrors invoices)
+    parsed = Column(Boolean, default=False)
+    discount_total = Column(Numeric)  # global discount granted on the quote
+    conditions = Column(Text)  # payment/delivery terms, free text from the doc
 
     # delete-orphan + passive_deletes: deleting a quote must remove its lines.
     # quote_lines.quote_id is NOT NULL, so the ORM's default "nullify children on
@@ -520,8 +534,17 @@ class QuoteLine(Base):
     description = Column(Text)  # free-text fallback when no product is linked
     qty = Column(Numeric)
     unit_id = Column(Integer, ForeignKey("units.id"))
-    unit_price = Column(Numeric)  # retained per-unit price, snapshotted on order
+    unit_price = Column(Numeric)  # offered/retained per-unit price
     supplier_id = Column(UUID(as_uuid=False), ForeignKey("suppliers.id", ondelete="SET NULL"))
     created_at = Column(TIMESTAMP, server_default=func.now())
+
+    # --- Imported quote line (OCR) ---------------------------------------
+    # NB: a quote line is an OFFER, not a purchase. These prices deliberately do
+    # NOT feed product_prices / purchase_history (that would compute recipe food
+    # costs from prices never actually paid). The comparator reads them here.
+    vat_rate = Column(Numeric)
+    line_total = Column(Numeric)
+    discount_pct = Column(Numeric)  # per-line discount (remise)
+    pack_size = Column(Text)  # conditionnement as quoted ("carton de 6", "5 kg")
 
     quote = relationship("Quote", back_populates="lines")
