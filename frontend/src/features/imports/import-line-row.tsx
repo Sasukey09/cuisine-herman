@@ -88,11 +88,11 @@ export function ImportLineRow<T extends ImportRowBase>({
           aria-label="Prix unitaire"
         />
         <Input
-          className="w-16"
+          className="w-20"
           type="number"
           value={row.vat_rate ?? ""}
           onChange={(e) => onChange({ vat_rate: num(e.target.value) } as Partial<T>)}
-          placeholder="TVA%"
+          placeholder="TVA %"
           aria-label="TVA %"
         />
         {extraFields}

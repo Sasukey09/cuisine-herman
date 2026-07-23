@@ -207,7 +207,7 @@ export function QuoteSmartImportView() {
                   extraFields={
                     <>
                       <Input
-                        className="w-20"
+                        className="w-24"
                         type="number"
                         value={r.discount_pct ?? ""}
                         onChange={(e) =>
@@ -215,11 +215,11 @@ export function QuoteSmartImportView() {
                             discount_pct: e.target.value === "" ? null : Number(e.target.value),
                           })
                         }
-                        placeholder="Remise%"
+                        placeholder="Rem. %"
                         aria-label="Remise %"
                       />
                       <Input
-                        className="w-32"
+                        className="w-36"
                         value={r.pack_size ?? ""}
                         onChange={(e) => update(i, { pack_size: e.target.value })}
                         placeholder="Condit."
