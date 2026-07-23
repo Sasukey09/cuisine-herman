@@ -860,6 +860,11 @@ class QuoteLineRead(BaseModel):
     unit_id: Optional[int] = None
     unit_price: Optional[float] = None
     supplier_id: Optional[str] = None
+    # Import OCR
+    vat_rate: Optional[float] = None
+    line_total: Optional[float] = None
+    discount_pct: Optional[float] = None
+    pack_size: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -888,6 +893,13 @@ class QuoteRead(BaseModel):
     line_count: Optional[int] = None
     ordered_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
+    # Import OCR : ce que le document du fournisseur dit
+    quote_number: Optional[str] = None
+    date: Optional[DateType] = None
+    valid_until: Optional[DateType] = None
+    currency: Optional[str] = None
+    discount_total: Optional[float] = None
+    conditions: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -896,3 +908,78 @@ class QuoteOrderRequest(BaseModel):
     """Convert a quote into an order by retaining one supplier's prices."""
 
     supplier_id: str
+
+
+# --- Import de devis (OCR) — miroir de l'import intelligent de facture ------
+
+
+class QuotePreviewLine(BaseModel):
+    """Une ligne de devis détectée, enrichie pour le dialogue de validation :
+    champs OCR + suggestion produit + suggestion de catégorie."""
+
+    description: str
+    qty: Optional[float] = None
+    unit: Optional[str] = None
+    unit_price: Optional[float] = None
+    line_total: Optional[float] = None
+    vat_rate: Optional[float] = None
+    discount_pct: Optional[float] = None
+    pack_size: Optional[str] = None
+    matched_product_id: Optional[str] = None
+    matched_product_name: Optional[str] = None
+    match_confidence: Optional[float] = None
+    needs_review: bool = True
+    suggested_category: Optional[str] = None
+
+
+class QuotePreviewResult(BaseModel):
+    supplier: Optional[str] = None
+    supplier_id: Optional[str] = None
+    date: Optional[DateType] = None
+    valid_until: Optional[DateType] = None
+    quote_number: Optional[str] = None
+    total_amount: Optional[float] = None
+    currency: Optional[str] = None
+    discount_total: Optional[float] = None
+    conditions: Optional[str] = None
+    lines: List[QuotePreviewLine] = []
+
+
+class QuoteConfirmLine(BaseModel):
+    """Une ligne validée par l'utilisateur dans le dialogue d'import."""
+
+    description: str
+    qty: Optional[float] = None
+    unit: Optional[str] = None
+    unit_price: Optional[float] = None
+    line_total: Optional[float] = None
+    vat_rate: Optional[float] = Field(default=None, ge=0, le=100)
+    discount_pct: Optional[float] = Field(default=None, ge=0, le=100)
+    pack_size: Optional[str] = Field(default=None, max_length=100)
+    # créer un produit, associer un produit existant, ou ignorer la ligne.
+    action: str = "create"
+    product_id: Optional[str] = None  # pour action="associate"
+    category: Optional[str] = None  # pour action="create" (sinon auto-classé)
+
+
+class QuoteConfirmRequest(BaseModel):
+    title: Optional[str] = Field(default=None, max_length=200)
+    supplier: Optional[str] = None
+    supplier_id: Optional[str] = None
+    date: Optional[DateType] = None
+    valid_until: Optional[DateType] = None
+    quote_number: Optional[str] = None
+    total_amount: Optional[float] = None
+    currency: Optional[str] = "EUR"
+    discount_total: Optional[float] = None
+    conditions: Optional[str] = Field(default=None, max_length=2000)
+    lines: List[QuoteConfirmLine] = []
+
+
+class QuoteImportResult(BaseModel):
+    quote_id: str
+    reference: Optional[str] = None
+    lines: int
+    created_products: int
+    associated: int
+    skipped: int

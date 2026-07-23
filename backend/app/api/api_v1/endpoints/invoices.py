@@ -45,26 +45,16 @@ from app.services.ocr.schemas import InvoiceExtractionResult
 from app.services.matching.product_matcher import match_product
 from app.services.classification.classifier import classify
 from app.services.ocr.errors import OcrError, AllProvidersFailedError
+from app.services.ocr.http_errors import ocr_http_error
 from app.services.invoicing import invoice_pricing
 from app.services.storage import s3_storage
 
 router = APIRouter()
 
-_OCR_UNAVAILABLE = "Service OCR indisponible : impossible d'analyser la facture pour le moment."
-# All providers ran but none could read this document: usually a blurry/blank
-# photo, not an outage. 422 + an actionable message instead of a misleading 502.
-_OCR_UNREADABLE = (
-    "Impossible de lire cette facture. Vérifiez que l'image est nette et bien "
-    "cadrée, ou essayez un PDF."
-)
-
 
 def _ocr_http_error(exc: OcrError) -> HTTPException:
-    """A provider ran but couldn't read the document -> 422 (bad photo, user can
-    fix it). A real outage (no provider configured / all down) -> 502."""
-    if isinstance(exc, AllProvidersFailedError) and not exc.all_configuration_errors:
-        return HTTPException(status_code=422, detail=_OCR_UNREADABLE)
-    return HTTPException(status_code=502, detail=_OCR_UNAVAILABLE)
+    """Délègue au helper partagé (factures + devis) — voir ocr/http_errors.py."""
+    return ocr_http_error(exc, "facture")
 
 
 def _celery_worker_available() -> bool:

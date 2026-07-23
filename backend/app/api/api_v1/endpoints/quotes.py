@@ -6,11 +6,13 @@ offer into an order. See ``app.services.quotes.quote_service``.
 """
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
+from app.core.uploads import validate_upload
 from app.db.session import get_db
-from app.api.deps import get_current_tenant_id, require_writer
+from app.api.deps import get_current_tenant_id, require_writer, quota, daily_quota
 from app.schemas.schemas import (
     QuoteCreate,
     QuoteUpdate,
@@ -18,9 +20,19 @@ from app.schemas.schemas import (
     QuoteLineCreate,
     QuoteLineUpdate,
     QuoteOrderRequest,
+    QuotePreviewLine,
+    QuotePreviewResult,
+    QuoteConfirmRequest,
+    QuoteImportResult,
 )
-from app.crud import crud_quote
-from app.services.quotes import quote_service
+from app.crud import crud_quote, crud_product, crud_supplier
+from app.services.quotes import quote_service, quote_import
+# --- Pipeline PARTAGE avec les factures (jamais duplique) ------------------
+from app.services.ocr.service import extract_invoice
+from app.services.ocr.errors import OcrError
+from app.services.ocr.http_errors import ocr_http_error
+from app.services.matching.product_matcher import match_product
+from app.services.classification.classifier import classify
 
 router = APIRouter()
 
@@ -184,3 +196,99 @@ def api_delete_line(
     crud_quote.delete_line(db, line)
     quote = crud_quote.get_quote(db, tenant_id, quote_id)
     return _detail(db, tenant_id, quote)
+
+
+# --- Import de devis (OCR) ------------------------------------------------- #
+# Strictement le pipeline des factures : validate_upload -> extract_invoice ->
+# match_product + classify. Rien n'est redéveloppé ici ; seul l'en-tête propre
+# au devis (validité / remise / conditions) est enrichi par `quote_import`.
+
+
+@router.post("/preview", response_model=QuotePreviewResult)
+async def api_preview_quote(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+    _: list = Depends(require_writer),
+    _q: None = Depends(quota("ocr", "OCR_PER_MIN", 20)),
+    _qd: None = Depends(daily_quota("ocr", "OCR_PER_DAY", 400)),
+):
+    """Aperçu d'import : OCR + suggestion produit + suggestion de catégorie par
+    ligne, pour le dialogue de validation. **Ne persiste rien** (le fournisseur
+    détecté est résolu s'il existe, jamais créé ici)."""
+    content = await file.read()
+    validate_upload(content, file.content_type)
+    ctype = file.content_type
+
+    def _work():
+        try:
+            extraction = extract_invoice(content, ctype)
+        except OcrError as exc:
+            raise ocr_http_error(exc, "devis")
+
+        supplier_id = None
+        if extraction.supplier:
+            existing = crud_supplier.get_supplier_by_name(db, tenant_id, extraction.supplier)
+            supplier_id = str(existing.id) if existing is not None else None
+
+        header = quote_import.enrich_header(extraction.raw_text or "", extraction.date)
+
+        lines: List[QuotePreviewLine] = []
+        for raw in extraction.lines:
+            desc = raw.description or ""
+            m = (
+                match_product(db, tenant_id, desc)
+                if desc
+                else {"product_id": None, "confidence_score": None, "manual_review": True}
+            )
+            pid = m.get("product_id")
+            pname = None
+            if pid:
+                p = crud_product.get_product(db, pid, tenant_id)
+                pname = p.name if p is not None else None
+            lines.append(
+                QuotePreviewLine(
+                    description=desc,
+                    qty=raw.qty,
+                    unit=raw.unit,
+                    unit_price=raw.unit_price,
+                    line_total=raw.line_total,
+                    matched_product_id=pid,
+                    matched_product_name=pname,
+                    match_confidence=m.get("confidence_score"),
+                    needs_review=bool(m.get("manual_review", True)) or not pid,
+                    suggested_category=classify(desc) if desc else None,
+                )
+            )
+
+        return QuotePreviewResult(
+            supplier=extraction.supplier,
+            supplier_id=supplier_id,
+            date=extraction.date,
+            valid_until=header["valid_until"],
+            # Sur un devis, le "numéro de facture" extrait EST le numéro du devis.
+            quote_number=extraction.invoice_number,
+            total_amount=getattr(extraction, "total_amount", None),
+            discount_total=header["discount_total"],
+            conditions=header["conditions"],
+            lines=lines,
+        )
+
+    return await run_in_threadpool(_work)
+
+
+@router.post("/confirm", response_model=QuoteImportResult, status_code=201)
+def api_confirm_quote(
+    payload: QuoteConfirmRequest,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+    _: list = Depends(require_writer),
+):
+    """Persiste un import de devis validé : crée le devis puis, par ligne, crée
+    un produit (auto-classé + TVA) / associe un existant / ignore.
+
+    Volontairement **sans** `reprice_line` : un devis est une OFFRE, pas un
+    achat. Voir `quote_import.confirm_import`, qui porte la logique (testable
+    contre un vrai Postgres et réutilisable).
+    """
+    return QuoteImportResult(**quote_import.confirm_import(db, tenant_id, payload))

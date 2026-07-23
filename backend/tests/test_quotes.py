@@ -6,9 +6,15 @@ The pure basket maths is covered in ``test_quote_comparator.py``."""
 import uuid
 from datetime import date
 
-from app.schemas.schemas import QuoteCreate, QuoteLineCreate, QuoteUpdate
+from app.schemas.schemas import (
+    QuoteCreate,
+    QuoteLineCreate,
+    QuoteUpdate,
+    QuoteConfirmLine,
+    QuoteConfirmRequest,
+)
 from app.crud import crud_quote
-from app.services.quotes import quote_service
+from app.services.quotes import quote_service, quote_import
 
 
 def _seed(db):
@@ -186,3 +192,132 @@ def test_delete_quote_removes_its_lines_even_when_ordered(db):
     crud_quote.delete_quote(db, ordered)
     assert crud_quote.get_quote(db, tenant_id, ordered_id) is None
     assert db.query(QuoteLine).filter(QuoteLine.quote_id == ordered_id).count() == 0
+
+
+def test_confirm_import_creates_quote_products_and_catalog_links(db):
+    """Import validé : crée le devis (en-tête OCR), les lignes enrichies, les
+    produits manquants, et le lien catalogue produit↔fournisseur."""
+    from app.models.models import Product, SupplierProduct
+
+    tenant_id, sup_a, sup_b, p1, p2 = _seed(db)
+
+    payload = QuoteConfirmRequest(
+        title="Import devis METRO",
+        supplier_id=sup_a,
+        date=date(2026, 7, 20),
+        valid_until=date(2026, 8, 20),
+        quote_number="D-2026-88",
+        total_amount=143.75,
+        currency="EUR",
+        discount_total=12.5,
+        conditions="virement à 30 jours",
+        lines=[
+            # associe un produit existant
+            QuoteConfirmLine(
+                description="Farine T55", action="associate", product_id=p1,
+                qty=10, unit_price=1.05, line_total=10.5, vat_rate=5.5,
+                discount_pct=2, pack_size="sac 25 kg",
+            ),
+            # crée un produit inexistant
+            QuoteConfirmLine(
+                description="Huile d'olive vierge", action="create",
+                qty=6, unit_price=8.90, line_total=53.4, vat_rate=5.5,
+            ),
+            # ignorée
+            QuoteConfirmLine(description="Frais de port", action="skip"),
+        ],
+    )
+
+    out = quote_import.confirm_import(db, tenant_id, payload)
+
+    assert out["lines"] == 2
+    assert out["created_products"] == 1
+    assert out["associated"] == 1
+    assert out["skipped"] == 1
+    assert out["reference"].startswith("DEV-")
+
+    # --- en-tête OCR persisté ---
+    quote = crud_quote.get_quote(db, tenant_id, out["quote_id"])
+    assert quote.quote_number == "D-2026-88"
+    assert quote.date == date(2026, 7, 20)
+    assert quote.valid_until == date(2026, 8, 20)
+    assert quote.conditions == "virement à 30 jours"
+    assert float(quote.discount_total) == 12.5
+    assert quote.parsed is True
+    assert str(quote.supplier_id) == sup_a
+
+    # --- lignes enrichies ---
+    lines = {l.description: l for l in crud_quote.get_lines(db, tenant_id, out["quote_id"])}
+    assert "Frais de port" not in lines  # ignorée
+    farine = lines["Farine T55"]
+    assert str(farine.product_id) == p1
+    assert float(farine.vat_rate) == 5.5
+    assert float(farine.discount_pct) == 2
+    assert farine.pack_size == "sac 25 kg"
+    assert float(farine.line_total) == 10.5
+
+    # --- produit créé, rattaché au tenant ---
+    huile = (
+        db.query(Product)
+        .filter(Product.tenant_id == tenant_id, Product.name == "Huile d'olive vierge")
+        .first()
+    )
+    assert huile is not None
+
+    # --- lien catalogue produit↔fournisseur (dispo/délai du comparateur) ---
+    links = (
+        db.query(SupplierProduct)
+        .filter(
+            SupplierProduct.tenant_id == tenant_id,
+            SupplierProduct.supplier_id == sup_a,
+            SupplierProduct.product_id.in_([p1, str(huile.id)]),
+        )
+        .count()
+    )
+    assert links == 2
+
+
+def test_confirm_import_never_writes_purchase_history_or_prices(db):
+    """Garantie centrale : un devis est une OFFRE, pas un achat.
+
+    Ses prix ne doivent JAMAIS alimenter product_prices / purchase_history,
+    sinon le coût matière des recettes serait calculé sur des prix jamais payés.
+    """
+    from app.models.models import ProductPrice, PurchaseHistory
+
+    tenant_id, sup_a, sup_b, p1, p2 = _seed(db)
+
+    before_prices = (
+        db.query(ProductPrice).filter(ProductPrice.tenant_id == tenant_id).count()
+    )
+    before_history = (
+        db.query(PurchaseHistory).filter(PurchaseHistory.tenant_id == tenant_id).count()
+    )
+
+    quote_import.confirm_import(
+        db,
+        tenant_id,
+        QuoteConfirmRequest(
+            supplier_id=sup_a,
+            quote_number="D-NO-PRICE",
+            lines=[
+                QuoteConfirmLine(
+                    description="Farine T55", action="associate", product_id=p1,
+                    qty=100, unit_price=0.01,  # prix absurde : s'il fuitait, ça se verrait
+                ),
+                QuoteConfirmLine(
+                    description="Produit tout neuf", action="create",
+                    qty=5, unit_price=999.0,
+                ),
+            ],
+        ),
+    )
+
+    assert (
+        db.query(ProductPrice).filter(ProductPrice.tenant_id == tenant_id).count()
+        == before_prices
+    ), "un devis ne doit pas créer de prix produit"
+    assert (
+        db.query(PurchaseHistory).filter(PurchaseHistory.tenant_id == tenant_id).count()
+        == before_history
+    ), "un devis ne doit pas créer d'historique d'achat"

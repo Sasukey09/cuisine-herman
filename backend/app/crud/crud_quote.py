@@ -82,6 +82,64 @@ def create_quote(db: Session, tenant_id: str, payload: QuoteCreate) -> Quote:
     return quote
 
 
+def create_imported_quote(
+    db: Session, tenant_id: str, payload, supplier_id: Optional[str]
+) -> Quote:
+    """Crée le devis issu d'un import OCR validé (en-tête seulement ; les lignes
+    sont ajoutées ensuite par :func:`add_import_line`). Notre `reference` reste
+    générée par nous ; `quote_number` porte le numéro du fournisseur."""
+    quote = Quote(
+        tenant_id=tenant_id,
+        reference=_next_reference(db, tenant_id),
+        title=payload.title or (f"Devis {payload.quote_number}" if payload.quote_number else None),
+        status="draft",
+        supplier_id=supplier_id,
+        quote_number=payload.quote_number,
+        date=payload.date,
+        valid_until=payload.valid_until,
+        currency=payload.currency or "EUR",
+        total_amount=payload.total_amount,
+        discount_total=payload.discount_total,
+        conditions=payload.conditions,
+        parsed=True,
+        ocr_status="confirmed",
+    )
+    db.add(quote)
+    db.commit()
+    db.refresh(quote)
+    return quote
+
+
+def add_import_line(
+    db: Session,
+    tenant_id: str,
+    quote_id: str,
+    line,
+    unit_id: Optional[int],
+    product_id: Optional[str],
+    supplier_id: Optional[str],
+) -> QuoteLine:
+    """Une ligne de devis importée. Flush (pas commit) : l'appelant confirme
+    l'ensemble en une transaction."""
+    obj = QuoteLine(
+        tenant_id=tenant_id,
+        quote_id=quote_id,
+        product_id=product_id,
+        description=line.description,
+        qty=line.qty,
+        unit_id=unit_id,
+        unit_price=line.unit_price,
+        line_total=line.line_total,
+        vat_rate=line.vat_rate,
+        discount_pct=line.discount_pct,
+        pack_size=line.pack_size,
+        supplier_id=supplier_id,
+    )
+    db.add(obj)
+    db.flush()
+    return obj
+
+
 def update_quote(db: Session, quote: Quote, payload: QuoteUpdate) -> Quote:
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(quote, field, value)
@@ -206,6 +264,13 @@ def to_read(quote: Quote, supplier_names: Dict[str, str], line_counts: Dict[str,
         "line_count": line_counts.get(str(quote.id), 0),
         "ordered_at": quote.ordered_at,
         "created_at": quote.created_at,
+        # Import OCR
+        "quote_number": quote.quote_number,
+        "date": quote.date,
+        "valid_until": quote.valid_until,
+        "currency": quote.currency,
+        "discount_total": _f(quote.discount_total),
+        "conditions": quote.conditions,
     }
 
 
@@ -225,6 +290,11 @@ def line_to_read(line: QuoteLine, product_names: Dict[str, str]) -> Dict[str, An
         "unit_id": line.unit_id,
         "unit_price": _f(line.unit_price),
         "supplier_id": str(line.supplier_id) if line.supplier_id else None,
+        # Import OCR
+        "vat_rate": _f(line.vat_rate),
+        "line_total": _f(line.line_total),
+        "discount_pct": _f(line.discount_pct),
+        "pack_size": line.pack_size,
     }
 
 
