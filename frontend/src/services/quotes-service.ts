@@ -8,6 +8,7 @@ import type {
   QuotePreviewResult,
   QuoteConfirmRequest,
   QuoteImportResult,
+  QuoteMatrix,
 } from "./types";
 
 export async function listQuotes(status?: string) {
@@ -63,6 +64,12 @@ export async function deleteQuoteLine(quoteId: string, lineId: string) {
 
 export async function getQuoteComparison(id: string) {
   const { data } = await api.get<QuoteComparison>(`/quotes/${id}/comparison`);
+  return data;
+}
+
+/** Tableau comparatif multi-devis (produit × fournisseur). */
+export async function getQuoteMatrix(status = "draft") {
+  const { data } = await api.get<QuoteMatrix>("/quotes/matrix", { params: { status } });
   return data;
 }
 

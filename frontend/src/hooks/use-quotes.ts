@@ -16,6 +16,7 @@ import {
   orderQuote,
   previewQuote,
   confirmQuote,
+  getQuoteMatrix,
 } from "@/services/quotes-service";
 import { getApiErrorMessage } from "@/lib/api-error";
 import type {
@@ -46,6 +47,14 @@ export function useQuoteComparison(id?: string, enabled = true) {
     queryKey: [...KEY, id, "comparison"],
     queryFn: () => getQuoteComparison(id as string),
     enabled: Boolean(id) && enabled,
+  });
+}
+
+/** Tableau comparatif de tous les devis d'un statut. */
+export function useQuoteMatrix(status = "draft") {
+  return useQuery({
+    queryKey: [...KEY, "matrix", status],
+    queryFn: () => getQuoteMatrix(status),
   });
 }
 
