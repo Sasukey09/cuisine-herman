@@ -8,6 +8,7 @@ import '../../core/providers.dart';
 import '../auth/auth_controller.dart';
 import '../../main.dart' show kMuted, kGood, kWarn, kTerracotta;
 import 'quote_detail_screen.dart';
+import 'quote_matrix_screen.dart';
 import 'quote_smart_import_screen.dart';
 
 /// Comparateur de devis (#1) — liste + création. Un devis = un panier de
@@ -136,19 +137,30 @@ Widget _importBanner(BuildContext context, WidgetRef ref) {
         const Text("PDF ou photo — l'OCR extrait les lignes.",
             style: TextStyle(fontSize: 12, color: kMuted)),
         const SizedBox(height: 10),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: () async {
-              await Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => const QuoteSmartImportScreen(),
-              ));
-              ref.invalidate(quotesListProvider);
-            },
-            icon: const Icon(Icons.upload_file, size: 18, color: kTerracotta),
-            label: const Text('Choisir un fichier'),
+        Row(children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                await Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const QuoteSmartImportScreen(),
+                ));
+                ref.invalidate(quotesListProvider);
+              },
+              icon: const Icon(Icons.upload_file, size: 18, color: kTerracotta),
+              label: const Text('Choisir un fichier'),
+            ),
           ),
-        ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => const QuoteMatrixScreen(),
+              )),
+              icon: const Icon(Icons.table_chart_outlined, size: 18, color: kTerracotta),
+              label: const Text('Comparatif'),
+            ),
+          ),
+        ]),
       ]),
     ),
   );
