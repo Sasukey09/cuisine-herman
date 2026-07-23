@@ -1,11 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { Crown, Truck, PiggyBank, AlertTriangle, ShieldCheck } from "lucide-react";
+import { useState } from "react";
+import { Crown, Truck, PiggyBank, AlertTriangle, ShieldCheck, ShoppingCart } from "lucide-react";
 
 import { PageHeader } from "@/components/page-header";
 import { BackButton } from "@/components/back-button";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { OrderFromComparisonDialog } from "@/features/orders/order-from-comparison-dialog";
+import { useAuthStore } from "@/stores/auth-store";
 import { Card, CardContent } from "@/components/ui/card";
 import { useQuoteMatrix } from "@/hooks/use-quotes";
 import { formatCurrency, formatNumber, cn } from "@/lib/utils";
@@ -72,9 +76,58 @@ export function QuoteMatrixView() {
         description="Une ligne par produit, une colonne par fournisseur. Les prix sont ramenés à l'unité de base pour être comparables."
       />
       <Kpis data={data} />
+      <OrderBestBar data={data} />
       <MatrixTable data={data} />
       <Legend />
     </>
+  );
+}
+
+/** Le pont entre « qui est le moins cher » et « commander ».
+ *
+ *  Les meilleures offres se lisent dans le tableau ; sans ce bouton il fallait
+ *  les recopier à la main chez chaque fournisseur. Une commande par
+ *  fournisseur est produite automatiquement. */
+function OrderBestBar({ data }: { data: QuoteMatrix }) {
+  const [open, setOpen] = useState(false);
+  const canWrite = useAuthStore((s) => s.hasRole("admin", "manager"));
+
+  // Une meilleure offre par produit : celle que le moteur a classée « best »,
+  // et seulement si elle est encore commandable.
+  const best = data.products
+    .map((p) => p.offers.find((o) => o.rank === "best" && !o.expired && o.available))
+    .filter((o): o is NonNullable<typeof o> => Boolean(o?.quote_line_id));
+  const lineIds = best.map((o) => o.quote_line_id as string);
+  const suppliers = new Set(best.map((o) => o.supplier_id));
+
+  if (!canWrite || lineIds.length === 0) return null;
+
+  return (
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 bg-card px-4 py-3">
+      <p className="text-[13.5px] text-muted-foreground">
+        <span className="font-semibold text-foreground">
+          {lineIds.length} meilleure(s) offre(s)
+        </span>{" "}
+        chez {suppliers.size} fournisseur(s)
+        {data.potential_savings ? (
+          <>
+            {" "}·{" "}
+            <span className="text-emerald-600 dark:text-emerald-400">
+              {formatCurrency(data.potential_savings)} d&apos;économies
+            </span>
+          </>
+        ) : null}
+      </p>
+      <Button onClick={() => setOpen(true)}>
+        <ShoppingCart className="h-4 w-4" />
+        <span className="ml-2">Commander le moins cher</span>
+      </Button>
+      <OrderFromComparisonDialog
+        open={open}
+        onOpenChange={setOpen}
+        quoteLineIds={lineIds}
+      />
+    </div>
   );
 }
 

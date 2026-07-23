@@ -12,6 +12,7 @@ import {
   Settings,
   TrendingUp,
   ClipboardList,
+  ShoppingCart,
   type LucideIcon,
 } from "lucide-react";
 
@@ -29,6 +30,8 @@ export const navItems: NavItem[] = [
   { title: "Fournisseurs", href: "/fournisseurs", icon: Truck },
   { title: "Factures", href: "/factures", icon: FileText },
   { title: "Devis", href: "/devis", icon: ClipboardList },
+  // Juste apres Devis : la barre suit l'ordre du cycle d'achat.
+  { title: "Commandes", href: "/commandes", icon: ShoppingCart },
   { title: "Variations prix", href: "/prix", icon: TrendingUp },
   { title: "Recettes", href: "/recettes", icon: ChefHat },
   { title: "Import vidéo", href: "/import-video", icon: Video },

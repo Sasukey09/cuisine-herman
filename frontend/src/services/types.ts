@@ -927,6 +927,9 @@ export interface MatrixOffer {
   supplier_id: string | null;
   supplier_name?: string | null;
   quote_id?: string | null;
+  /** L'identifiant de la LIGNE : c'est lui qu'on envoie pour commander cette
+   *  offre-là. Sans lui le comparateur désigne un gagnant sans pouvoir agir. */
+  quote_line_id?: string | null;
   quote_reference?: string | null;
   unit_price?: number | null;
   qty?: number | null;
@@ -1031,4 +1034,114 @@ export interface ProductQuoteHistory {
   best_supplier_name?: string | null;
   latest_price?: number | null;
   avg_price?: number | null;
+}
+
+// --- Domaine Achats : commandes fournisseur --------------------------------
+
+export type OrderStatus =
+  | "draft" | "sent" | "confirmed" | "preparing" | "shipped"
+  | "partially_received" | "received" | "invoiced" | "closed" | "cancelled";
+
+export interface OrderStatusOption {
+  value: OrderStatus;
+  /** Servi par l'API : web et mobile ne tiennent pas chacun leur traduction. */
+  label: string;
+}
+
+export interface PurchaseOrder {
+  id: string;
+  reference?: string | null;
+  supplier_id?: string | null;
+  supplier_name?: string | null;
+  status?: OrderStatus | null;
+  status_label?: string | null;
+  expected_date?: string | null;
+  ordered_at?: string | null;
+  total_amount?: number | null;
+  currency?: string | null;
+  delivery_fee?: number | null;
+  discount_total?: number | null;
+  conditions?: string | null;
+  notes?: string | null;
+  line_count: number;
+  created_at?: string | null;
+}
+
+export interface PurchaseOrderLine {
+  id: string;
+  product_id?: string | null;
+  product_name?: string | null;
+  description?: string | null;
+  qty_ordered?: number | null;
+  unit_price?: number | null;
+  vat_rate?: number | null;
+  discount_pct?: number | null;
+  line_total?: number | null;
+  pack_size?: string | null;
+  brand?: string | null;
+  /** D'où vient ce prix : la ligne de devis qui l'a offert. */
+  source_quote_line_id?: string | null;
+  /** Calculé depuis les réceptions ; la commande ne stocke aucun compteur. */
+  qty_received?: number | null;
+}
+
+export interface PurchaseOrderDetail extends PurchaseOrder {
+  lines: PurchaseOrderLine[];
+}
+
+export interface OrderPlanLine {
+  product_id?: string | null;
+  description?: string | null;
+  qty_ordered?: number | null;
+  unit_price?: number | null;
+  line_total?: number | null;
+  pack_size?: string | null;
+  brand?: string | null;
+  source_quote_line_id?: string | null;
+}
+
+/** Ce qui sera commandé, avant de l'être. */
+export interface OrderPlan {
+  supplier_id?: string | null;
+  supplier_name?: string | null;
+  currency?: string | null;
+  delivery_fee?: number | null;
+  discount_total?: number | null;
+  conditions?: string | null;
+  lines_total: number;
+  total_amount: number;
+  lines: OrderPlanLine[];
+}
+
+export interface OrdersCreated {
+  orders: PurchaseOrderDetail[];
+  order_count: number;
+  supplier_count: number;
+  total_amount: number;
+}
+
+export type ProgressStatus = "ok" | "partial" | "over" | "pending" | "extra";
+
+export interface ProgressLine {
+  order_line_id?: string | null;
+  product_id?: string | null;
+  description?: string | null;
+  qty_ordered?: number | null;
+  qty_received?: number | null;
+  qty_missing?: number | null;
+  unit_price?: number | null;
+  /** Ce qu'on oppose au fournisseur : un montant, pas une quantité. */
+  missing_value?: number | null;
+  conditions?: string[];
+  status: ProgressStatus;
+}
+
+export interface PurchaseOrderProgress {
+  lines: ProgressLine[];
+  issue_count: number;
+  missing_value: number;
+  extra_count: number;
+  is_complete: boolean;
+  nothing_received: boolean;
+  suggested_status?: OrderStatus | null;
 }

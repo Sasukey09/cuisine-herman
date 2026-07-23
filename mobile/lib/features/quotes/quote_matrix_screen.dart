@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../common/format.dart';
+import '../../common/ui_kit.dart';
 import '../../core/api_error.dart';
 import '../../core/providers.dart';
 import '../../main.dart' show kMuted, kGood, kWarn, kBad, kTerracotta;
+import '../auth/auth_controller.dart';
+import '../orders/order_from_comparison_sheet.dart';
 import '../products/product_detail_screen.dart';
 
 /// Comparatif multi-devis (§7) — même moteur que le web (`GET /quotes/matrix`).
@@ -93,6 +96,7 @@ class QuoteMatrixScreen extends ConsumerWidget {
               children: [
                 _summary(m, names),
                 const SizedBox(height: 12),
+                _orderBestBar(context, ref, m, products),
                 _supplierTotals(m, suppliers),
                 for (final p in products) _productCard(context, p),
                 const SizedBox(height: 8),
@@ -146,6 +150,58 @@ class QuoteMatrixScreen extends ConsumerWidget {
       const SizedBox(width: 8),
       tile(Icons.savings_outlined, kWarn, eur(savings), 'Économies'),
     ]);
+  }
+
+  /// Le pont entre « qui est le moins cher » et « commander ».
+  ///
+  /// Les meilleures offres se lisent dans le tableau ; sans ce bouton il
+  /// fallait les recopier à la main chez chaque fournisseur.
+  Widget _orderBestBar(BuildContext context, WidgetRef ref, Map<String, dynamic> m,
+      List<Map<String, dynamic>> products) {
+    if (!ref.watch(canWriteProvider)) return const SizedBox.shrink();
+
+    // Une meilleure offre par produit, et seulement si elle est encore
+    // commandable : une offre périmée ne s'engage pas.
+    final best = <Map<String, dynamic>>[];
+    for (final p in products) {
+      final offers = (p['offers'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
+      for (final o in offers) {
+        if (o['rank'] == 'best' &&
+            o['expired'] != true &&
+            o['available'] != false &&
+            o['quote_line_id'] != null) {
+          best.add(o);
+          break;
+        }
+      }
+    }
+    if (best.isEmpty) return const SizedBox.shrink();
+    final suppliers = best.map((o) => '${o['supplier_id']}').toSet();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: MockCard(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(
+            '${best.length} meilleure(s) offre(s) chez ${suppliers.length} fournisseur(s)',
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: GradientButton(
+              label: 'Commander le moins cher',
+              expand: true,
+              onPressed: () => showOrderFromComparison(
+                context,
+                ref,
+                best.map((o) => '${o['quote_line_id']}').toList(),
+              ),
+            ),
+          ),
+        ]),
+      ),
+    );
   }
 
   /// Totaux par fournisseur, port compris.
