@@ -5,6 +5,7 @@ import { Loader2, Plus, Trash2, Calculator, FlaskConical } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/page-header";
+import { ErrorState } from "@/components/error-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -232,6 +233,13 @@ export function MetricsView() {
           <CardTitle className="text-base">Mes indicateurs</CardTitle>
         </CardHeader>
         <CardContent>
+          {metrics.isError && (
+            <ErrorState
+              error={metrics.error}
+              onRetry={() => metrics.refetch()}
+              retrying={metrics.isFetching}
+            />
+          )}
           {metrics.isLoading && <p className="text-sm text-muted-foreground">Chargement…</p>}
           {metrics.data?.length === 0 && (
             <p className="text-sm text-muted-foreground">Aucun indicateur pour l&apos;instant.</p>

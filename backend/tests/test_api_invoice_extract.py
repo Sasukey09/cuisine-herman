@@ -55,6 +55,38 @@ def test_an_ocr_outage_never_fabricates_an_invoice(monkeypatch):
         app.dependency_overrides.clear()
 
 
+def test_ocr_error_mapping_distinguishes_unreadable_from_outage():
+    """Regression: a blurry/blank photo (a provider RAN but couldn't read it)
+    must return 422 with an actionable message, not the misleading 502
+    'Service OCR indisponible'. A real outage (no provider configured / all down)
+    stays 502."""
+    from app.api.api_v1.endpoints.invoices import _ocr_http_error
+    from app.services.ocr.errors import (
+        AllProvidersFailedError,
+        OcrConfigurationError,
+        OcrTransientError,
+        OcrError,
+    )
+
+    # A provider ran and failed to extract -> unreadable document -> 422.
+    unreadable = AllProvidersFailedError([("mistral", OcrTransientError("garbled"))])
+    assert unreadable.all_configuration_errors is False
+    assert _ocr_http_error(unreadable).status_code == 422
+
+    # Every provider unusable (no key) -> genuine outage -> 502.
+    outage = AllProvidersFailedError([
+        ("mistral", OcrConfigurationError("no key")),
+        ("google", OcrConfigurationError("no key")),
+    ])
+    assert outage.all_configuration_errors is True
+    assert _ocr_http_error(outage).status_code == 502
+
+    # No providers at all -> outage -> 502.
+    assert _ocr_http_error(AllProvidersFailedError([])).status_code == 502
+    # Any other OCR error -> 502.
+    assert _ocr_http_error(OcrError("generic")).status_code == 502
+
+
 def test_a_read_only_viewer_cannot_burn_the_ocr_quota():
     """The RBAC hole this closed.
 

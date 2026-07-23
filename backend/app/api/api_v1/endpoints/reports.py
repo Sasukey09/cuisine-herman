@@ -88,8 +88,14 @@ def api_run_adhoc(
     definition: ReportDefinition,
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant_id),
+    _: list = Depends(require_writer),
 ):
-    """Run an unsaved definition (live preview in the builder)."""
+    """Run an unsaved definition (live preview in the builder).
+
+    Writer-gated like the rest of the report CRUD: running a report fans out to
+    a per-product latest-price lookup (up to the source cap), so a read-only
+    viewer must not be able to trigger it on repeat as a cheap DB-load amplifier.
+    """
     try:
         return reports_service.run_report(db, tenant_id, definition.model_dump())
     except reports_service.ReportError as exc:
@@ -101,6 +107,7 @@ def api_run_saved(
     report_id: str,
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant_id),
+    _: list = Depends(require_writer),
 ):
     report = crud_custom_report.get_report(db, tenant_id, report_id)
     if report is None:

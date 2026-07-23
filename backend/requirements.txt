@@ -14,6 +14,9 @@ alembic==1.11.1
 pydantic==2.13.4
 # python-jose dropped: CVE-2024-33663 (algorithm confusion) and unmaintained.
 PyJWT==2.13.0
+# Required by PyJWT to VERIFY the RS256 Google/Apple identity tokens (social
+# login). Floor-pinned so the CI/Docker Python always gets a wheel.
+cryptography>=44.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 # 0.0.6 carried CVE-2024-24762 (ReDoS on a malformed multipart boundary) — and
@@ -32,7 +35,9 @@ pgvector==0.3.6
 anthropic>=0.69.0
 
 # Video import: transcript (YouTube captions / audio download) + STT (OpenAI Whisper)
-youtube-transcript-api>=0.6.2
+# Pinned: 1.0 removed the static list_transcripts/get_transcript the caller used,
+# so an unpinned ">=0.6.2" silently broke caption fetching on the next deploy.
+youtube-transcript-api>=1.2.0,<2
 yt-dlp>=2024.8.6
 openai>=1.40.0
 

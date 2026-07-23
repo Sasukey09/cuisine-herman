@@ -4,8 +4,8 @@ Read fresh on each access so tests (and live re-config) can override env vars
 without restarting the process. Mirrors the pattern used by the OCR module.
 """
 import os
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import FrozenSet, Optional
 
 
 def _int(name: str, default: int) -> int:
@@ -13,6 +13,10 @@ def _int(name: str, default: int) -> int:
         return int(os.getenv(name, default))
     except (TypeError, ValueError):
         return default
+
+
+def _csv_set(raw: str) -> FrozenSet[str]:
+    return frozenset(p.strip() for p in (raw or "").split(",") if p.strip())
 
 
 @dataclass
@@ -24,6 +28,12 @@ class AIConfig:
     max_tokens: int
     effort: str
     max_tool_iterations: int
+    # Model-compatibility allowlists. A model NOT listed here is called WITHOUT
+    # the corresponding advanced parameter, so the assistant never sends a knob
+    # the model rejects (the "adaptive thinking is not supported on this model"
+    # 400). Both default to EMPTY: the knobs are strictly opt-in per model.
+    thinking_models: FrozenSet[str] = field(default_factory=frozenset)  # -> `thinking`
+    effort_models: FrozenSet[str] = field(default_factory=frozenset)    # -> `output_config`
 
     @property
     def is_configured(self) -> bool:
@@ -46,6 +56,12 @@ def get_ai_config() -> AIConfig:
         # for a chat assistant working over a small, structured dataset.
         effort=os.getenv("AI_EFFORT", "medium"),
         max_tool_iterations=_int("AI_MAX_TOOL_ITERATIONS", 8),
+        # Comma-separated model ids that accept the advanced knobs. Empty by
+        # default -> the assistant sends neither `thinking` nor `output_config`,
+        # which is the safe baseline every current Claude model accepts. Opt a
+        # capable model in explicitly, e.g. AI_THINKING_MODELS=claude-opus-4-8.
+        thinking_models=_csv_set(os.getenv("AI_THINKING_MODELS", "")),
+        effort_models=_csv_set(os.getenv("AI_EFFORT_MODELS", "")),
     )
 
 

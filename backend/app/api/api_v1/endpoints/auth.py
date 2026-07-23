@@ -15,12 +15,18 @@ from app.schemas.schemas import (
     RegisterRequest,
     CreateUserRequest,
     ResetPasswordRequest,
+    ForgotPasswordRequest,
+    PasswordResetConfirmRequest,
     UserRead,
     MeRead,
+    GoogleAuthRequest,
+    AppleAuthRequest,
 )
 from app.core import security
-from app.crud import crud_user, crud_rbac
+from app.crud import crud_user, crud_rbac, crud_password_reset
 from app.services.rgpd import service as rgpd
+from app.services import social_auth
+from app.services.email import mailer
 from app.api.deps import get_current_user, get_current_roles, require_admin
 from app.models.models import User
 
@@ -82,7 +88,11 @@ def login(
 ):
     guard = get_login_guard()
     ip = client_ip(request)
-    email = form_data.username
+    # Normaliser comme a l'inscription (strip + lowercase) : l'email est stocke
+    # en minuscules au signup, donc un login tape avec une casse/espace differents
+    # (frequent sur iOS) ne matcherait jamais -> "identifiants incorrects" alors
+    # que l'inscription repond "email deja utilise". Meme normalisation des 2 cotes.
+    email = security.normalize_email(form_data.username)
 
     wait = guard.retry_after(email, ip)
     if wait > 0:
@@ -111,6 +121,159 @@ def login(
     guard.record_success(email, ip)
     rgpd.record(db, str(user.tenant_id), str(user.id), rgpd.ACTION_LOGIN, {"ip": ip})
     return _issue_tokens(user)
+
+
+# --- Social login (Google / Apple) — verified provider token -> our JWT ----- #
+def _social_login_or_create(db, identity: social_auth.SocialIdentity,
+                            org_name, name_hint=None) -> User:
+    # 1) Already linked to this provider identity -> straight login (handles
+    #    returning Apple users whose token no longer carries the email).
+    user = crud_user.get_by_provider(db, identity.provider, identity.subject)
+    if user is not None:
+        return user
+    # A verified provider email is required to safely link or create — this is
+    # what prevents linking a provider account to someone else's email.
+    if not identity.email or not identity.email_verified:
+        raise HTTPException(
+            status_code=400,
+            detail="Ce compte ne fournit pas d'e-mail vérifié ; connexion impossible.",
+        )
+    # 2) Existing account with that email (password or another provider) -> link.
+    existing = crud_user.get_user_by_email(db, identity.email)
+    if existing is not None:
+        return crud_user.link_provider(db, existing, identity.provider, identity.subject)
+    # 3) Brand-new user -> bootstrap an organization + admin, password-less.
+    display = name_hint or identity.name
+    org = crud_user.create_organization(
+        db, name=(org_name or display or identity.email.split("@")[0])
+    )
+    roles = crud_rbac.ensure_default_roles(db, str(org.id))
+    user = crud_user.create_social_user(
+        db, tenant_id=str(org.id), email=identity.email, name=display,
+        provider=identity.provider, subject=identity.subject,
+    )
+    crud_rbac.assign_role(db, str(user.id), str(roles["admin"].id))
+    return user
+
+
+@router.post("/google", response_model=Token)
+def login_google(payload: GoogleAuthRequest, db: Session = Depends(get_db)):
+    try:
+        identity = social_auth.verify_google(payload.id_token)
+    except social_auth.SocialAuthNotConfigured:
+        raise HTTPException(status_code=503, detail="Connexion Google non configurée sur le serveur.")
+    except social_auth.SocialAuthError:
+        raise HTTPException(status_code=401, detail="Jeton Google invalide.")
+    user = _social_login_or_create(db, identity, payload.org_name)
+    rgpd.record(db, str(user.tenant_id), str(user.id), rgpd.ACTION_LOGIN, {"provider": "google"})
+    return _issue_tokens(user)
+
+
+@router.post("/apple", response_model=Token)
+def login_apple(payload: AppleAuthRequest, db: Session = Depends(get_db)):
+    try:
+        identity = social_auth.verify_apple(payload.identity_token)
+    except social_auth.SocialAuthNotConfigured:
+        raise HTTPException(status_code=503, detail="Connexion Apple non configurée sur le serveur.")
+    except social_auth.SocialAuthError:
+        raise HTTPException(status_code=401, detail="Jeton Apple invalide.")
+    user = _social_login_or_create(db, identity, payload.org_name, name_hint=payload.name)
+    rgpd.record(db, str(user.tenant_id), str(user.id), rgpd.ACTION_LOGIN, {"provider": "apple"})
+    return _issue_tokens(user)
+
+
+_RESET_GENERIC = (
+    "Si un compte existe pour cette adresse, un e-mail de réinitialisation "
+    "vient d'être envoyé. Vérifiez votre boîte de réception."
+)
+
+
+@router.post("/forgot-password")
+def forgot_password(
+    payload: ForgotPasswordRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Self-service password recovery — step 1: request a reset link.
+
+    OWASP essentials, all here: the response is ALWAYS the same generic message,
+    so it never reveals which addresses have an account (no user enumeration).
+    Requests are rate-limited per IP and per email to cap abuse and outbound
+    mail. A link is only minted+sent for a real password-based account; the
+    token is single-use, short-lived, and stored only as a hash.
+    """
+    email = security.normalize_email(payload.email)
+    ip = client_ip(request)
+    limit = int(os.getenv("PASSWORD_RESET_PER_HOUR", "5"))
+    over_ip = get_quota_guard().check(f"pwreset-ip:{ip}", limit, 3600)
+    over_email = get_quota_guard().check(f"pwreset-email:{email}", limit, 3600)
+
+    # Skip the actual work when throttled or when the address is malformed, but
+    # keep the response identical so none of it is observable to a caller.
+    if not over_ip and not over_email and not security.email_error(email):
+        user = crud_user.get_user_by_email(db, email)
+        # Only password-based accounts can reset a password: a social-login
+        # account has no password to recover (and we must not create one blindly).
+        if user is not None and user.password_hash:
+            token = crud_password_reset.create_for_user(db, str(user.id))
+            mailer.send_password_reset_email(user.email, token)
+            rgpd.record(
+                db, str(user.tenant_id), str(user.id),
+                rgpd.ACTION_PASSWORD_RESET_REQUESTED, {"ip": ip},
+            )
+    return {"detail": _RESET_GENERIC}
+
+
+@router.post("/reset-password")
+def reset_password(
+    payload: PasswordResetConfirmRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Self-service password recovery — step 2: redeem the link, set a new password.
+
+    The token is validated (exists, unused, unexpired), the new password checked
+    against the strength policy, then in a single transaction: password updated,
+    token consumed (single use), and token_version bumped so every existing
+    session — and any stolen token — is revoked. Attempts are rate-limited.
+    """
+    ip = client_ip(request)
+    limit = int(os.getenv("PASSWORD_RESET_CONFIRM_PER_HOUR", "20"))
+    wait = get_quota_guard().check(f"pwreset-confirm:{ip}", limit, 3600)
+    if wait:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Trop de tentatives. Réessayez dans {wait} seconde(s).",
+            headers={"Retry-After": str(wait)},
+        )
+
+    pw_err = security.password_error(payload.password)
+    if pw_err:
+        raise HTTPException(status_code=400, detail=pw_err)
+
+    row = crud_password_reset.get_valid(db, payload.token)
+    user = (
+        db.query(User).filter(User.id == row.user_id).first() if row is not None else None
+    )
+    if row is None or user is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Lien de réinitialisation invalide ou expiré. Refaites une demande.",
+        )
+
+    from datetime import datetime as _dt
+
+    user.password_hash = security.get_password_hash(payload.password)
+    user.token_version = int(user.token_version or 0) + 1  # revoke all sessions
+    row.used_at = _dt.utcnow()  # single use — consumed in the same transaction
+    db.add(user)
+    db.add(row)
+    db.commit()
+    rgpd.record(
+        db, str(user.tenant_id), str(user.id),
+        rgpd.ACTION_PASSWORD_RESET_COMPLETED, {"ip": ip},
+    )
+    return {"detail": "Mot de passe réinitialisé. Vous pouvez vous connecter."}
 
 
 @router.post("/refresh", response_model=Token)

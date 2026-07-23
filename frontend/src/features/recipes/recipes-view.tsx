@@ -7,6 +7,7 @@ import { Plus, ChefHat, Pencil, Trash2, FileUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ErrorState } from "@/components/error-state";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,7 +25,7 @@ import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 import type { Recipe, RecipeRow } from "@/services/types";
 
 export function RecipesView() {
-  const { data: recipes, isLoading } = useEnrichedRecipes();
+  const { data: recipes, isLoading, isError, error, refetch, isFetching } = useEnrichedRecipes();
   const del = useDeleteRecipe();
   const canWrite = useAuthStore((s) => s.hasRole("admin", "manager"));
 
@@ -54,7 +55,11 @@ export function RecipesView() {
         )}
       </div>
 
-      {isLoading ? (
+      {isError ? (
+        <div className="rounded-xl border bg-card">
+          <ErrorState error={error} onRetry={() => refetch()} retrying={isFetching} />
+        </div>
+      ) : isLoading ? (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4">
           {Array.from({ length: 6 }).map((_, i) => (
             <Skeleton key={i} className="h-[230px] rounded-xl" />

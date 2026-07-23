@@ -24,7 +24,7 @@ from app.crud.crud_invoice import (
     set_invoice_ocr_status,
     update_invoice,
 )
-from app.crud import crud_invoice_line, crud_price, crud_product
+from app.crud import crud_invoice_line, crud_price, crud_product, crud_supplier
 from app.schemas.schemas import (
     InvoiceFileUrl,
     InvoiceQueuedResp,
@@ -34,16 +34,37 @@ from app.schemas.schemas import (
     CreateProductFromLine,
     ProductCreate,
     ProductRead,
+    InvoicePreviewLine,
+    InvoicePreviewResult,
+    InvoiceConfirmRequest,
 )
+from app.models.models import Invoice
+import uuid as _uuid
 from app.services.ocr.service import extract_invoice
 from app.services.ocr.schemas import InvoiceExtractionResult
-from app.services.ocr.errors import OcrError
+from app.services.matching.product_matcher import match_product
+from app.services.classification.classifier import classify
+from app.services.ocr.errors import OcrError, AllProvidersFailedError
 from app.services.invoicing import invoice_pricing
 from app.services.storage import s3_storage
 
 router = APIRouter()
 
 _OCR_UNAVAILABLE = "Service OCR indisponible : impossible d'analyser la facture pour le moment."
+# All providers ran but none could read this document: usually a blurry/blank
+# photo, not an outage. 422 + an actionable message instead of a misleading 502.
+_OCR_UNREADABLE = (
+    "Impossible de lire cette facture. Vérifiez que l'image est nette et bien "
+    "cadrée, ou essayez un PDF."
+)
+
+
+def _ocr_http_error(exc: OcrError) -> HTTPException:
+    """A provider ran but couldn't read the document -> 422 (bad photo, user can
+    fix it). A real outage (no provider configured / all down) -> 502."""
+    if isinstance(exc, AllProvidersFailedError) and not exc.all_configuration_errors:
+        return HTTPException(status_code=422, detail=_OCR_UNREADABLE)
+    return HTTPException(status_code=502, detail=_OCR_UNAVAILABLE)
 
 
 def _celery_worker_available() -> bool:
@@ -109,8 +130,8 @@ async def api_ingest_invoice(
             set_invoice_file_url(db, invoice_id, tenant_id, key)
         try:
             extraction = extract_invoice(content, ctype)
-        except OcrError:
-            raise HTTPException(status_code=502, detail=_OCR_UNAVAILABLE)
+        except OcrError as exc:
+            raise _ocr_http_error(exc)
         invoice_pricing.persist_extraction(db, tenant_id, invoice_id, extraction)
         summary = invoice_pricing.process_invoice(db, tenant_id, invoice_id)
         return {"invoice_id": invoice_id, "summary": summary}
@@ -150,9 +171,9 @@ async def api_ingest_invoice_async(
         def _process_inline() -> str:
             try:
                 extraction = extract_invoice(content, ctype)
-            except OcrError:
+            except OcrError as exc:
                 set_invoice_ocr_status(db, invoice_id, tenant_id, "error")
-                raise HTTPException(status_code=502, detail=_OCR_UNAVAILABLE)
+                raise _ocr_http_error(exc)
             invoice_pricing.persist_extraction(db, tenant_id, invoice_id, extraction)
             invoice_pricing.process_invoice(db, tenant_id, invoice_id)
             set_invoice_ocr_status(db, invoice_id, tenant_id, "done")
@@ -247,6 +268,7 @@ def api_add_line(
         unit_id=unit_id,
         unit_price=payload.unit_price,
         line_total=payload.line_total,
+        vat_rate=payload.vat_rate,
         product_id=payload.product_id,
     )
     if line.product_id is not None and line.unit_price is not None:
@@ -400,6 +422,7 @@ def api_update_line(
         "qty": payload.qty,
         "unit_price": payload.unit_price,
         "line_total": payload.line_total,
+        "vat_rate": payload.vat_rate,
     }
     if payload.unit is not None:
         unit_id = crud_price.get_units_by_code(db).get(payload.unit.strip().lower())
@@ -430,7 +453,163 @@ async def api_extract_invoice(
     def _work():
         try:
             return extract_invoice(content, ctype)
-        except OcrError:
-            raise HTTPException(status_code=502, detail=_OCR_UNAVAILABLE)
+        except OcrError as exc:
+            raise _ocr_http_error(exc)
 
     return await run_in_threadpool(_work)
+
+
+@router.post("/preview", response_model=InvoicePreviewResult)
+async def api_preview_invoice(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+    _: list = Depends(require_writer),
+    _q: None = Depends(quota("ocr", "OCR_PER_MIN", 20)),
+    _qd: None = Depends(daily_quota("ocr", "OCR_PER_DAY", 400)),
+):
+    """Smart-import preview: OCR + per-line product-match suggestion + category
+    suggestion, for the validation dialog. Persists nothing (the detected supplier
+    is resolved to an existing one but never created here)."""
+    content = await file.read()
+    validate_upload(content, file.content_type)
+    ctype = file.content_type
+
+    def _work():
+        try:
+            extraction = extract_invoice(content, ctype)
+        except OcrError as exc:
+            raise _ocr_http_error(exc)
+
+        supplier_id = None
+        if extraction.supplier:
+            existing = crud_supplier.get_supplier_by_name(db, tenant_id, extraction.supplier)
+            supplier_id = str(existing.id) if existing is not None else None
+
+        lines: List[InvoicePreviewLine] = []
+        for raw in extraction.lines:
+            desc = raw.description or ""
+            m = (
+                match_product(db, tenant_id, desc)
+                if desc
+                else {"product_id": None, "confidence_score": None, "manual_review": True}
+            )
+            pid = m.get("product_id")
+            pname = None
+            if pid:
+                p = crud_product.get_product(db, pid, tenant_id)
+                pname = p.name if p is not None else None
+            lines.append(
+                InvoicePreviewLine(
+                    description=desc,
+                    qty=raw.qty,
+                    unit=raw.unit,
+                    unit_price=raw.unit_price,
+                    line_total=raw.line_total,
+                    matched_product_id=pid,
+                    matched_product_name=pname,
+                    match_confidence=m.get("confidence_score"),
+                    needs_review=bool(m.get("manual_review", True)) or not pid,
+                    suggested_category=classify(desc) if desc else None,
+                )
+            )
+        return InvoicePreviewResult(
+            supplier=extraction.supplier,
+            supplier_id=supplier_id,
+            date=extraction.date,
+            invoice_number=extraction.invoice_number,
+            total_amount=getattr(extraction, "total_amount", None),
+            lines=lines,
+        )
+
+    return await run_in_threadpool(_work)
+
+
+@router.post("/confirm", response_model=InvoiceIngestResult, status_code=201)
+def api_confirm_invoice(
+    payload: InvoiceConfirmRequest,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+    _: list = Depends(require_writer),
+):
+    """Persist a validated smart-import: create the invoice, then per line create
+    a new product (auto-classified, with VAT) or associate an existing one, and
+    derive prices (which also links the product to the supplier — #7). Lines are
+    the ones the user reviewed in the dialog; no re-OCR."""
+    # Detect/resolve the supplier once (#7 starts here).
+    supplier_id = payload.supplier_id
+    if not supplier_id and payload.supplier:
+        sup = crud_supplier.get_or_create_supplier_by_name(db, tenant_id, payload.supplier)
+        supplier_id = str(sup.id) if sup is not None else None
+
+    invoice = Invoice(
+        id=str(_uuid.uuid4()),
+        tenant_id=tenant_id,
+        supplier_id=supplier_id,
+        invoice_number=payload.invoice_number,
+        date=payload.date,
+        total_amount=payload.total_amount,
+        currency=payload.currency or "EUR",
+        parsed=True,
+        ocr_status="confirmed",
+    )
+    db.add(invoice)
+    db.commit()
+    db.refresh(invoice)
+    invoice_id = str(invoice.id)
+
+    units = crud_price.get_units_by_code(db)
+    created_products = 0
+    associated = 0
+    lines_persisted = 0
+
+    for l in payload.lines:
+        if l.action == "skip":
+            continue
+        unit_id = units.get((l.unit or "").strip().lower()) if l.unit else None
+        product_id = None
+        if l.action == "associate" and l.product_id:
+            assert_product_in_tenant(db, tenant_id, l.product_id)
+            product_id = l.product_id
+            associated += 1
+        elif l.action == "create":
+            prod = crud_product.create_product(
+                db,
+                ProductCreate(
+                    name=l.description,
+                    base_unit_id=unit_id,
+                    category=l.category,
+                    vat_rate=l.vat_rate,
+                ),
+                tenant_id,
+            )
+            product_id = str(prod.id)
+            created_products += 1
+
+        line = crud_invoice_line.create_invoice_line(
+            db,
+            invoice_id,
+            description=l.description,
+            qty=l.qty,
+            unit_id=unit_id,
+            unit_price=l.unit_price,
+            line_total=l.line_total,
+            vat_rate=l.vat_rate,
+            product_id=product_id,
+        )
+        lines_persisted += 1
+        # Derive the price -> also records purchase history + auto-links the
+        # product to the invoice's supplier (#7) + recomputes recipe costs.
+        if product_id and l.unit_price is not None:
+            invoice_pricing.reprice_line(db, tenant_id, line)
+
+    return {
+        "invoice_id": invoice_id,
+        "summary": {
+            "invoice_id": invoice_id,
+            "lines": lines_persisted,
+            "matched": associated,
+            "prices_created": created_products + associated,
+            "needs_review": [],
+        },
+    }

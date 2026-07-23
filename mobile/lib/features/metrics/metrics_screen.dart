@@ -77,7 +77,15 @@ class _MetricsScreenState extends ConsumerState<MetricsScreen> {
   Future<void> _evaluate() async {
     if (_recipeId == null) return;
     try {
-      final r = await ref.read(apiClientProvider).dio.get('/metrics/evaluate/recipe/$_recipeId');
+      // Passer le prix de vente de la recette : sinon les indicateurs de marge
+      // sont faussés (le backend ne le déduit pas ici, contrairement au web).
+      final recipes = (ref.read(_recipesProvider).valueOrNull ?? const []).cast<Map>();
+      final recipe =
+          recipes.firstWhere((r) => '${r['id']}' == _recipeId, orElse: () => const {});
+      final sp = recipe['selling_price'];
+      final r = await ref.read(apiClientProvider).dio.get(
+          '/metrics/evaluate/recipe/$_recipeId',
+          queryParameters: sp != null ? {'selling_price': sp} : null);
       final list = (r.data as Map<String, dynamic>)['metrics'] as List;
       setState(() {
         _evalById = {

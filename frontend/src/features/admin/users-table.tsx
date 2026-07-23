@@ -21,6 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ErrorState } from "@/components/error-state";
 import { UserFormDialog } from "./user-form-dialog";
 import { ResetPasswordDialog } from "./reset-password-dialog";
 import { useUsers } from "@/hooks/use-admin";
@@ -34,7 +35,7 @@ const roleVariant: Record<string, "default" | "secondary" | "outline"> = {
 };
 
 export function UsersTable() {
-  const { data: users, isLoading } = useUsers();
+  const { data: users, isLoading, isError, error, refetch, isFetching } = useUsers();
   const currentUser = useAuthStore((s) => s.user);
   const [formOpen, setFormOpen] = useState(false);
   const [resetTarget, setResetTarget] = useState<Me | null>(null);
@@ -65,7 +66,18 @@ export function UsersTable() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isLoading ? (
+            {isError ? (
+              <TableRow>
+                <TableCell colSpan={4}>
+                  <ErrorState
+                    error={error}
+                    onRetry={() => refetch()}
+                    retrying={isFetching}
+                    compact
+                  />
+                </TableCell>
+              </TableRow>
+            ) : isLoading ? (
               Array.from({ length: 3 }).map((_, i) => (
                 <TableRow key={i}>
                   <TableCell className="pl-6"><Skeleton className="h-5 w-32" /></TableCell>

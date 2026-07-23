@@ -5,6 +5,7 @@ import { Loader2, Plus, Trash2, SlidersHorizontal, Save } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/page-header";
+import { ErrorState } from "@/components/error-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -263,6 +264,13 @@ export function CustomFieldsView() {
           <CardTitle className="text-base">Champs définis</CardTitle>
         </CardHeader>
         <CardContent>
+          {allDefs.isError && (
+            <ErrorState
+              error={allDefs.error}
+              onRetry={() => allDefs.refetch()}
+              retrying={allDefs.isFetching}
+            />
+          )}
           {allDefs.data?.length === 0 && (
             <p className="text-sm text-muted-foreground">Aucun champ pour l&apos;instant.</p>
           )}

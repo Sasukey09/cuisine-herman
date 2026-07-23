@@ -9,10 +9,10 @@ from datetime import date as DateType
 
 
 class SupplierBase(BaseModel):
-    name: str
-    code: Optional[str] = None
+    name: str = Field(max_length=200)
+    code: Optional[str] = Field(default=None, max_length=100)
     contact: Optional[dict] = None
-    rating: Optional[float] = None
+    rating: Optional[float] = Field(default=None, allow_inf_nan=False)
 
 
 class SupplierCreate(SupplierBase):
@@ -20,10 +20,10 @@ class SupplierCreate(SupplierBase):
 
 
 class SupplierUpdate(BaseModel):
-    name: Optional[str] = None
-    code: Optional[str] = None
+    name: Optional[str] = Field(default=None, max_length=200)
+    code: Optional[str] = Field(default=None, max_length=100)
     contact: Optional[dict] = None
-    rating: Optional[float] = None
+    rating: Optional[float] = Field(default=None, allow_inf_nan=False)
 
 
 class SupplierRead(SupplierBase):
@@ -46,7 +46,7 @@ class SupplierPriceRead(BaseModel):
 class ProductPriceCreate(BaseModel):
     """A price a human types in, rather than one an invoice brought."""
 
-    price: float = Field(gt=0, description="Prix pour UNE unité (ex. 8.50 pour 8,50 €/kg)")
+    price: float = Field(gt=0, allow_inf_nan=False, description="Prix pour UNE unité (ex. 8.50 pour 8,50 €/kg)")
     unit_id: int = Field(description="L'unité à laquelle ce prix s'applique (kg, L, pièce…)")
     supplier_id: Optional[str] = None
     currency: str = "EUR"
@@ -54,23 +54,67 @@ class ProductPriceCreate(BaseModel):
 
 
 class ProductBase(BaseModel):
-    name: str
-    sku: Optional[str] = None
+    name: str = Field(max_length=200)
+    sku: Optional[str] = Field(default=None, max_length=100)
     base_unit_id: Optional[int] = None
+    vat_rate: Optional[float] = Field(default=None, ge=0, le=100)
 
 
 class ProductCreate(ProductBase):
-    pass
+    # A category name from the taxonomy (see /products/categories). Omit it and
+    # the product is auto-classified from its name at creation.
+    category: Optional[str] = Field(default=None, max_length=60)
 
 
 class ProductUpdate(BaseModel):
-    name: Optional[str] = None
-    sku: Optional[str] = None
+    name: Optional[str] = Field(default=None, max_length=200)
+    sku: Optional[str] = Field(default=None, max_length=100)
     base_unit_id: Optional[int] = None
+    category: Optional[str] = Field(default=None, max_length=60)
+    vat_rate: Optional[float] = Field(default=None, ge=0, le=100)
 
 
 class ProductRead(ProductBase):
     id: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# --- Product ↔ Supplier catalog links -------------------------------------
+
+
+class SupplierProductBase(BaseModel):
+    supplier_sku: Optional[str] = Field(default=None, max_length=100)
+    pack_size: Optional[str] = Field(default=None, max_length=100)
+    available: bool = True
+    preferred: bool = False
+    lead_time_days: Optional[int] = Field(default=None, ge=0, le=365)
+    notes: Optional[str] = Field(default=None, max_length=500)
+
+
+class SupplierProductCreate(SupplierProductBase):
+    supplier_id: str
+
+
+class SupplierProductUpdate(BaseModel):
+    supplier_sku: Optional[str] = Field(default=None, max_length=100)
+    pack_size: Optional[str] = Field(default=None, max_length=100)
+    available: Optional[bool] = None
+    preferred: Optional[bool] = None
+    lead_time_days: Optional[int] = Field(default=None, ge=0, le=365)
+    notes: Optional[str] = Field(default=None, max_length=500)
+
+
+class SupplierProductRead(BaseModel):
+    id: str
+    product_id: str
+    supplier_id: str
+    supplier_sku: Optional[str] = None
+    pack_size: Optional[str] = None
+    available: Optional[bool] = None
+    preferred: Optional[bool] = None
+    lead_time_days: Optional[int] = None
+    notes: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -102,6 +146,7 @@ class InvoiceLineRead(BaseModel):
     unit_id: Optional[int] = None
     unit_price: Optional[float] = None
     line_total: Optional[float] = None
+    vat_rate: Optional[float] = None
     match_confidence: Optional[float] = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -135,9 +180,9 @@ class InvoiceIngestResult(BaseModel):
 
 
 class RecipeBase(BaseModel):
-    name: str
-    yield_qty: Optional[float] = None
-    selling_price: Optional[float] = None
+    name: str = Field(max_length=200)
+    yield_qty: Optional[float] = Field(default=None, allow_inf_nan=False)
+    selling_price: Optional[float] = Field(default=None, allow_inf_nan=False)
 
 
 class RecipeCreate(RecipeBase):
@@ -145,9 +190,9 @@ class RecipeCreate(RecipeBase):
 
 
 class RecipeUpdate(BaseModel):
-    name: Optional[str] = None
-    yield_qty: Optional[float] = None
-    selling_price: Optional[float] = None
+    name: Optional[str] = Field(default=None, max_length=200)
+    yield_qty: Optional[float] = Field(default=None, allow_inf_nan=False)
+    selling_price: Optional[float] = Field(default=None, allow_inf_nan=False)
 
 
 class RecipeInstructionRead(BaseModel):
@@ -170,12 +215,12 @@ class RecipeIngredientCreate(BaseModel):
     # Optional: ingredients imported from a PDF / video / the assistant may not be
     # matched to a catalog product yet (kept by free-text ingredient_name).
     product_id: Optional[str] = None
-    qty: Optional[float] = None
+    qty: Optional[float] = Field(default=None, allow_inf_nan=False)
     unit_id: Optional[int] = None
-    qty_normalized: Optional[float] = None
-    loss_pct: Optional[float] = 0
-    yield_pct: Optional[float] = 100
-    prep_notes: Optional[str] = None
+    qty_normalized: Optional[float] = Field(default=None, allow_inf_nan=False)
+    loss_pct: Optional[float] = Field(default=0, allow_inf_nan=False, ge=0)
+    yield_pct: Optional[float] = Field(default=100, allow_inf_nan=False, ge=0)
+    prep_notes: Optional[str] = Field(default=None, max_length=2000)
 
 
 class RecipeIngredientRead(RecipeIngredientCreate):
@@ -329,6 +374,34 @@ class ResetPasswordRequest(BaseModel):
     password: str
 
 
+class ForgotPasswordRequest(BaseModel):
+    """Self-service recovery: the user gives only their email. The endpoint
+    always answers the same way, so it never reveals who has an account."""
+    email: str = Field(max_length=320)
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    """Redeem a reset link. Password strength is enforced in the endpoint (400),
+    same policy as everywhere else."""
+    token: str = Field(min_length=16, max_length=512)
+    password: str
+
+
+class GoogleAuthRequest(BaseModel):
+    """Google Sign-In: the client sends the ID token it obtained natively."""
+    id_token: str
+    # Only used when this is a brand-new user (names their organization).
+    org_name: Optional[str] = None
+
+
+class AppleAuthRequest(BaseModel):
+    """Sign in with Apple: the client sends the identity token. Apple returns the
+    display name only on the first consent, so the client forwards it here."""
+    identity_token: str
+    name: Optional[str] = None
+    org_name: Optional[str] = None
+
+
 class CreateUserRequest(_EmailPasswordMixin, BaseModel):
     email: str
     password: str
@@ -413,6 +486,15 @@ class AISuggestions(BaseModel):
 # --------------------------------------------------------------------------- #
 class VideoExtractRequest(BaseModel):
     url: str
+
+
+class VideoTranscriptRequest(BaseModel):
+    """The client (mobile app) fetched the transcript itself — from the phone's
+    residential IP, which YouTube does not block like a datacenter one — and
+    sends it here for AI extraction. No server-side YouTube fetch happens."""
+    transcript: str = Field(min_length=1, max_length=200000)
+    url: Optional[str] = Field(default=None, max_length=2048)
+    title: Optional[str] = Field(default=None, max_length=500)
 
 
 class VideoIngredientDraft(BaseModel):
@@ -645,6 +727,7 @@ class InvoiceLineUpdate(BaseModel):
     unit: Optional[str] = None  # unit code (g, kg, l, ml, piece...)
     unit_price: Optional[float] = None
     line_total: Optional[float] = None
+    vat_rate: Optional[float] = Field(default=None, ge=0, le=100)
 
 
 class InvoiceUpdate(BaseModel):
@@ -660,7 +743,60 @@ class InvoiceLineCreate(BaseModel):
     unit: Optional[str] = None
     unit_price: Optional[float] = None
     line_total: Optional[float] = None
+    vat_rate: Optional[float] = Field(default=None, ge=0, le=100)
     product_id: Optional[str] = None
+
+
+class InvoicePreviewLine(BaseModel):
+    """A detected invoice line enriched for the smart-import validation dialog:
+    the OCR fields + a product-match suggestion + a category suggestion."""
+
+    description: str
+    qty: Optional[float] = None
+    unit: Optional[str] = None
+    unit_price: Optional[float] = None
+    line_total: Optional[float] = None
+    vat_rate: Optional[float] = None
+    matched_product_id: Optional[str] = None
+    matched_product_name: Optional[str] = None
+    match_confidence: Optional[float] = None
+    # True when no confident match was found -> the user should create/associate.
+    needs_review: bool = True
+    suggested_category: Optional[str] = None
+
+
+class InvoicePreviewResult(BaseModel):
+    supplier: Optional[str] = None
+    supplier_id: Optional[str] = None
+    date: Optional[DateType] = None
+    invoice_number: Optional[str] = None
+    total_amount: Optional[float] = None
+    lines: List[InvoicePreviewLine] = []
+
+
+class InvoiceConfirmLine(BaseModel):
+    """A line the user validated in the smart-import dialog."""
+
+    description: str
+    qty: Optional[float] = None
+    unit: Optional[str] = None
+    unit_price: Optional[float] = None
+    line_total: Optional[float] = None
+    vat_rate: Optional[float] = Field(default=None, ge=0, le=100)
+    # create a new product, associate to an existing one, or skip the line.
+    action: str = "create"
+    product_id: Optional[str] = None  # for action="associate"
+    category: Optional[str] = None  # for action="create" (else auto-classified)
+
+
+class InvoiceConfirmRequest(BaseModel):
+    supplier: Optional[str] = None
+    supplier_id: Optional[str] = None
+    date: Optional[DateType] = None
+    invoice_number: Optional[str] = None
+    total_amount: Optional[float] = None
+    currency: Optional[str] = "EUR"
+    lines: List[InvoiceConfirmLine] = []
 
 
 class CreateProductFromLine(BaseModel):
@@ -684,6 +820,79 @@ class AuditLogRead(BaseModel):
 
 class DeleteOrganizationRequest(BaseModel):
     """Retyping the exact name is the only thing between a mis-click and every
-    invoice, recipe and price this restaurant has ever recorded."""
+    invoice, recipe and price this restaurant has ever recorded.
+
+    ``password`` is verified for password-based accounts (a second confirmation
+    factor before irreversible erasure); it is optional so social-login admins,
+    who have no password, can still exercise their right to erasure."""
 
     confirm_name: str
+    password: Optional[str] = None
+
+
+# --- Quotes (comparateur de devis) ----------------------------------------
+
+
+class QuoteLineBase(BaseModel):
+    product_id: Optional[str] = None
+    description: Optional[str] = Field(default=None, max_length=300)
+    qty: Optional[float] = Field(default=None, ge=0, allow_inf_nan=False)
+    unit_id: Optional[int] = None
+
+
+class QuoteLineCreate(QuoteLineBase):
+    pass
+
+
+class QuoteLineUpdate(BaseModel):
+    product_id: Optional[str] = None
+    description: Optional[str] = Field(default=None, max_length=300)
+    qty: Optional[float] = Field(default=None, ge=0, allow_inf_nan=False)
+    unit_id: Optional[int] = None
+
+
+class QuoteLineRead(BaseModel):
+    id: str
+    product_id: Optional[str] = None
+    product_name: Optional[str] = None
+    description: Optional[str] = None
+    qty: Optional[float] = None
+    unit_id: Optional[int] = None
+    unit_price: Optional[float] = None
+    supplier_id: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class QuoteCreate(BaseModel):
+    title: Optional[str] = Field(default=None, max_length=200)
+    notes: Optional[str] = Field(default=None, max_length=1000)
+    lines: List[QuoteLineCreate] = []
+
+
+class QuoteUpdate(BaseModel):
+    title: Optional[str] = Field(default=None, max_length=200)
+    notes: Optional[str] = Field(default=None, max_length=1000)
+    status: Optional[str] = Field(default=None, max_length=20)
+
+
+class QuoteRead(BaseModel):
+    id: str
+    reference: Optional[str] = None
+    title: Optional[str] = None
+    status: Optional[str] = None
+    supplier_id: Optional[str] = None
+    supplier_name: Optional[str] = None
+    total_amount: Optional[float] = None
+    notes: Optional[str] = None
+    line_count: Optional[int] = None
+    ordered_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class QuoteOrderRequest(BaseModel):
+    """Convert a quote into an order by retaining one supplier's prices."""
+
+    supplier_id: str

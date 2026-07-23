@@ -53,6 +53,24 @@ class User(Base):
     token_version = Column(Integer, nullable=False, server_default="0")
 
 
+class PasswordResetToken(Base):
+    """A single-use, short-lived credential for self-service password recovery.
+
+    Only the SHA-256 *hash* of the token is stored: a leak of this table must not
+    hand an attacker a working reset link. The plaintext token lives only in the
+    email we send. Rows are consumed (``used_at``) on first use and expire.
+    """
+    __tablename__ = "password_reset_tokens"
+    id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
+    user_id = Column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    token_hash = Column(Text, nullable=False, unique=True, index=True)
+    expires_at = Column(TIMESTAMP, nullable=False)
+    used_at = Column(TIMESTAMP)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+
 class Supplier(Base):
     __tablename__ = "suppliers"
     id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
@@ -98,6 +116,7 @@ class Product(Base):
     name = Column(Text, nullable=False)
     base_unit_id = Column(Integer, ForeignKey("units.id"))
     category_id = Column(Integer, ForeignKey("product_categories.id"))
+    vat_rate = Column(Numeric)  # default VAT % for this product (e.g. 5.5, 20)
     allergenes = Column(JSONB)
     meta = Column("metadata", JSONB)
     created_at = Column(TIMESTAMP, server_default=func.now())
@@ -141,6 +160,26 @@ class ProductPrice(Base):
     created_at = Column(TIMESTAMP, server_default=func.now())
 
 
+class SupplierProduct(Base):
+    """First-class product↔supplier catalog link. Per-supplier PRICES already live
+    in product_prices; this row carries the catalog attributes a price row cannot:
+    availability, a preferred flag, the supplier's own reference, and the lead
+    time (reused by the quote comparator). One row per (tenant, product, supplier)."""
+
+    __tablename__ = "supplier_products"
+    id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
+    tenant_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"))
+    product_id = Column(UUID(as_uuid=False), ForeignKey("products.id", ondelete="CASCADE"))
+    supplier_id = Column(UUID(as_uuid=False), ForeignKey("suppliers.id", ondelete="CASCADE"))
+    supplier_sku = Column(Text)  # the supplier's own reference for this product
+    pack_size = Column(Text)  # conditionnement (e.g. "carton de 6")
+    available = Column(Boolean, server_default=text("true"))  # disponibilité
+    preferred = Column(Boolean, server_default=text("false"))  # fournisseur préféré
+    lead_time_days = Column(Integer)  # délai de livraison (jours)
+    notes = Column(Text)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+
 class Invoice(Base):
     __tablename__ = "invoices"
     id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
@@ -170,6 +209,7 @@ class InvoiceLine(Base):
     qty_normalized = Column(Numeric)
     unit_price = Column(Numeric)
     line_total = Column(Numeric)
+    vat_rate = Column(Numeric)  # VAT % for this line (e.g. 5.5, 10, 20)
     currency = Column(Text)
     raw_line = Column(JSONB)
     match_confidence = Column(Numeric)
@@ -438,3 +478,50 @@ class AIMessage(Base):
     role = Column(Text, nullable=False)  # user | assistant
     content = Column(Text, nullable=False)
     created_at = Column(TIMESTAMP, server_default=func.now())
+
+
+class Quote(Base):
+    """A "devis" — a named basket of products to source, compared across
+    suppliers. The comparator (``quote_service``) prices the basket per supplier
+    from purchase history + the supplier catalog; picking a supplier converts the
+    quote into an order (``status='ordered'``), snapshotting the retained line
+    prices so history stays stable even as future prices move."""
+
+    __tablename__ = "quotes"
+    id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
+    tenant_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"))
+    reference = Column(Text)  # human ref, e.g. "DEV-2026-0007"
+    title = Column(Text)
+    status = Column(Text, server_default=text("'draft'"))  # draft | ordered | archived
+    supplier_id = Column(UUID(as_uuid=False), ForeignKey("suppliers.id", ondelete="SET NULL"))
+    total_amount = Column(Numeric)  # snapshot of the chosen basket total, set on order
+    notes = Column(Text)
+    ordered_at = Column(TIMESTAMP)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+    # delete-orphan + passive_deletes: deleting a quote must remove its lines.
+    # quote_lines.quote_id is NOT NULL, so the ORM's default "nullify children on
+    # parent delete" would violate the constraint and 500. passive_deletes lets
+    # the DB's ON DELETE CASCADE (see the FK below) do the removal instead.
+    lines = relationship(
+        "QuoteLine",
+        back_populates="quote",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class QuoteLine(Base):
+    __tablename__ = "quote_lines"
+    id = Column(UUID(as_uuid=False), primary_key=True, server_default=uuid_default())
+    tenant_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"))
+    quote_id = Column(UUID(as_uuid=False), ForeignKey("quotes.id", ondelete="CASCADE"))
+    product_id = Column(UUID(as_uuid=False), ForeignKey("products.id", ondelete="SET NULL"))
+    description = Column(Text)  # free-text fallback when no product is linked
+    qty = Column(Numeric)
+    unit_id = Column(Integer, ForeignKey("units.id"))
+    unit_price = Column(Numeric)  # retained per-unit price, snapshotted on order
+    supplier_id = Column(UUID(as_uuid=False), ForeignKey("suppliers.id", ondelete="SET NULL"))
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+    quote = relationship("Quote", back_populates="lines")

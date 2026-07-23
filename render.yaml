@@ -82,6 +82,13 @@ services:
         value: "false"
       - key: CORS_ORIGINS
         sync: false                  # <-- set to your frontend URL, e.g. https://app.vercel.app
+      # --- Password-reset emails (Resend recommended) ---
+      - key: RESEND_API_KEY
+        sync: false                  # <-- your Resend API key; enables real email delivery
+      - key: MAIL_FROM
+        sync: false                  # <-- e.g. "FoodGad <no-reply@votre-domaine.fr>" (domain verified in Resend)
+      - key: FRONTEND_URL
+        sync: false                  # <-- web app URL, e.g. https://app.vercel.app (base of the reset link)
       # Object storage (use a managed S3-compatible service, e.g. Cloudflare R2):
       - key: S3_ENDPOINT
         sync: false

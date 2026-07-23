@@ -7,6 +7,7 @@ import { Plus, Search, Pencil, Trash2, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ErrorState } from "@/components/error-state";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,7 +27,8 @@ import type { Supplier, SupplierRow } from "@/services/types";
 export function SuppliersView() {
   const [search, setSearch] = useState("");
   const debounced = useDebounce(search, 300);
-  const { data: suppliers, isLoading } = useEnrichedSuppliers(debounced || undefined);
+  const { data: suppliers, isLoading, isError, error, refetch, isFetching } =
+    useEnrichedSuppliers(debounced || undefined);
   const del = useDeleteSupplier();
   const canWrite = useAuthStore((s) => s.hasRole("admin", "manager"));
 
@@ -60,7 +62,11 @@ export function SuppliersView() {
         )}
       </div>
 
-      {isLoading ? (
+      {isError ? (
+        <div className="rounded-xl border bg-card">
+          <ErrorState error={error} onRetry={() => refetch()} retrying={isFetching} />
+        </div>
+      ) : isLoading ? (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
           {Array.from({ length: 6 }).map((_, i) => (
             <Skeleton key={i} className="h-[150px] rounded-xl" />

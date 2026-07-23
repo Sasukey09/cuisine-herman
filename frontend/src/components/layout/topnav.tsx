@@ -53,8 +53,12 @@ export function Topnav({ onMenu }: { onMenu: () => void }) {
       </form>
 
       {canWrite && (
+        // `?import=1` : la page Factures ouvre directement le dialogue d'import.
+        // Avant, ce bouton pointait sur "/factures" tout court : si on y était
+        // déjà, cliquer ne faisait RIEN de visible (l'utilisateur croyait le
+        // bouton mort). Il déclenche maintenant l'import où qu'on soit.
         <Button asChild className="rounded-full">
-          <Link href="/factures">+ Importer une facture</Link>
+          <Link href="/factures?import=1">+ Importer une facture</Link>
         </Button>
       )}
     </header>

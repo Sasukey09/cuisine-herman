@@ -45,6 +45,20 @@ export function RecipeDetail({ recipeId }: { recipeId: string }) {
     return m;
   }, [products]);
 
+  // Current ingredients, in the shape the editor expects — so opening it shows
+  // what's already there and the user adds/edits/removes on top of it. Declared
+  // before any early return so the hook order stays stable.
+  const initialIngredients = useMemo(
+    () =>
+      (version.data?.ingredients ?? []).map((i) => ({
+        product_id: i.product_id ?? "",
+        qty: i.qty ?? undefined,
+        loss_pct: i.loss_pct ?? 0,
+        yield_pct: i.yield_pct ?? 100,
+      })),
+    [version.data],
+  );
+
   if (isError) {
     return (
       <Card>
@@ -89,7 +103,7 @@ export function RecipeDetail({ recipeId }: { recipeId: string }) {
           {canWrite && (
             <Button variant="outline" size="sm" onClick={() => setVersionOpen(true)}>
               <Plus className="h-4 w-4" />
-              {hasVersion ? "Nouvelle version" : "Ajouter la fiche"}
+              {hasVersion ? "Modifier les ingrédients" : "Ajouter les ingrédients"}
             </Button>
           )}
         </CardHeader>
@@ -173,7 +187,12 @@ export function RecipeDetail({ recipeId }: { recipeId: string }) {
         />
       )}
 
-      <VersionFormDialog open={versionOpen} onOpenChange={setVersionOpen} recipeId={recipeId} />
+      <VersionFormDialog
+        open={versionOpen}
+        onOpenChange={setVersionOpen}
+        recipeId={recipeId}
+        initialIngredients={initialIngredients}
+      />
     </div>
   );
 }

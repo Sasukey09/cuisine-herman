@@ -9,19 +9,39 @@ import '../../common/edit_delete.dart';
 import '../../common/format.dart';
 import '../../common/ui_kit.dart';
 import '../../core/providers.dart';
-import '../../main.dart' show kMuted, kCategoryColors;
+import '../../main.dart' show kMuted, kCategoryColors, kProductCategories;
+import '../auth/auth_controller.dart';
+import 'product_detail_screen.dart';
 
-final _query = StateProvider.autoDispose<String>((ref) => '');
+@visibleForTesting
+final productsSearchQueryProvider = StateProvider.autoDispose<String>((ref) => '');
 
-final _productsProvider = FutureProvider.autoDispose<Loaded>((ref) async {
-  return fetchWithCache(ref, cacheKey: 'products', request: () async {
-    final q = ref.watch(_query).trim();
+/// Selected category filter (null/'' = all), like the web category dropdown.
+@visibleForTesting
+final productsCategoryFilterProvider = StateProvider.autoDispose<String?>((ref) => null);
+
+@visibleForTesting
+final productsListProvider = FutureProvider.autoDispose<Loaded>((ref) async {
+  // Watch query + category *synchronously*, before any await. Reading them inside
+  // the request closure — after fetchWithCache's first await — never registered
+  // the reactive dependency, so typing in the search box updated the query but
+  // never re-ran this provider: the list silently ignored the search entirely.
+  final q = ref.watch(productsSearchQueryProvider).trim();
+  final cat = ref.watch(productsCategoryFilterProvider);
+  final loaded = await fetchWithCache(ref, cacheKey: 'products', request: () async {
     final resp = await ref.read(apiClientProvider).dio.get('/products/enriched', queryParameters: {
       'limit': 200,
       if (q.isNotEmpty) 'q': q,
     });
     return resp.data;
   });
+  // Category filtering is client-side (like the web): the enriched list already
+  // carries `category`, and this keeps the offline cache holding the full list.
+  if (cat == null || cat.isEmpty) return loaded;
+  final filtered = (loaded.data as List)
+      .where((p) => '${(p as Map)['category'] ?? ''}' == cat)
+      .toList();
+  return Loaded(filtered, loaded.freshness, age: loaded.age);
 });
 
 class ProductsScreen extends ConsumerWidget {
@@ -32,6 +52,8 @@ class ProductsScreen extends ConsumerWidget {
     final data = await showCreateDialog(context, title: 'Nouveau produit', fields: const [
       CreateField('name', 'Nom', required: true),
       CreateField('sku', 'SKU (optionnel)'),
+      CreateField('category', 'Catégorie',
+          options: kProductCategories, emptyLabel: 'Automatique (selon le nom)'),
     ]);
     if (data == null) return;
     await createOrQueue(
@@ -41,10 +63,11 @@ class ProductsScreen extends ConsumerWidget {
       body: {
         'name': data['name'],
         if ((data['sku'] ?? '').isNotEmpty) 'sku': data['sku'],
+        if ((data['category'] ?? '').isNotEmpty) 'category': data['category'],
       },
       label: 'Produit : ${data['name']}',
       successMessage: 'Produit créé.',
-      onDone: () => ref.invalidate(_productsProvider),
+      onDone: () => ref.invalidate(productsListProvider),
     );
   }
 
@@ -59,8 +82,14 @@ class ProductsScreen extends ConsumerWidget {
         fields: const [
           CreateField('name', 'Nom', required: true),
           CreateField('sku', 'SKU (optionnel)'),
+          CreateField('category', 'Catégorie',
+              options: kProductCategories, emptyLabel: 'Automatique (selon le nom)'),
         ],
-        initial: {'name': '${p['name'] ?? ''}', 'sku': '${p['sku'] ?? ''}'},
+        initial: {
+          'name': '${p['name'] ?? ''}',
+          'sku': '${p['sku'] ?? ''}',
+          'category': '${p['category'] ?? ''}',
+        },
       );
       if (data == null) return;
       await updateEntity(
@@ -70,9 +99,10 @@ class ProductsScreen extends ConsumerWidget {
         body: {
           'name': data['name'],
           'sku': (data['sku'] ?? '').isEmpty ? null : data['sku'],
+          'category': (data['category'] ?? '').isEmpty ? null : data['category'],
         },
         successMessage: 'Produit modifié.',
-        onDone: () => ref.invalidate(_productsProvider),
+        onDone: () => ref.invalidate(productsListProvider),
       );
     } else {
       await confirmAndDelete(
@@ -82,21 +112,23 @@ class ProductsScreen extends ConsumerWidget {
         path: '/products/${p['id']}',
         name: '${p['name'] ?? ''}',
         successMessage: 'Produit supprimé.',
-        onDone: () => ref.invalidate(_productsProvider),
+        onDone: () => ref.invalidate(productsListProvider),
       );
     }
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final canWrite = ref.watch(canWriteProvider);
     return Scaffold(
       body: offlineCardList(
         ref: ref,
-        provider: _productsProvider,
+        provider: productsListProvider,
         empty: 'Aucun produit. Touchez + pour en ajouter.',
         header: Column(children: [
           const PendingWritesBanner(),
-          _SearchPill(onChanged: (v) => ref.read(_query.notifier).state = v),
+          _SearchPill(onChanged: (v) => ref.read(productsSearchQueryProvider.notifier).state = v),
+          const _CategoryFilter(),
         ]),
         itemBuilder: (p) {
           final name = '${p['name'] ?? ''}';
@@ -106,7 +138,13 @@ class ProductsScreen extends ConsumerWidget {
               .where((e) => e != null && '$e'.isNotEmpty)
               .join(' · ');
           return GestureDetector(
-            onLongPress: () => _actions(context, ref, p),
+            // Tap = fiche détail (comparaison fournisseurs + historique), comme
+            // le web. Appui long = actions (modifier / supprimer).
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) =>
+                  ProductDetailScreen(productId: '${p['id']}', productName: name),
+            )),
+            onLongPress: canWrite ? () => _actions(context, ref, p) : null,
             child: MockCard(
             child: Row(
               children: [
@@ -155,7 +193,8 @@ class ProductsScreen extends ConsumerWidget {
           ));
         },
       ),
-      floatingActionButton: GradientFab(onPressed: () => _create(context, ref)),
+      floatingActionButton:
+          canWrite ? GradientFab(onPressed: () => _create(context, ref)) : null,
     );
   }
 }
@@ -214,6 +253,46 @@ class _SearchPillState extends State<_SearchPill> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Horizontal category filter chips (like the web category dropdown). Sets
+/// `productsCategoryFilterProvider`; the list provider filters client-side.
+class _CategoryFilter extends ConsumerWidget {
+  const _CategoryFilter();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selected = ref.watch(productsCategoryFilterProvider);
+    final cats = kCategoryColors.keys.toList();
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 2),
+      child: SizedBox(
+        height: 34,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          children: [
+            _chip(ref, label: 'Toutes', value: null, selected: selected == null),
+            for (final c in cats)
+              _chip(ref, label: c, value: c, selected: selected == c),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _chip(WidgetRef ref,
+      {required String label, required String? value, required bool selected}) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: ChoiceChip(
+        label: Text(label, style: const TextStyle(fontSize: 12.5)),
+        selected: selected,
+        onSelected: (_) =>
+            ref.read(productsCategoryFilterProvider.notifier).state = value,
+        visualDensity: VisualDensity.compact,
       ),
     );
   }

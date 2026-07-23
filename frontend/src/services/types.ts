@@ -43,6 +43,67 @@ export interface Product {
   name: string;
   sku?: string | null;
   base_unit_id?: number | null;
+  category?: string | null;
+  unit?: string | null;
+  vat_rate?: number | null;
+}
+
+// --- Product detail tabs (Phase 2) ----------------------------------------
+
+export interface ProductSupplierRow {
+  supplier_id: string;
+  supplier_name?: string | null;
+  last_cost?: number | null;
+  avg_cost?: number | null;
+  best_cost?: number | null;
+  unit_code?: string | null;
+  currency?: string | null;
+  last_purchase_date?: string | null;
+  available?: boolean;
+  preferred?: boolean;
+  supplier_sku?: string | null;
+  pack_size?: string | null;
+  lead_time_days?: number | null;
+  link_id?: string | null;
+  is_cheapest?: boolean;
+}
+
+export interface ProductSuppliersResponse {
+  product_id: string;
+  suppliers: ProductSupplierRow[];
+  cheapest_supplier_id?: string | null;
+}
+
+export interface ProductSupplierPayload {
+  supplier_id: string;
+  supplier_sku?: string | null;
+  pack_size?: string | null;
+  available?: boolean;
+  preferred?: boolean;
+  lead_time_days?: number | null;
+  notes?: string | null;
+}
+
+export type ProductSupplierUpdatePayload = Partial<Omit<ProductSupplierPayload, "supplier_id">>;
+
+export interface ProductInvoiceRow {
+  invoice_id: string;
+  invoice_number?: string | null;
+  date?: string | null;
+  supplier_name?: string | null;
+  total_amount?: number | null;
+  currency?: string | null;
+  qty: number;
+  line_total: number;
+  lines: number;
+}
+
+export interface ProductRecipeRow {
+  recipe_id: string;
+  name: string;
+  ingredient_name?: string | null;
+  qty?: number | null;
+  unit?: string | null;
 }
 
 export interface ProductRow {
@@ -61,6 +122,8 @@ export interface ProductPayload {
   name: string;
   sku?: string | null;
   base_unit_id?: number | null;
+  /** A taxonomy category name; omit/null to auto-classify from the name. */
+  category?: string | null;
 }
 
 export type ProductUpdatePayload = Partial<ProductPayload>;
@@ -152,6 +215,53 @@ export interface MapProductResult {
   line_id: string;
   product_id: string;
   price_id: string | null;
+}
+
+// --- Smart invoice import (Phase 3) ---------------------------------------
+
+export interface InvoicePreviewLineData {
+  description: string;
+  qty?: number | null;
+  unit?: string | null;
+  unit_price?: number | null;
+  line_total?: number | null;
+  vat_rate?: number | null;
+  matched_product_id?: string | null;
+  matched_product_name?: string | null;
+  match_confidence?: number | null;
+  needs_review: boolean;
+  suggested_category?: string | null;
+}
+
+export interface InvoicePreviewResult {
+  supplier?: string | null;
+  supplier_id?: string | null;
+  date?: string | null;
+  invoice_number?: string | null;
+  total_amount?: number | null;
+  lines: InvoicePreviewLineData[];
+}
+
+export interface InvoiceConfirmLineData {
+  description: string;
+  qty?: number | null;
+  unit?: string | null;
+  unit_price?: number | null;
+  line_total?: number | null;
+  vat_rate?: number | null;
+  action: "create" | "associate" | "skip";
+  product_id?: string | null;
+  category?: string | null;
+}
+
+export interface InvoiceConfirmRequest {
+  supplier?: string | null;
+  supplier_id?: string | null;
+  date?: string | null;
+  invoice_number?: string | null;
+  total_amount?: number | null;
+  currency?: string | null;
+  lines: InvoiceConfirmLineData[];
 }
 
 // --- Recipes ---------------------------------------------------------------
@@ -620,4 +730,83 @@ export interface ReportRunResult {
   columns: ReportColumn[];
   rows: Record<string, unknown>[];
   count: number;
+}
+
+// --- Quotes / comparateur de devis (Phase 4) ------------------------------
+
+export type QuoteStatus = "draft" | "ordered" | "archived";
+
+export interface Quote {
+  id: string;
+  reference?: string | null;
+  title?: string | null;
+  status?: QuoteStatus | string | null;
+  supplier_id?: string | null;
+  supplier_name?: string | null;
+  total_amount?: number | null;
+  notes?: string | null;
+  line_count?: number | null;
+  ordered_at?: string | null;
+  created_at?: string | null;
+}
+
+export interface QuoteLine {
+  id: string;
+  product_id?: string | null;
+  product_name?: string | null;
+  description?: string | null;
+  qty?: number | null;
+  unit_id?: number | null;
+  unit_price?: number | null;
+  supplier_id?: string | null;
+}
+
+export interface QuoteDetail extends Quote {
+  lines: QuoteLine[];
+}
+
+export interface QuoteLinePayload {
+  product_id?: string | null;
+  description?: string | null;
+  qty?: number | null;
+  unit_id?: number | null;
+}
+
+export interface QuoteCreatePayload {
+  title?: string | null;
+  notes?: string | null;
+  lines: QuoteLinePayload[];
+}
+
+export interface QuoteComparisonLine {
+  product_id: string;
+  product_name?: string | null;
+  qty?: number | null;
+  unit_cost?: number | null;
+  line_cost?: number | null;
+  available?: boolean;
+}
+
+export interface QuoteComparisonSupplier {
+  supplier_id: string;
+  supplier_name?: string | null;
+  covered_count: number;
+  priceable_count: number;
+  missing: { product_id: string; product_name?: string | null }[];
+  total: number;
+  max_lead_time_days?: number | null;
+  preferred?: boolean;
+  is_full_coverage?: boolean;
+  is_cheapest?: boolean;
+  is_best_coverage?: boolean;
+  lines: QuoteComparisonLine[];
+}
+
+export interface QuoteComparison {
+  quote_id?: string;
+  line_count: number;
+  priceable_count: number;
+  suppliers: QuoteComparisonSupplier[];
+  cheapest_supplier_id?: string | null;
+  best_coverage_supplier_id?: string | null;
 }

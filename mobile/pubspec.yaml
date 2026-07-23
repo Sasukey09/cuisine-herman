@@ -24,6 +24,13 @@ dependencies:
   # Gradle Plugin and could never build a release APK.
   shared_preferences: ^2.3.0
   intl: ^0.19.0
+  # Fetches YouTube captions FROM the phone (residential IP) so the import works
+  # where the server can't: YouTube bot-blocks Render's datacenter IP, but not a
+  # normal phone. The transcript is then sent to /video/extract-transcript.
+  youtube_explode_dart: ^3.1.0
+  # Opens the stored invoice file (presigned URL) in the device browser/viewer —
+  # the mobile equivalent of the web "Voir le fichier". Flutter-team maintained.
+  url_launcher: ^6.3.0
 
 dev_dependencies:
   flutter_test:

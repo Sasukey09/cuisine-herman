@@ -140,7 +140,7 @@ class OcrOrchestrator:
                 )
             except OcrConfigurationError as exc:
                 log_event(logger, logging.INFO, "ocr.provider.skip", provider=name, reason="config_error", error=str(exc))
-                failures.append((name, str(exc)))
+                failures.append((name, exc))
                 continue
             except Exception as exc:
                 elapsed = time.monotonic() - start
@@ -157,7 +157,7 @@ class OcrOrchestrator:
                     provider=name, elapsed_ms=round(elapsed * 1000), error=str(exc),
                     circuit=breaker.state,
                 )
-                failures.append((name, str(exc)))
+                failures.append((name, exc))
                 continue
 
             elapsed = time.monotonic() - start

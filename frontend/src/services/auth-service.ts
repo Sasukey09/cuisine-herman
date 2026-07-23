@@ -48,3 +48,16 @@ export async function logout(): Promise<void> {
 export async function resetUserPassword(userId: string, password: string): Promise<void> {
   await api.post(`/auth/users/${userId}/reset-password`, { password });
 }
+
+/** Self-service recovery, step 1: ask for a reset link. The backend always
+ *  answers the same way (no user enumeration), so this never throws on an
+ *  unknown address. */
+export async function requestPasswordReset(email: string): Promise<void> {
+  await api.post("/auth/forgot-password", { email });
+}
+
+/** Self-service recovery, step 2: redeem the emailed token and set a new
+ *  password. Throws on an invalid/expired token or a weak password (400). */
+export async function confirmPasswordReset(token: string, password: string): Promise<void> {
+  await api.post("/auth/reset-password", { token, password });
+}

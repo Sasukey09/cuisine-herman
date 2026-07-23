@@ -6,7 +6,23 @@ import type {
   InvoiceProcessSummary,
   MapProductResult,
   Product,
+  InvoicePreviewResult,
+  InvoiceConfirmRequest,
 } from "./types";
+
+export async function previewInvoice(file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  const { data } = await api.post<InvoicePreviewResult>("/invoices/preview", form, {
+    headers: { "Content-Type": undefined as unknown as string },
+  });
+  return data;
+}
+
+export async function confirmInvoice(payload: InvoiceConfirmRequest) {
+  const { data } = await api.post<InvoiceIngestResult>("/invoices/confirm", payload);
+  return data;
+}
 
 export async function listInvoices(params: { limit?: number; skip?: number } = {}) {
   const { data } = await api.get<Invoice[]>("/invoices/", { params });

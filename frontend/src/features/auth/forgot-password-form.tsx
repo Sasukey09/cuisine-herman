@@ -18,6 +18,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { requestPasswordReset } from "@/services/auth-service";
+import { getApiErrorMessage } from "@/lib/api-error";
 
 const schema = z.object({ email: z.string().email("Adresse email invalide") });
 type Values = z.infer<typeof schema>;
@@ -25,24 +27,27 @@ type Values = z.infer<typeof schema>;
 export function ForgotPasswordForm() {
   const [submitted, setSubmitted] = useState(false);
   const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const {
     register,
     handleSubmit,
     formState: { errors },
   } = useForm<Values>({ resolver: zodResolver(schema) });
 
-  // NOTE: the backend has no /auth/forgot-password endpoint yet. This UI is
-  // wired and ready; once the endpoint exists, replace the timeout with the
-  // real API call (auth-service.requestPasswordReset).
-  // There is no mail provider, so no reset link can be sent. This screen used to
-  // fake a 600 ms delay and then claim "check your emails" — the user waited for
-  // a message that would never arrive. Tell the truth, and point to the one path
-  // that actually works (an admin can now reset a password).
-  const onSubmit = async () => {
+  // Calls POST /auth/forgot-password. The backend always answers the same way
+  // (a link is sent only if a real password account exists), so we always show
+  // the same confirmation — never revealing whether the address has an account.
+  const onSubmit = async (values: Values) => {
     setPending(true);
-    await new Promise((r) => setTimeout(r, 200));
-    setPending(false);
-    setSubmitted(true);
+    setError(null);
+    try {
+      await requestPasswordReset(values.email);
+      setSubmitted(true);
+    } catch (e) {
+      setError(getApiErrorMessage(e, "Impossible d'envoyer le lien. Réessayez."));
+    } finally {
+      setPending(false);
+    }
   };
 
   if (submitted) {
@@ -51,12 +56,12 @@ export function ForgotPasswordForm() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <CheckCircle2 className="h-5 w-5 text-primary" />
-            Demandez à votre administrateur
+            Vérifiez votre boîte de réception
           </CardTitle>
           <CardDescription>
-            La réinitialisation par email n&apos;est pas encore disponible. L&apos;administrateur
-            de votre établissement peut vous définir un nouveau mot de passe depuis l&apos;écran
-            <span className="font-medium text-foreground"> Administration</span>.
+            Si un compte existe pour cette adresse, un e-mail contenant un lien de
+            réinitialisation vient d&apos;être envoyé. Le lien est valable une heure et
+            utilisable une seule fois.
           </CardDescription>
         </CardHeader>
         <CardFooter>
@@ -80,8 +85,15 @@ export function ForgotPasswordForm() {
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" autoComplete="email" placeholder="vous@restaurant.fr" {...register("email")} />
+            <Input
+              id="email"
+              type="email"
+              autoComplete="email"
+              placeholder="vous@restaurant.fr"
+              {...register("email")}
+            />
             {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
+            {error && <p className="text-sm text-destructive">{error}</p>}
           </div>
         </CardContent>
         <CardFooter className="flex flex-col gap-3">

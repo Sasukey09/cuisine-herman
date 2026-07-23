@@ -77,3 +77,24 @@ def test_validate_rejects_bad_operator():
         rs.validate_definition(
             {"source": "products", "filters": [{"field": "name", "op": "DROP", "value": 1}]}
         )
+
+
+def test_a_viewer_cannot_run_reports():
+    """Regression: /reports/run and /{id}/run were the only report routes without
+    `require_writer`. Running a report fans out to a per-product latest-price
+    lookup (up to the source cap), so a read-only viewer could hammer it as a
+    cheap DB-load amplifier. Both run routes must now refuse a viewer (403)."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.api.deps import get_current_tenant_id, get_current_roles
+
+    app.dependency_overrides[get_current_tenant_id] = lambda: "t1"
+    app.dependency_overrides[get_current_roles] = lambda: ["viewer"]
+    try:
+        client = TestClient(app)
+        adhoc = client.post("/api/v1/reports/run", json={"source": "products", "columns": ["name"]})
+        saved = client.get("/api/v1/reports/some-id/run")
+        assert adhoc.status_code == 403, "a viewer must not run an ad-hoc report"
+        assert saved.status_code == 403, "a viewer must not run a saved report"
+    finally:
+        app.dependency_overrides.clear()

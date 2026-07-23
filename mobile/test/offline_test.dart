@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:foodgad_mobile/common/async_list.dart';
 import 'package:foodgad_mobile/core/offline_cache.dart';
 import 'package:foodgad_mobile/core/outbox.dart';
 
@@ -150,6 +151,27 @@ void main() {
       expect(formatAge(const Duration(minutes: 8)), 'il y a 8 min');
       expect(formatAge(const Duration(hours: 5)), 'il y a 5 h');
       expect(formatAge(const Duration(days: 2)), 'il y a 2 j');
+    });
+
+    // Regression: the offline banner read "Hors connexion — données de à
+    // l'instant" / "…de il y a 8 min" because it prefixed the standalone age
+    // phrase with "de". The banner must compose grammatically for every age.
+    test('offline banner text is grammatical for every age', () {
+      for (final d in const [
+        Duration(seconds: 20),
+        Duration(minutes: 8),
+        Duration(hours: 5),
+        Duration(days: 2),
+      ]) {
+        final t = offlineBannerText(d);
+        expect(t, startsWith('Hors connexion — données mises en cache '));
+        expect(t, endsWith(formatAge(d)));
+        // never the broken forms
+        expect(t.contains('de à'), isFalse);
+        expect(t.contains('de il y a'), isFalse);
+      }
+      expect(offlineBannerText(const Duration(seconds: 5)),
+          "Hors connexion — données mises en cache à l'instant");
     });
   });
 }

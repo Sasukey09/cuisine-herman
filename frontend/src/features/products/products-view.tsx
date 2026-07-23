@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Plus, Search, Pencil, Trash2, Package } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { ErrorState } from "@/components/error-state";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -65,7 +66,8 @@ export function ProductsView() {
   const [search, setSearch] = useState(params.get("q") ?? "");
   const [cat, setCat] = useState("");
   const debounced = useDebounce(search, 300);
-  const { data: products, isLoading } = useEnrichedProducts(debounced || undefined);
+  const { data: products, isLoading, isError, error, refetch, isFetching } =
+    useEnrichedProducts(debounced || undefined);
   const del = useDeleteProduct();
   const canWrite = useAuthStore((s) => s.hasRole("admin", "manager"));
 
@@ -132,7 +134,13 @@ export function ProductsView() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isLoading ? (
+            {isError ? (
+              <TableRow>
+                <TableCell colSpan={colCount}>
+                  <ErrorState error={error} onRetry={() => refetch()} retrying={isFetching} compact />
+                </TableCell>
+              </TableRow>
+            ) : isLoading ? (
               Array.from({ length: 6 }).map((_, i) => (
                 <TableRow key={i}>
                   {Array.from({ length: colCount }).map((__, j) => (
@@ -189,7 +197,12 @@ export function ProductsView() {
                           className="h-7 w-7"
                           aria-label="Modifier"
                           onClick={() => {
-                            setEditing({ id: p.id, name: p.name, sku: p.sku ?? null });
+                            setEditing({
+                              id: p.id,
+                              name: p.name,
+                              sku: p.sku ?? null,
+                              category: p.category ?? null,
+                            });
                             setFormOpen(true);
                           }}
                         >

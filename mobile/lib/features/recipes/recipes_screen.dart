@@ -9,6 +9,8 @@ import '../../common/ui_kit.dart';
 import '../../core/api_error.dart';
 import '../../core/providers.dart';
 import '../../main.dart' show kMuted, kGood, kBad;
+import '../auth/auth_controller.dart';
+import 'recipe_detail_screen.dart';
 
 final _recipesProvider = FutureProvider.autoDispose<Loaded>((ref) async {
   return fetchWithCache(ref, cacheKey: 'recipes', request: () async {
@@ -27,12 +29,16 @@ class RecipesScreen extends ConsumerWidget {
     final data = await showCreateDialog(context, title: 'Nouvelle recette', fields: const [
       CreateField('name', 'Nom', required: true),
       CreateField('yield_qty', 'Portions', keyboard: TextInputType.number),
+      CreateField('selling_price', 'Prix de vente / portion (optionnel)',
+          keyboard: TextInputType.number),
     ]);
     if (data == null) return;
     try {
+      final sp = double.tryParse((data['selling_price'] ?? '').replaceAll(',', '.'));
       await ref.read(apiClientProvider).dio.post('/recipes/', data: {
         'name': data['name'],
         'yield_qty': double.tryParse(data['yield_qty'] ?? '') ?? 1,
+        if (sp != null) 'selling_price': sp,
       });
       ref.invalidate(_recipesProvider);
       messenger.showSnackBar(
@@ -90,6 +96,7 @@ class RecipesScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final canWrite = ref.watch(canWriteProvider);
     return Scaffold(
       body: offlineCardList(
         ref: ref,
@@ -106,7 +113,13 @@ class RecipesScreen extends ConsumerWidget {
               ? cost.toDouble() / price.toDouble() * 100
               : null;
           return GestureDetector(
-            onLongPress: () => _actions(context, ref, r),
+            // Tap = ouvrir la recette (détail + ingrédients : ajouter/modifier/
+            // supprimer, portions, coût recalculé), comme sur le Web. L'appui long
+            // garde les actions rapides (modifier la fiche / supprimer).
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => RecipeDetailScreen(recipeId: '${r['id']}', recipeName: name),
+            )),
+            onLongPress: canWrite ? () => _actions(context, ref, r) : null,
             child: Container(
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
@@ -195,7 +208,8 @@ class RecipesScreen extends ConsumerWidget {
           ));
         },
       ),
-      floatingActionButton: GradientFab(onPressed: () => _create(context, ref)),
+      floatingActionButton:
+          canWrite ? GradientFab(onPressed: () => _create(context, ref)) : null,
     );
   }
 }
