@@ -88,6 +88,10 @@ def build_matrix(
                     "supplier_id": sid,
                     "supplier_name": supplier_names.get(sid) if sid else None,
                     "quote_id": o.get("quote_id"),
+                    # L'identifiant de la LIGNE, pas seulement du devis : c'est
+                    # lui qui permet de commander cette offre-là. Sans lui, le
+                    # comparateur ne peut désigner un gagnant que par écrit.
+                    "quote_line_id": o.get("quote_line_id"),
                     "quote_reference": o.get("quote_reference"),
                     "unit_price": unit_price,
                     "qty": _f(o.get("qty")),
@@ -298,6 +302,7 @@ def build_for_tenant(db, tenant_id: str, statuses=("draft",)) -> Dict[str, Any]:
                 "product_id": str(l.product_id),
                 "supplier_id": str(sid) if sid else None,
                 "quote_id": str(l.quote_id),
+                "quote_line_id": str(l.id),
                 "quote_reference": q.reference if q else None,
                 "description": l.description,
                 "unit_price": _f(l.unit_price),
