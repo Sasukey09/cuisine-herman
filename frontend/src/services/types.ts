@@ -458,12 +458,29 @@ export interface VideoIngredientDraft {
   unit: string | null;
 }
 
-export interface VideoRecipeDraft {
+export interface VideoRecipeCandidate {
   name: string;
+  description: string | null;
+  summary: string | null;
   yield_qty: number | null;
   ingredients: VideoIngredientDraft[];
   steps: string[];
-  summary: string | null;
+  prep_time_min: number | null;
+  cook_time_min: number | null;
+  tips: string[];
+  variants: string[];
+  allergens: string[];
+  start_sec: number | null;
+  end_sec: number | null;
+}
+
+export interface VideoSourceInfo {
+  platform: string | null;
+  url: string | null;
+  video_id: string | null;
+  title: string | null;
+  creator: string | null;
+  thumbnail: string | null;
 }
 
 export interface VideoExtractResult {
@@ -471,7 +488,8 @@ export interface VideoExtractResult {
   platform: string;
   transcript_source: string;
   transcript_excerpt: string;
-  draft: VideoRecipeDraft;
+  candidates: VideoRecipeCandidate[];
+  source: VideoSourceInfo;
   note: string;
 }
 
