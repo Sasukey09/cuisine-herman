@@ -88,11 +88,14 @@ class _VideoApi implements HttpClientAdapter {
       };
     } else if (path.contains('/video/save')) {
       // Both candidates are selected by default, so the common "Enregistrer
-      // N sélectionnées" flow submits both — the response mirrors that.
+      // N sélectionnées" flow submits both — the response mirrors that. The
+      // backend saves recipe by recipe and returns a partial success: each saved
+      // entry carries its input `index`, plus an `errors` list (empty here).
       body = {
         'count': 2,
         'recipes': [
           {
+            'index': 0,
             'recipe_id': 'r1',
             'version_id': 'v1',
             'name': 'Pâtes',
@@ -107,6 +110,7 @@ class _VideoApi implements HttpClientAdapter {
             'note': '',
           },
           {
+            'index': 1,
             'recipe_id': 'r2',
             'version_id': 'v2',
             'name': 'Salade',
@@ -121,6 +125,7 @@ class _VideoApi implements HttpClientAdapter {
             'note': '',
           },
         ],
+        'errors': [],
       };
     } else {
       body = {};

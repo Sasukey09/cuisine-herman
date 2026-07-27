@@ -300,6 +300,13 @@ class _VideoImportScreenState extends ConsumerState<VideoImportScreen> {
       return;
     }
     setState(() => _saving = true);
+    // Capture the ORDER of the submitted ids: the backend saves recipe by recipe
+    // and returns a partial success (`recipes` + `errors`), each entry carrying
+    // the `index` of the recipe it maps to. We map that index back to the card id
+    // captured here so we remove ONLY the cards actually persisted — failed ones
+    // stay for a retry — keyed off what was submitted, not `.selected` (which the
+    // user can keep toggling while the request is in flight).
+    final submittedIds = selected.map((c) => c.id).toList();
     try {
       final resp = await ref.read(apiClientProvider).dio.post('/video/save', data: {
         'recipes': selected.map((c) => c.toJson()).toList(),
@@ -309,12 +316,13 @@ class _VideoImportScreenState extends ConsumerState<VideoImportScreen> {
       final saved = ((data['recipes'] as List?) ?? const [])
           .map((e) => Map<String, dynamic>.from(e as Map))
           .toList();
-      // Remove by id, not by re-reading `.selected`: the user can keep toggling
-      // checkboxes while the request is in flight, so `.selected` at response
-      // time may no longer match what was actually submitted.
-      final submittedIds = selected.map((c) => c.id).toSet();
+      final errors = ((data['errors'] as List?) ?? const [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+      final savedClientIds =
+          saved.map((r) => submittedIds[(r['index'] as num).toInt()]).toSet();
       setState(() {
-        _candidates.removeWhere((c) => submittedIds.contains(c.id));
+        _candidates.removeWhere((c) => savedClientIds.contains(c.id));
         _mergeFrom = null;
         _savedInfo = saved.isEmpty
             ? null
@@ -323,9 +331,15 @@ class _VideoImportScreenState extends ConsumerState<VideoImportScreen> {
                 return '${r['name']} : ${cost['cost_per_portion'] ?? 0} €/portion';
               }).join('  ·  ');
       });
-      _snack(saved.length > 1
-          ? '${saved.length} fiches enregistrées et chiffrées.'
-          : 'Fiche enregistrée et chiffrée.');
+      if (saved.isNotEmpty) {
+        _snack(saved.length > 1
+            ? '${saved.length} fiches enregistrées et chiffrées.'
+            : 'Fiche enregistrée et chiffrée.');
+      }
+      if (errors.isNotEmpty) {
+        _snack('${errors.length} recette(s) non enregistrée(s) : '
+            '${errors.map((e) => e['name']).join(', ')}');
+      }
     } catch (e) {
       _snack(apiErrorMessage(e));
     } finally {
