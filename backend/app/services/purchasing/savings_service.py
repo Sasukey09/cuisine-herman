@@ -30,6 +30,7 @@ from app.models.models import (
     QuoteLine,
 )
 from app.services.purchasing import order_service
+from app.services.quotes.pack_parser import price_per_base_unit
 
 #: Libellés servis par l'API — source unique, web et mobile ne les redupliquent pas.
 SAVINGS_LABELS = {
@@ -111,6 +112,49 @@ def _order_date(o: PurchaseOrder) -> Optional[date]:
     return dt.date() if isinstance(dt, datetime) else dt
 
 
+def _comparable(chosen, competitors):
+    """Ramène choisie + concurrentes à une base comparable, ou ``None`` si on ne
+    peut pas comparer honnêtement.
+
+    Le comparateur maison (``quote_matrix``) classe les offres au **prix à
+    l'unité de base** (``pack_parser.price_per_base_unit``), pas au prix unitaire
+    brut : METRO 10 €/5 kg (2,00 €/kg) est plus cher que TRANSGOURMET 14 €/10 kg
+    (1,40 €/kg). Comparer le brut inverserait le classement. On aligne donc le
+    moteur d'économies sur la même base :
+
+    - si TOUTES les offres se normalisent au prix/unité de base ET partagent la
+      même unité de base → on compare sur le prix/unité de base ;
+    - si AUCUNE ne se normalise (aucun conditionnement lisible) → on compare le
+      prix unitaire brut (offres implicitement de même unité) ;
+    - sinon (mixte : certaines normalisent, d'autres non, ou unités de base
+      différentes) → ``None`` : on ne compare pas ce qui n'est pas comparable.
+
+    Chaque offre est un dict ``{unit_price, pack_size, description,
+    discount_pct}``. Retourne ``(chosen_value, [competing_values])`` ou ``None``.
+    """
+    offers = [chosen] + list(competitors)
+    ppus = [
+        price_per_base_unit(
+            _f(o.get("unit_price")),
+            pack_size=o.get("pack_size"),
+            description=o.get("description"),
+            discount_pct=_f(o.get("discount_pct")),
+        )
+        for o in offers
+    ]
+    have = [p for p in ppus if p]
+    if len(have) == len(offers):
+        bases = {p[1] for p in have}
+        if len(bases) == 1:
+            values = [p[0] for p in ppus]
+            return values[0], values[1:]
+        return None  # unités de base différentes → non comparable
+    if not have:
+        # aucun conditionnement lisible → prix unitaire brut, même unité implicite
+        return _f(chosen.get("unit_price")), [_f(c.get("unit_price")) for c in competitors]
+    return None  # conditionnements mixtes → non comparable
+
+
 def _savings_for_order_lines(
     db: Session,
     tenant_id: str,
@@ -161,12 +205,16 @@ def _savings_for_order_lines(
     pids = {str(l.product_id) for l in kept}
 
     # Toutes les offres (lignes de devis) de ces produits, avec la date/validité du devis.
+    # On ne filtre PAS `Quote.status` à dessein : une offre qui était sur la table et
+    # valide au moment de commander compte, même si le devis a depuis été
+    # archivé/commandé — la validité se juge à `quote.date`/`valid_until`, pas au statut.
     offers_by_product: Dict[str, List[Dict[str, Any]]] = {}
     for ql, quote in (
         db.query(QuoteLine, Quote)
         .join(Quote, Quote.id == QuoteLine.quote_id)
         .filter(
             QuoteLine.tenant_id == tenant_id,
+            Quote.tenant_id == tenant_id,
             QuoteLine.product_id.in_(list(pids)),
             QuoteLine.unit_price.isnot(None),
         )
@@ -178,6 +226,9 @@ def _savings_for_order_lines(
             {
                 "supplier_id": str(sid) if sid else None,
                 "unit_price": _f(ql.unit_price),
+                "pack_size": ql.pack_size,
+                "description": ql.description,
+                "discount_pct": _f(ql.discount_pct),
                 "quote_date": qdate,
                 "valid_until": quote.valid_until,
             }
@@ -191,8 +242,8 @@ def _savings_for_order_lines(
             for link in crud_supplier_product.list_links(db, tenant_id, pid)
         }
 
-    def competing(pid: str, chosen_sid: Optional[str], order_d: date) -> List[float]:
-        out: List[float] = []
+    def competing(pid: str, chosen_sid: Optional[str], order_d: date) -> List[Dict[str, Any]]:
+        out: List[Dict[str, Any]] = []
         for off in offers_by_product.get(pid, []):
             if off["unit_price"] is None or off["supplier_id"] == chosen_sid:
                 continue
@@ -203,21 +254,41 @@ def _savings_for_order_lines(
                 continue  # offre périmée
             if avail.get(pid, {}).get(off["supplier_id"], True) is False:
                 continue  # indisponible
-            out.append(off["unit_price"])
+            out.append(
+                {
+                    "unit_price": off["unit_price"],
+                    "pack_size": off["pack_size"],
+                    "description": off["description"],
+                    "discount_pct": off["discount_pct"],
+                }
+            )
         return out
 
-    inputs = [
-        {
-            "product_id": str(l.product_id),
-            "supplier_id": osupplier.get(l.order_id),
-            "qty": _f(l.qty_ordered),
-            "chosen_unit_price": _f(l.unit_price),
-            "competing_prices": competing(
-                str(l.product_id), osupplier.get(l.order_id), odate[l.order_id]
-            ),
+    inputs: List[Dict[str, Any]] = []
+    for l in kept:
+        pid = str(l.product_id)
+        comp = competing(pid, osupplier.get(l.order_id), odate[l.order_id])
+        if not comp:
+            continue  # pas de concurrence → ligne ignorée
+        chosen = {
+            "unit_price": _f(l.unit_price),
+            "pack_size": l.pack_size,
+            "description": l.description,
+            "discount_pct": _f(l.discount_pct),
         }
-        for l in kept
-    ]
+        pair = _comparable(chosen, comp)
+        if pair is None:
+            continue  # conditionnements non comparables → on n'invente pas
+        chosen_value, competing_values = pair
+        inputs.append(
+            {
+                "product_id": pid,
+                "supplier_id": osupplier.get(l.order_id),
+                "qty": _f(l.qty_ordered),
+                "chosen_unit_price": chosen_value,
+                "competing_prices": competing_values,
+            }
+        )
     return compute_savings(inputs)
 
 
