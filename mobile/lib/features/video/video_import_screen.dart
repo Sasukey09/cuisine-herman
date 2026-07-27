@@ -494,12 +494,18 @@ class _VideoImportScreenState extends ConsumerState<VideoImportScreen> {
               loading: _saving,
             ),
           ),
-          if (_savedInfo != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Text(_savedInfo!, style: const TextStyle(color: kGood)),
-            ),
         ],
+        // Outside the `_candidates.isNotEmpty` block on purpose: every
+        // candidate defaults to selected, so a normal "Enregistrer" save-all
+        // empties `_candidates` in the very setState that also sets
+        // `_savedInfo` — if this banner were still nested inside that block
+        // it would never paint on the common path, only after a partial
+        // save that leaves cards behind.
+        if (_savedInfo != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Text(_savedInfo!, style: const TextStyle(color: kGood)),
+          ),
       ],
     );
   }

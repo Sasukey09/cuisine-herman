@@ -87,8 +87,10 @@ class _VideoApi implements HttpClientAdapter {
         ],
       };
     } else if (path.contains('/video/save')) {
+      // Both candidates are selected by default, so the common "Enregistrer
+      // N sélectionnées" flow submits both — the response mirrors that.
       body = {
-        'count': 1,
+        'count': 2,
         'recipes': [
           {
             'recipe_id': 'r1',
@@ -100,6 +102,20 @@ class _VideoApi implements HttpClientAdapter {
               'computed_cost_total': 5.2,
               'cost_per_portion': 1.3,
               'food_cost_pct': 12.0,
+              'has_missing_prices': false,
+            },
+            'note': '',
+          },
+          {
+            'recipe_id': 'r2',
+            'version_id': 'v2',
+            'name': 'Salade',
+            'yield_qty': 2,
+            'unmatched_ingredients': [],
+            'cost': {
+              'computed_cost_total': 2.4,
+              'cost_per_portion': 1.2,
+              'food_cost_pct': 10.0,
               'has_missing_prices': false,
             },
             'note': '',
@@ -167,5 +183,32 @@ void main() {
     expect(find.textContaining('2 recette'), findsOneWidget);
     expect(find.text('Pâtes'), findsOneWidget);
     expect(find.text('Salade'), findsOneWidget);
+  });
+
+  testWidgets(
+      'saving all detected recipes (the default, everything-selected path) '
+      'shows the confirmation banner, not just the transient snackbar',
+      (tester) async {
+    final c = makeContainer();
+    await pumpScreen(tester, c);
+
+    await tester.enterText(find.byType(TextField).first, 'https://example.com/video');
+    await tester.tap(find.text('Analyser'));
+    await tester.pumpAndSettle();
+
+    // Both candidates default to selected -> this is "Enregistrer 2
+    // sélectionnées", i.e. save-everything. That's exactly the path that used
+    // to empty `_candidates` and, with it, hide the `_savedInfo` banner
+    // (which was nested inside `if (_candidates.isNotEmpty)`): regression
+    // guard for that bug.
+    await tester.tap(find.textContaining('Enregistrer'));
+    await tester.pumpAndSettle();
+
+    // Distinct to the banner text (built from the /video/save response's
+    // per-recipe cost), not the transient SnackBar wording — so this only
+    // passes if the banner itself actually painted.
+    expect(find.textContaining('€/portion'), findsOneWidget);
+    expect(find.textContaining('Pâtes'), findsWidgets);
+    expect(find.textContaining('Salade'), findsWidgets);
   });
 }
