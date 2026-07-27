@@ -60,7 +60,8 @@ def test_save_candidates_delegates_per_recipe(monkeypatch):
 
     It used to call the AI tool ``create_recipe_draft``, which dropped the
     ingredients and the steps; it was rewritten to reuse the PDF-import path.
-    This test pins the current, list-shaped contract.
+    This test pins the current partial-success contract: {count, recipes, errors}
+    with each saved result carrying its input index.
     """
     calls = []
 
@@ -91,8 +92,10 @@ def test_save_candidates_delegates_per_recipe(monkeypatch):
         source=source,
     )
 
-    assert len(out) == 2
-    assert out[0]["recipe_id"] == "r1" and out[1]["recipe_id"] == "r2"
+    assert out["count"] == 2
+    assert out["errors"] == []
+    assert out["recipes"][0]["recipe_id"] == "r1" and out["recipes"][1]["recipe_id"] == "r2"
+    assert out["recipes"][0]["index"] == 0 and out["recipes"][1]["index"] == 1
     assert len(calls) == 2
 
     first = calls[0]

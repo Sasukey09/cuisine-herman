@@ -53,12 +53,17 @@ def extract_recipe_from_file(
             "La transcription audio n'est pas configurée (OPENAI_API_KEY manquante)."
         )
 
+    src = {
+        "platform": "upload", "url": None, "video_id": None,
+        "title": filename, "creator": None, "thumbnail": None,
+    }
     source = VideoSource(
         id=str(uuid.uuid4()),
         tenant_id=tenant_id,
         url=filename or "upload",
         platform="upload",
         fetched_at=datetime.utcnow(),
+        meta=src,
     )
     db.add(source)
     db.commit()
@@ -87,10 +92,6 @@ def extract_recipe_from_file(
     db.commit()
 
     candidates = (extractor or get_extractor()).extract(text, hints={"title": filename})
-    src = {
-        "platform": "upload", "url": None, "video_id": None,
-        "title": filename, "creator": None, "thumbnail": None,
-    }
     excerpt = text[:600] + ("…" if len(text) > 600 else "")
     return {
         "source_id": str(source.id),
@@ -197,6 +198,7 @@ def extract_recipe_from_transcript(
         url=(url or "client-transcript")[:2000],
         platform="youtube_client",
         fetched_at=datetime.utcnow(),
+        meta=source,
     )
     db.add(source_row)
     db.commit()
@@ -224,38 +226,59 @@ def extract_recipe_from_transcript(
 def save_candidates(db, tenant_id, recipes, source):
     """Enregistre chaque recette sélectionnée via le save_import mutualisé,
     en persistant provenance (Recipe.meta['source']) et champs riches
-    (RecipeVersion.meta)."""
+    (RecipeVersion.meta).
+
+    Résilient au lot : ``save_import`` committe recette par recette, donc une
+    recette qui échoue au milieu du lot ne doit ni faire tomber les précédentes
+    (déjà committées) ni remonter en 500 — sinon une reprise DUPLIQUE les
+    recettes déjà sauvées. On capture donc l'échec par recette et on renvoie un
+    succès partiel ``{count, recipes, errors}``. Chaque résultat sauvé porte son
+    ``index`` d'entrée (comme les erreurs) pour que le client retire uniquement
+    les cartes réellement enregistrées et garde les autres.
+    """
     from app.services.recipe_import import service as recipe_import_service
 
     src = source or {}
     vid = src.get("video_id")
-    results = []
-    for rec in recipes:
-        start = rec.get("start_sec")
-        deeplink = (
-            f"https://youtu.be/{vid}?t={int(start)}" if vid and start is not None
-            else (f"https://youtu.be/{vid}" if vid else src.get("url"))
-        )
-        recipe_meta = {"source": {
-            "platform": src.get("platform"), "url": src.get("url"), "video_id": vid,
-            "thumbnail": src.get("thumbnail"), "creator": src.get("creator"),
-            "start_sec": start, "end_sec": rec.get("end_sec"), "deeplink": deeplink,
-        }}
-        version_meta_extra = {
-            "description": rec.get("description"),
-            "prep_time_min": rec.get("prep_time_min"),
-            "cook_time_min": rec.get("cook_time_min"),
-            "tips": rec.get("tips") or [],
-            "variants": rec.get("variants") or [],
-            "allergens": rec.get("allergens") or [],
-        }
-        mapped = [{"name": i.get("name"), "quantity": i.get("qty"),
-                   "unit": i.get("unit"), "product_id": i.get("product_id")}
-                  for i in (rec.get("ingredients") or [])]
-        results.append(recipe_import_service.save_import(
-            db, tenant_id, name=(rec.get("name") or "").strip() or "Recette",
-            servings=rec.get("yield_qty"), instructions=rec.get("steps") or [],
-            ingredients=mapped, imported_from="video",
-            recipe_meta=recipe_meta, version_meta_extra=version_meta_extra,
-        ))
-    return results
+    saved, errors = [], []
+    for idx, rec in enumerate(recipes):
+        try:
+            start = rec.get("start_sec")
+            deeplink = (
+                f"https://youtu.be/{vid}?t={int(start)}" if vid and start is not None
+                else (f"https://youtu.be/{vid}" if vid else src.get("url"))
+            )
+            recipe_meta = {"source": {
+                "platform": src.get("platform"), "url": src.get("url"), "video_id": vid,
+                "thumbnail": src.get("thumbnail"), "creator": src.get("creator"),
+                "start_sec": start, "end_sec": rec.get("end_sec"), "deeplink": deeplink,
+            }}
+            version_meta_extra = {
+                "description": rec.get("description"),
+                "prep_time_min": rec.get("prep_time_min"),
+                "cook_time_min": rec.get("cook_time_min"),
+                "tips": rec.get("tips") or [],
+                "variants": rec.get("variants") or [],
+                "allergens": rec.get("allergens") or [],
+            }
+            mapped = [{"name": i.get("name"), "quantity": i.get("qty"),
+                       "unit": i.get("unit")}
+                      for i in (rec.get("ingredients") or [])]
+            result = recipe_import_service.save_import(
+                db, tenant_id, name=(rec.get("name") or "").strip() or "Recette",
+                servings=rec.get("yield_qty"), instructions=rec.get("steps") or [],
+                ingredients=mapped, imported_from="video",
+                recipe_meta=recipe_meta, version_meta_extra=version_meta_extra,
+            )
+            result["index"] = idx
+            saved.append(result)
+        except Exception as exc:
+            # Une recette qui échoue ne doit ni faire tomber le lot, ni laisser
+            # une transaction partielle derrière elle pour la suivante.
+            db.rollback()
+            errors.append({
+                "index": idx,
+                "name": (rec.get("name") or "").strip() or "Recette",
+                "error": str(exc),
+            })
+    return {"count": len(saved), "recipes": saved, "errors": errors}

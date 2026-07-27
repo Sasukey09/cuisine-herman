@@ -49,9 +49,14 @@ def test_save_candidates_forwards_ingredients_and_steps(monkeypatch):
     # ingredients are mapped qty->quantity and the procedure is forwarded intact
     assert captured["name"] == "Tarte aux pommes"
     assert captured["servings"] == 6
-    assert captured["ingredients"][0] == {"name": "Pomme", "quantity": 800, "unit": "g", "product_id": None}
+    assert captured["ingredients"][0] == {"name": "Pomme", "quantity": 800, "unit": "g"}
     assert captured["instructions"] == ["Éplucher les pommes", "Étaler la pâte", "Cuire 40 min"]
-    assert out[0]["recipe_id"] == "r1"
+    # Partial-success shape: {count, recipes, errors}, each saved result carrying
+    # its input index.
+    assert out["count"] == 1
+    assert out["recipes"][0]["recipe_id"] == "r1"
+    assert out["recipes"][0]["index"] == 0
+    assert out["errors"] == []
 
 
 # --- crud_recipe.replace_instructions ------------------------------------- #
@@ -229,13 +234,51 @@ def test_save_candidates_persists_source_and_imported_from(db, tenant, monkeypat
     assert result["source"]["video_id"] == "abc123XYZ0"
 
     saved = video_service.save_candidates(db, tenant, result["candidates"], result["source"])
-    assert len(saved) == 1
+    assert saved["count"] == 1
+    assert saved["errors"] == []
 
-    recipe = db.query(Recipe).filter(Recipe.id == saved[0]["recipe_id"]).first()
-    version = db.query(RecipeVersion).filter(RecipeVersion.id == saved[0]["version_id"]).first()
+    recipe = db.query(Recipe).filter(Recipe.id == saved["recipes"][0]["recipe_id"]).first()
+    version = db.query(RecipeVersion).filter(RecipeVersion.id == saved["recipes"][0]["version_id"]).first()
 
     assert recipe.meta["source"]["deeplink"] == "https://youtu.be/abc123XYZ0?t=42"
     assert recipe.meta["source"]["video_id"] == "abc123XYZ0"
     assert version.meta["imported_from"] == "video"
     assert version.meta["prep_time_min"] == 15
     assert version.meta["tips"] == ["Bien beurrer le moule"]
+
+
+def test_save_candidates_is_resilient_to_a_per_recipe_failure(db, tenant, monkeypatch):
+    """A mid-batch failure must NOT 500 nor roll back the recipes already saved:
+    save_candidates catches per recipe and returns partial success so a retry
+    can't duplicate the already-committed ones. Here the 2nd recipe ("BOOM")
+    blows up inside save_import; the 1st ("OK") must still be persisted, and the
+    failure reported (not raised)."""
+    from app.services.recipe_import import service as ris
+
+    real = ris.save_import
+
+    def flaky(*a, **k):
+        if k.get("name") == "BOOM":
+            raise RuntimeError("coût indisponible")
+        return real(*a, **k)
+
+    monkeypatch.setattr(ris, "save_import", flaky)
+
+    out = video_service.save_candidates(
+        db,
+        tenant,
+        [
+            {"name": "OK", "yield_qty": 4, "ingredients": [{"name": "farine"}], "steps": ["m"]},
+            {"name": "BOOM", "yield_qty": 2, "ingredients": [{"name": "sucre"}], "steps": ["x"]},
+        ],
+        {"platform": "youtube", "url": "https://youtu.be/x", "video_id": "x"},
+    )
+
+    assert out["count"] == 1
+    assert out["recipes"][0]["index"] == 0
+    assert len(out["errors"]) == 1
+    assert out["errors"][0]["index"] == 1 and out["errors"][0]["name"] == "BOOM"
+
+    # the good recipe is really persisted, the bad one is not
+    names = {r.name for r in db.query(Recipe).filter(Recipe.tenant_id == tenant)}
+    assert "OK" in names and "BOOM" not in names

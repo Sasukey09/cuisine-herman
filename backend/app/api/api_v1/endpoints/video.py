@@ -136,5 +136,8 @@ def api_video_save(
     recipes = [r.model_dump() for r in payload.recipes if (r.name or "").strip()]
     if not recipes:
         raise HTTPException(status_code=400, detail="Aucune recette à enregistrer")
-    saved = video_service.save_candidates(db, tenant_id, recipes, payload.source.model_dump())
-    return {"count": len(saved), "recipes": saved}
+    # Partial success: save_candidates commits each recipe independently and
+    # returns {count, recipes, errors}. Returned as-is (200 even if some failed)
+    # so the client removes only the actually-saved cards and can retry the rest
+    # — instead of a 500 that would duplicate the already-committed recipes.
+    return video_service.save_candidates(db, tenant_id, recipes, payload.source.model_dump())
