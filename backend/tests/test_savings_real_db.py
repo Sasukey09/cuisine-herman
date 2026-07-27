@@ -17,6 +17,7 @@ from app.models.models import (
     Quote,
     QuoteLine,
     Supplier,
+    SupplierProduct,
 )
 
 
@@ -110,6 +111,107 @@ def test_a_later_quote_does_not_rewrite_the_past(db, client_ctx):
 
     s = _overview(client, metro)["savings"]
     assert s["realized"] == 20.0, "l'offre postérieure (30) est ignorée : worst = 14"
+
+
+def test_an_expired_competing_offer_is_excluded(db, client_ctx):
+    client, c = client_ctx
+    tid, metro, transg, pid = c["tenant_id"], c["metro"], c["transg"], c["product"]
+    today = date.today()
+
+    metro_line = _quote_line(db, tid, metro, pid, 10.0, today - timedelta(days=10),
+                             valid_until=today + timedelta(days=30))
+    _quote_line(db, tid, transg, pid, 14.0, today - timedelta(days=10),
+                valid_until=today + timedelta(days=30))
+
+    # Un 3e fournisseur : offre chère (30) qui existait à la date du devis mais dont
+    # la validité expirait AVANT la commande → périmée, donc écartée. Si elle
+    # comptait, worst passerait à 30 et realized à 100.
+    sysco = str(uuid.uuid4())
+    db.add(Supplier(id=sysco, tenant_id=tid, name="SYSCO"))
+    db.commit()
+    _quote_line(db, tid, sysco, pid, 30.0, today - timedelta(days=20),
+                valid_until=today - timedelta(days=5))
+
+    oid = str(uuid.uuid4())
+    db.add(PurchaseOrder(id=oid, tenant_id=tid, reference="CMD-EXP", supplier_id=metro,
+                         status="received", ordered_at=datetime.now()))
+    db.add(PurchaseOrderLine(tenant_id=tid, order_id=oid, product_id=pid,
+                             qty_ordered=5, unit_price=10.0,
+                             source_quote_line_id=metro_line))
+    db.commit()
+
+    s = _overview(client, metro)["savings"]
+    assert s["realized"] == 20.0, "l'offre périmée (30) est écartée : worst = 14"
+
+
+def test_an_unavailable_supplier_offer_is_excluded(db, client_ctx):
+    client, c = client_ctx
+    tid, metro, transg, pid = c["tenant_id"], c["metro"], c["transg"], c["product"]
+    today = date.today()
+
+    metro_line = _quote_line(db, tid, metro, pid, 10.0, today - timedelta(days=10),
+                             valid_until=today + timedelta(days=30))
+    _quote_line(db, tid, transg, pid, 14.0, today - timedelta(days=10),
+                valid_until=today + timedelta(days=30))
+
+    # 3e fournisseur : offre chère (30), valide, mais marqué indisponible au
+    # catalogue (supplier_products.available = False) → écartée. Sinon worst = 30.
+    sysco = str(uuid.uuid4())
+    db.add(Supplier(id=sysco, tenant_id=tid, name="SYSCO"))
+    db.commit()
+    _quote_line(db, tid, sysco, pid, 30.0, today - timedelta(days=10),
+                valid_until=today + timedelta(days=30))
+    db.add(SupplierProduct(tenant_id=tid, product_id=pid, supplier_id=sysco,
+                           available=False))
+    db.commit()
+
+    oid = str(uuid.uuid4())
+    db.add(PurchaseOrder(id=oid, tenant_id=tid, reference="CMD-INDISPO", supplier_id=metro,
+                         status="received", ordered_at=datetime.now()))
+    db.add(PurchaseOrderLine(tenant_id=tid, order_id=oid, product_id=pid,
+                             qty_ordered=5, unit_price=10.0,
+                             source_quote_line_id=metro_line))
+    db.commit()
+
+    s = _overview(client, metro)["savings"]
+    assert s["realized"] == 20.0, "le fournisseur indisponible (30) est écarté : worst = 14"
+
+
+def test_another_tenants_quote_does_not_leak(db, client_ctx):
+    client, c = client_ctx
+    tid, metro, transg, pid = c["tenant_id"], c["metro"], c["transg"], c["product"]
+    today = date.today()
+
+    metro_line = _quote_line(db, tid, metro, pid, 10.0, today - timedelta(days=10),
+                             valid_until=today + timedelta(days=30))
+    _quote_line(db, tid, transg, pid, 14.0, today - timedelta(days=10),
+                valid_until=today + timedelta(days=30))
+
+    # Un devis appartenant à un AUTRE tenant, pour le même product_id. Sa ligne a
+    # été (par skew) étiquetée sur notre tenant, donc le filtre QuoteLine.tenant_id
+    # seul la laisserait passer : c'est le filtre Quote.tenant_id qui l'écarte.
+    # Sinon cette offre à 30 fuirait et ferait grimper worst à 30.
+    other = str(uuid.uuid4())
+    db.add(Organization(id=other, name="Autre"))
+    db.commit()
+    qb = str(uuid.uuid4())
+    db.add(Quote(id=qb, tenant_id=other, reference="DEV-B", status="draft",
+                 date=today - timedelta(days=10),
+                 valid_until=today + timedelta(days=30)))
+    db.add(QuoteLine(id=str(uuid.uuid4()), tenant_id=tid, quote_id=qb, product_id=pid,
+                     supplier_id=transg, qty=5, unit_price=30.0))
+    db.commit()
+
+    oid = str(uuid.uuid4())
+    db.add(PurchaseOrder(id=oid, tenant_id=tid, reference="CMD-XT", supplier_id=metro,
+                         status="received", ordered_at=datetime.now()))
+    db.add(PurchaseOrderLine(tenant_id=tid, order_id=oid, product_id=pid,
+                             qty_ordered=5, unit_price=10.0,
+                             source_quote_line_id=metro_line))
+    db.commit()
+
+    s = _overview(client, metro)["savings"]
+    assert s["realized"] == 20.0, "le devis de l'autre tenant (30) ne fuit pas : worst = 14"
 
 
 def test_a_hand_typed_order_contributes_nothing(db, client_ctx):
