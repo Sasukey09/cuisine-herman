@@ -1,7 +1,10 @@
-"""Extract a structured recipe draft from transcript text, using Claude.
+"""Extract structured recipe drafts from transcript text, using Claude.
 
-Returns an editable draft dict:
-    {name, yield_qty, ingredients: [{name, qty, unit}], steps: [str], summary}
+A video transcript may contain several recipes, so this returns a LIST of
+editable draft dicts (never a bare dict):
+    [{name, description, summary, yield_qty, ingredients: [{name, qty, unit}],
+      steps: [str], prep_time_min, cook_time_min, tips: [str], variants: [str],
+      allergens: [str], start_sec, end_sec}, ...]
 
 Asks the model for JSON only and parses it tolerantly. The anthropic client is
 injectable so this is unit-testable without a key/network. Quantities are
@@ -16,17 +19,24 @@ from .config import get_video_config
 from .errors import RecipeExtractionError
 
 SYSTEM_PROMPT = (
-    "Tu extrais une fiche recette structurée à partir de la transcription d'une "
-    "vidéo de cuisine. Réponds UNIQUEMENT avec un objet JSON valide, sans texte "
-    "autour, au format exact :\n"
-    '{"name": str, "yield_qty": number, "ingredients": [{"name": str, '
-    '"qty": number|null, "unit": str|null}], "steps": [str], "summary": str}\n\n'
-    "Règles : noms d'ingrédients en français, courts et génériques (ex. 'farine', "
-    "'beurre', 'fraises'). Unités via les codes g, kg, l, ml, piece. Estime les "
-    "quantités manquantes de façon raisonnable (qty=null seulement si vraiment "
-    "impossible). yield_qty = nombre de portions (estime si non précisé). steps = "
-    "étapes principales, concises. Si la transcription n'est pas une recette, "
-    'renvoie {"name": "", "ingredients": []}.'
+    "Tu analyses la transcription d'une vidéo de cuisine qui peut contenir "
+    "PLUSIEURS recettes. Détecte TOUTES les recettes présentes. Ne t'arrête "
+    "JAMAIS à la première. Utilise tous les indices de changement de recette : "
+    "titre annoncé, 'ensuite'/'maintenant'/'deuxième recette'/'pour la prochaine', "
+    "changement d'ingrédients ou d'étapes, chapitres et timestamps fournis.\n\n"
+    "Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, au format :\n"
+    '{"recipes": [{"name": str, "description": str, "yield_qty": number|null, '
+    '"ingredients": [{"name": str, "qty": number|null, "unit": str|null}], '
+    '"steps": [str], "prep_time_min": number|null, "cook_time_min": number|null, '
+    '"tips": [str], "variants": [str], "allergens": [str], '
+    '"start_sec": number|null, "end_sec": number|null, "summary": str}]}\n\n'
+    "Règles : noms d'ingrédients en français, courts et génériques. Unités via les "
+    "codes g, kg, l, ml, piece. Estime les quantités manquantes de façon "
+    "raisonnable (qty=null si impossible). yield_qty = nombre de portions. "
+    "start_sec/end_sec = bornes de la recette en secondes si des chapitres ou "
+    "timestamps le permettent, sinon null. allergens seulement si détectés. "
+    'Chaque recette est INDÉPENDANTE, même si elles partagent des ingrédients. '
+    'Si la transcription ne contient aucune recette, renvoie {"recipes": []}.'
 )
 
 
@@ -49,7 +59,18 @@ def _parse_json(text: str) -> Dict[str, Any]:
     raise RecipeExtractionError("Réponse du modèle non parsable en JSON")
 
 
-def _normalize(raw: Dict[str, Any]) -> Dict[str, Any]:
+def _num(v):
+    try:
+        return float(v) if v is not None and v != "" else None
+    except (ValueError, TypeError):
+        return None
+
+
+def _str_list(v):
+    return [s.strip() for s in (v or []) if isinstance(s, str) and s.strip()]
+
+
+def _normalize_one(raw: Dict[str, Any]) -> Dict[str, Any]:
     ingredients: List[Dict[str, Any]] = []
     for ing in raw.get("ingredients") or []:
         if not isinstance(ing, dict):
@@ -57,25 +78,64 @@ def _normalize(raw: Dict[str, Any]) -> Dict[str, Any]:
         name = (ing.get("name") or "").strip()
         if not name:
             continue
-        ingredients.append(
-            {
-                "name": name,
-                "qty": ing.get("qty"),
-                "unit": (ing.get("unit") or "").strip().lower() or None,
-            }
-        )
-    steps = [s.strip() for s in (raw.get("steps") or []) if isinstance(s, str) and s.strip()]
-    try:
-        yield_qty = float(raw.get("yield_qty")) if raw.get("yield_qty") is not None else None
-    except (ValueError, TypeError):
-        yield_qty = None
+        ingredients.append({
+            "name": name,
+            "qty": ing.get("qty"),
+            "unit": (ing.get("unit") or "").strip().lower() or None,
+        })
     return {
         "name": (raw.get("name") or "").strip(),
-        "yield_qty": yield_qty,
-        "ingredients": ingredients,
-        "steps": steps,
+        "description": (raw.get("description") or "").strip() or None,
         "summary": (raw.get("summary") or "").strip() or None,
+        "yield_qty": _num(raw.get("yield_qty")),
+        "ingredients": ingredients,
+        "steps": _str_list(raw.get("steps")),
+        "prep_time_min": _num(raw.get("prep_time_min")),
+        "cook_time_min": _num(raw.get("cook_time_min")),
+        "tips": _str_list(raw.get("tips")),
+        "variants": _str_list(raw.get("variants")),
+        "allergens": _str_list(raw.get("allergens")),
+        "start_sec": _num(raw.get("start_sec")),
+        "end_sec": _num(raw.get("end_sec")),
     }
+
+
+def _normalize_many(parsed: Any) -> List[Dict[str, Any]]:
+    if isinstance(parsed, dict) and isinstance(parsed.get("recipes"), list):
+        items = parsed["recipes"]
+    elif isinstance(parsed, list):
+        items = parsed
+    elif isinstance(parsed, dict):
+        items = [parsed]  # robustesse : le modèle a renvoyé un objet unique
+    else:
+        items = []
+    out = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        r = _normalize_one(it)
+        if r["name"] or r["ingredients"]:  # on filtre les recettes vides
+            out.append(r)
+    return out
+
+
+def _build_user_message(content: str, hints: Optional[Dict[str, Any]]) -> str:
+    hints = hints or {}
+    parts = []
+    if hints.get("title"):
+        parts.append(f"Titre de la vidéo : {hints['title']}")
+    if hints.get("chapters"):
+        chap = "\n".join(
+            f"- {c.get('start_sec')}s : {c.get('title')}" for c in hints["chapters"]
+        )
+        parts.append("Chapitres :\n" + chap)
+    if hints.get("description_timestamps"):
+        ts = "\n".join(
+            f"- {t.get('sec')}s : {t.get('label')}" for t in hints["description_timestamps"]
+        )
+        parts.append("Timestamps de la description :\n" + ts)
+    parts.append("Transcription :\n" + content)
+    return "\n\n".join(parts)
 
 
 class RecipeExtractor:
@@ -95,16 +155,12 @@ class RecipeExtractor:
         self._client = anthropic.Anthropic()
         return self._client
 
-    def extract(self, transcript: str, hint_title: Optional[str] = None) -> Dict[str, Any]:
+    def extract(self, transcript: str, hints: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         cfg = get_ai_config()
         client = self._get_client()
         char_limit = get_video_config().transcript_char_limit
         content = transcript[:char_limit] if char_limit else transcript
-        user = (
-            (f"Titre de la vidéo : {hint_title}\n\n" if hint_title else "")
-            + "Transcription :\n"
-            + content
-        )
+        user = _build_user_message(content, hints)
         try:
             resp = client.messages.create(
                 model=cfg.model,
@@ -121,10 +177,12 @@ class RecipeExtractor:
         for block in getattr(resp, "content", []) or []:
             if getattr(block, "type", None) == "text":
                 text += getattr(block, "text", "")
-        draft = _normalize(_parse_json(text))
-        if not draft["name"] and not draft["ingredients"]:
-            raise RecipeExtractionError("La vidéo ne semble pas contenir de recette exploitable.")
-        return draft
+        recipes = _normalize_many(_parse_json(text))
+        if not recipes:
+            raise RecipeExtractionError(
+                "La vidéo ne semble pas contenir de recette exploitable."
+            )
+        return recipes
 
 
 _extractor: Optional[RecipeExtractor] = None
