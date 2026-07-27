@@ -59,10 +59,22 @@ line = {
     "product_id": str,
     "supplier_id": str,
     "qty": float,
-    "chosen_unit_price": float,     # ce qu'on a réellement engagé (prix de la ligne de commande)
-    "competing_prices": [float],    # offres ÉLIGIBLES des autres fournisseurs, même produit
+    "chosen_unit_price": float,     # prix engagé, ramené à l'unité de base comparable
+    "competing_prices": [float],    # offres ÉLIGIBLES des autres fournisseurs, même base
 }
 ```
+
+**Prix ramenés à l'unité de base (comme `quote_matrix`).** Le comparateur maison
+classe les offres au **prix à l'unité de base** (`pack_parser.price_per_base_unit`),
+pas au prix unitaire brut : METRO 10 €/5 kg (2,00 €/kg) est *plus cher* que
+TRANSGOURMET 14 €/10 kg (1,40 €/kg). L'enveloppe BDD normalise donc `chosen` et
+concurrentes sur la même base avant d'appeler `compute_savings`, avec la règle
+**« on ne compare que ce qui est comparable »** (helper pur `_comparable`) : si
+toutes les offres se normalisent à la même unité de base → prix/unité de base ; si
+aucune n'a de conditionnement lisible → prix brut (même unité implicite) ; sinon
+(mélange, ou unités de base différentes comme kg vs L) → **la ligne est exclue**,
+on n'invente pas une comparaison trompeuse. Le cœur `compute_savings` reste pur et
+ne voit que des prix déjà comparables.
 
 Pour chaque ligne, sur `{chosen_unit_price} ∪ competing_prices` :
 - `worst = max(...)`, `best = min(...)`
@@ -138,7 +150,10 @@ dessine leurs écrans.
   commande) — « Économisé », « Laissé sur la table », « Économie possible »,
   « Taux de meilleur choix » — pour que web et mobile ne redivergent pas.
 - **Web** : `supplier-scorecard.tsx` gagne une tuile « Économisé (12 mois) » + le
-  taux de meilleur choix ; `SafeBoundary` isole déjà la carte.
+  taux de meilleur choix. La carte n'est pas enveloppée dans un `SafeBoundary` ;
+  la robustesse tient à une lecture **null-safe** côté client (`data.savings?.…`,
+  `(data.savings?.compared_lines ?? 0) > 0`), pour qu'une réponse malformée ou un
+  skew de déploiement ne casse pas toute la scorecard.
 - **Mobile** : même bloc dans `_Scorecard` de `supplier_detail_screen.dart`.
 - **Garde-fou inversé** : `test_no_fabricated_savings_field` (qui exigeait
   l'*absence* du champ) est **remplacé** par un test qui exige sa *présence et sa

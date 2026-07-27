@@ -73,33 +73,33 @@ export function SupplierScorecard({ supplierId }: { supplierId: string }) {
 
       {/* Économies : ce que la mise en concurrence a rapporté. Rien si aucune
           ligne n'a été comparée — on n'annonce pas une économie qu'on n'a pas. */}
-      {data.savings.compared_lines > 0 ? (
+      {(data.savings?.compared_lines ?? 0) > 0 ? (
         <Card>
           <CardContent className="py-4">
             <div className="mb-3 text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Économies (12 mois) · {data.savings.compared_lines} ligne(s) comparée(s)
+              Économies (12 mois) · {data.savings?.compared_lines} ligne(s) comparée(s)
             </div>
             <div className="grid gap-3 sm:grid-cols-3">
               <div>
                 <div className="text-lg font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
-                  {formatCurrency(data.savings.realized)}
+                  {formatCurrency(data.savings?.realized)}
                 </div>
-                <div className="text-xs text-muted-foreground">{data.savings.labels.realized}</div>
+                <div className="text-xs text-muted-foreground">{data.savings?.labels.realized}</div>
               </div>
               <div>
                 <div className="text-lg font-bold tabular-nums text-amber-600 dark:text-amber-400">
-                  {formatCurrency(data.savings.missed)}
+                  {formatCurrency(data.savings?.missed)}
                 </div>
-                <div className="text-xs text-muted-foreground">{data.savings.labels.missed}</div>
+                <div className="text-xs text-muted-foreground">{data.savings?.labels.missed}</div>
               </div>
               <div>
                 <div className="text-lg font-bold tabular-nums">
-                  {data.savings.best_choice_rate == null
+                  {data.savings?.best_choice_rate == null
                     ? "—"
                     : `${Math.round(data.savings.best_choice_rate * 100)} %`}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {data.savings.labels.best_choice_rate}
+                  {data.savings?.labels.best_choice_rate}
                 </div>
               </div>
             </div>
