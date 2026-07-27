@@ -36,7 +36,7 @@ from app.models.models import (
     ReceiptLineIssue,
     Supplier,
 )
-from app.services.purchasing import order_service
+from app.services.purchasing import order_service, savings_service
 
 
 def _f(v: Any) -> Optional[float]:
@@ -266,6 +266,10 @@ def overview(db: Session, tenant_id: str, supplier: Supplier, today: date) -> Di
             "supplier_id": sid,
             "supplier_name": supplier.name,
             "rating": _f(supplier.rating),  # note manuelle 0–5, distincte du score calculé
+            # L'économie réalisée par la mise en concurrence — recalculée depuis les
+            # devis (Task B), jamais stockée. Absente du cœur pur `scorecard`, qui
+            # n'a pas accès aux offres : elle s'assemble seulement ici.
+            "savings": savings_service.for_supplier(db, tenant_id, sid, today),
         }
     )
     return card

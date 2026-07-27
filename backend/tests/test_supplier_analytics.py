@@ -199,7 +199,9 @@ def test_price_trend_needs_both_halves():
 
 # --- garde-fou : jamais de « montant économisé » inventé ------------------
 def test_no_fabricated_savings_field():
-    """La fiche fournisseur n'annonce pas d'économies : ce chiffre demande les
-    comparatifs de devis (Phase 7). Mieux vaut l'absence qu'un nombre décoratif."""
+    """Le cœur pur ``scorecard`` n'invente pas d'économie : il n'a pas les offres.
+    Le vrai « montant économisé » est désormais assemblé dans ``overview`` à partir
+    des comparatifs de devis (moteur B) et vérifié dans ``test_savings_real_db.py``.
+    Ici on garde la garantie que la couche pure, elle, reste sans économie inventée."""
     assert "savings" not in empty()
     assert "montant_economise" not in empty()
