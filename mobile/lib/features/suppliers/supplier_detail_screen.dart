@@ -333,6 +333,35 @@ class _Scorecard extends StatelessWidget {
           ),
         ),
       ],
+      if (((o['savings'] as Map?)?['compared_lines'] as num?)?.toInt() != null &&
+          ((o['savings'] as Map)['compared_lines'] as num).toInt() > 0) ...[
+        const SizedBox(height: 8),
+        Builder(builder: (_) {
+          final s = Map<String, dynamic>.from(o['savings'] as Map);
+          final labels = Map<String, dynamic>.from(s['labels'] as Map);
+          final rate = s['best_choice_rate'] as num?;
+          return Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Économies (12 mois) · ${s['compared_lines']} ligne(s) comparée(s)',
+                    style: const TextStyle(
+                        fontSize: 11.5, fontWeight: FontWeight.w700, color: kMuted)),
+                const SizedBox(height: 8),
+                Row(children: [
+                  Expanded(child: _tile(eur(s['realized'] as num?), '${labels['realized']}', kGood)),
+                  const SizedBox(width: 8),
+                  Expanded(child: _tile(eur(s['missed'] as num?), '${labels['missed']}', kWarn)),
+                  const SizedBox(width: 8),
+                  Expanded(child: _tile(
+                      rate == null ? '—' : '${(rate * 100).round()} %',
+                      '${labels['best_choice_rate']}', kTerracotta)),
+                ]),
+              ]),
+            ),
+          );
+        }),
+      ],
     ]);
   }
 
