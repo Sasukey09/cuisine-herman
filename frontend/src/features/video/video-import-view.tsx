@@ -97,7 +97,7 @@ export function VideoImportView() {
 
   function loadResult(res: VideoExtractResult) {
     setSource(res.source);
-    setCandidates(res.candidates.map((c) => ({ ...c, selected: true })));
+    setCandidates(res.candidates.map((c) => ({ ...c, id: crypto.randomUUID(), selected: true })));
     setMergeFrom(null);
     toast.success(
       res.candidates.length > 1
@@ -210,12 +210,19 @@ export function VideoImportView() {
       toast.error("Donnez un nom à chaque recette sélectionnée.");
       return;
     }
+    // Snapshot exactly which ids are being submitted: the user can keep toggling
+    // checkboxes while the request is in flight, so `.selected` on `prev` at
+    // onSuccess time may no longer match what was actually sent. Removing by id
+    // (not by re-reading `.selected`) avoids silently dropping a card the user
+    // selected mid-request (never sent, yet removed) or leaving behind one they
+    // deselected mid-request (sent, yet kept — inviting a duplicate save).
+    const submittedIds = new Set(selected.map((c) => c.id));
     save.mutate(
       { recipes: selected.map(toPayload), source: source ?? EMPTY_SOURCE },
       {
         onSuccess: (res) => {
           setSaved(res);
-          setCandidates((prev) => prev.filter((c) => !c.selected));
+          setCandidates((prev) => prev.filter((c) => !submittedIds.has(c.id)));
           setMergeFrom(null);
         },
         onError: (err) => toast.error(getApiErrorMessage(err)),
@@ -322,7 +329,7 @@ export function VideoImportView() {
 
           {candidates.map((c, i) => (
             <CandidateCard
-              key={i}
+              key={c.id}
               value={c}
               index={i}
               videoId={source?.video_id ?? null}

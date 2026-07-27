@@ -21,6 +21,10 @@ import { cn } from "@/lib/utils";
 import type { VideoIngredientDraft, VideoRecipeCandidate } from "@/services/types";
 
 export interface CandidateState extends VideoRecipeCandidate {
+  /** Stable client-side id (not sent to the backend) — used as the list key so a
+   *  card's local `open`/edit state stays attached to the recipe, not its
+   *  position, when other cards are deleted or merged around it. */
+  id: string;
   selected: boolean;
 }
 
