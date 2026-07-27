@@ -1,12 +1,14 @@
 """Video import orchestration.
 
-extract_recipe_from_url: URL → transcript (captions or STT) → persist
-VideoSource + Transcription → Claude extraction → editable draft (NOT saved as a
-recipe; quantities are estimates to review).
+extract_recipe_from_url/_from_transcript/_from_file: video/transcript → persist
+VideoSource + Transcription → Claude extraction → a LIST of editable recipe
+candidates + the video's provenance (source). NOT saved as recipes yet;
+quantities are estimates to review.
 
-save_draft: persist a (possibly edited) draft as a recipe + cost it, reusing the
-AI module's ``create_recipe_draft`` tool so product-matching and costing behave
-exactly like the chat assistant.
+save_candidates: persist the (possibly edited) selected candidates as full
+recipes, reusing the PDF-import path's shared builder (``save_import``) so
+product-matching and costing behave exactly the same way, while recording
+each recipe's provenance and rich fields (description, timings, tips...).
 """
 import os
 import tempfile
@@ -18,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.core.url_guard import assert_safe_fetch_url
 from app.models.models import VideoSource, Transcription
+from . import provenance
 from .platforms import detect_platform
 from .transcript import get_transcript
 from .extractor import get_extractor
@@ -83,14 +86,19 @@ def extract_recipe_from_file(
     db.add(Transcription(id=str(uuid.uuid4()), source_id=str(source.id), text=text, language=None))
     db.commit()
 
-    draft = (extractor or get_extractor()).extract(text, hint_title=filename)
+    candidates = (extractor or get_extractor()).extract(text, hints={"title": filename})
+    src = {
+        "platform": "upload", "url": None, "video_id": None,
+        "title": filename, "creator": None, "thumbnail": None,
+    }
     excerpt = text[:600] + ("…" if len(text) > 600 else "")
     return {
         "source_id": str(source.id),
         "platform": "upload",
         "transcript_source": "audio_upload",
         "transcript_excerpt": excerpt,
-        "draft": draft,
+        "candidates": candidates,
+        "source": src,
         "note": (
             "Fiche générée depuis le fichier vidéo : vérifiez les quantités et la "
             "procédure avant d'enregistrer."
@@ -113,14 +121,18 @@ def extract_recipe_from_url(
 
     platform = detect_platform(url)
 
-    source = VideoSource(
+    oembed = provenance.fetch_oembed(url)
+    source = provenance.build_source(url, platform, oembed)
+
+    source_row = VideoSource(
         id=str(uuid.uuid4()),
         tenant_id=tenant_id,
         url=url,
         platform=platform,
         fetched_at=datetime.utcnow(),
+        meta=source,
     )
-    db.add(source)
+    db.add(source_row)
     db.commit()
 
     text, transcript_source = get_transcript(url, stt_provider=stt_provider)
@@ -128,7 +140,7 @@ def extract_recipe_from_url(
     db.add(
         Transcription(
             id=str(uuid.uuid4()),
-            source_id=str(source.id),
+            source_id=str(source_row.id),
             text=text,
             language=None,
         )
@@ -136,15 +148,16 @@ def extract_recipe_from_url(
     db.commit()
 
     extractor = extractor or get_extractor()
-    draft = extractor.extract(text)
+    candidates = extractor.extract(text, hints={"title": source.get("title")})
 
     excerpt = text[:600] + ("…" if len(text) > 600 else "")
     return {
-        "source_id": str(source.id),
+        "source_id": str(source_row.id),
         "platform": platform,
         "transcript_source": transcript_source,
         "transcript_excerpt": excerpt,
-        "draft": draft,
+        "candidates": candidates,
+        "source": source,
         "note": (
             "Fiche générée automatiquement : les quantités sont estimées et "
             "doivent être validées avant enregistrement."
@@ -174,26 +187,33 @@ def extract_recipe_from_transcript(
     if len(text) > limit:
         text = text[:limit]
 
-    source = VideoSource(
+    source = provenance.build_source(
+        url or "", "youtube_client", provenance.fetch_oembed(url) if url else {}
+    )
+
+    source_row = VideoSource(
         id=str(uuid.uuid4()),
         tenant_id=tenant_id,
         url=(url or "client-transcript")[:2000],
         platform="youtube_client",
         fetched_at=datetime.utcnow(),
     )
-    db.add(source)
+    db.add(source_row)
     db.commit()
-    db.add(Transcription(id=str(uuid.uuid4()), source_id=str(source.id), text=text, language=None))
+    db.add(Transcription(id=str(uuid.uuid4()), source_id=str(source_row.id), text=text, language=None))
     db.commit()
 
-    draft = (extractor or get_extractor()).extract(text, hint_title=title)
+    candidates = (extractor or get_extractor()).extract(
+        text, hints={"title": title or source.get("title")}
+    )
     excerpt = text[:600] + ("…" if len(text) > 600 else "")
     return {
-        "source_id": str(source.id),
+        "source_id": str(source_row.id),
         "platform": "youtube_client",
         "transcript_source": "client_captions",
         "transcript_excerpt": excerpt,
-        "draft": draft,
+        "candidates": candidates,
+        "source": source,
         "note": (
             "Fiche générée depuis les sous-titres de la vidéo : les quantités sont "
             "estimées et doivent être validées avant enregistrement."
@@ -201,35 +221,41 @@ def extract_recipe_from_transcript(
     }
 
 
-def save_draft(
-    db: Session,
-    tenant_id: str,
-    name: str,
-    yield_qty: Optional[float],
-    ingredients: List[Dict[str, Any]],
-    instructions: Optional[List[str]] = None,
-) -> Dict[str, Any]:
-    """Persist an (edited) draft as a FULL recipe (ingredients + procedure + cost).
-
-    Routes through the shared recipe-import builder so a video recipe is saved
-    exactly like a manual / PDF one — nothing extracted by the AI is dropped.
-    """
+def save_candidates(db, tenant_id, recipes, source):
+    """Enregistre chaque recette sélectionnée via le save_import mutualisé,
+    en persistant provenance (Recipe.meta['source']) et champs riches
+    (RecipeVersion.meta)."""
     from app.services.recipe_import import service as recipe_import_service
 
-    mapped = [
-        {
-            "name": ing.get("name"),
-            "quantity": ing.get("qty"),
-            "unit": ing.get("unit"),
-            "product_id": ing.get("product_id"),
+    src = source or {}
+    vid = src.get("video_id")
+    results = []
+    for rec in recipes:
+        start = rec.get("start_sec")
+        deeplink = (
+            f"https://youtu.be/{vid}?t={int(start)}" if vid and start is not None
+            else (f"https://youtu.be/{vid}" if vid else src.get("url"))
+        )
+        recipe_meta = {"source": {
+            "platform": src.get("platform"), "url": src.get("url"), "video_id": vid,
+            "thumbnail": src.get("thumbnail"), "creator": src.get("creator"),
+            "start_sec": start, "end_sec": rec.get("end_sec"), "deeplink": deeplink,
+        }}
+        version_meta_extra = {
+            "description": rec.get("description"),
+            "prep_time_min": rec.get("prep_time_min"),
+            "cook_time_min": rec.get("cook_time_min"),
+            "tips": rec.get("tips") or [],
+            "variants": rec.get("variants") or [],
+            "allergens": rec.get("allergens") or [],
         }
-        for ing in (ingredients or [])
-    ]
-    return recipe_import_service.save_import(
-        db,
-        tenant_id,
-        name=name,
-        servings=yield_qty,
-        instructions=instructions or [],
-        ingredients=mapped,
-    )
+        mapped = [{"name": i.get("name"), "quantity": i.get("qty"),
+                   "unit": i.get("unit"), "product_id": i.get("product_id")}
+                  for i in (rec.get("ingredients") or [])]
+        results.append(recipe_import_service.save_import(
+            db, tenant_id, name=(rec.get("name") or "").strip() or "Recette",
+            servings=rec.get("yield_qty"), instructions=rec.get("steps") or [],
+            ingredients=mapped, imported_from="video",
+            recipe_meta=recipe_meta, version_meta_extra=version_meta_extra,
+        ))
+    return results
