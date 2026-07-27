@@ -234,7 +234,7 @@ def test_save_candidates_persists_source_and_imported_from(db, tenant, monkeypat
     assert result["source"]["video_id"] == "abc123XYZ0"
 
     saved = video_service.save_candidates(db, tenant, result["candidates"], result["source"])
-    assert saved["count"] == 1
+    assert saved["count"] == 1, f"errors={saved['errors']}"
     assert saved["errors"] == []
 
     recipe = db.query(Recipe).filter(Recipe.id == saved["recipes"][0]["recipe_id"]).first()
@@ -274,7 +274,7 @@ def test_save_candidates_is_resilient_to_a_per_recipe_failure(db, tenant, monkey
         {"platform": "youtube", "url": "https://youtu.be/x", "video_id": "x"},
     )
 
-    assert out["count"] == 1
+    assert out["count"] == 1, f"errors={out['errors']}"
     assert out["recipes"][0]["index"] == 0
     assert len(out["errors"]) == 1
     assert out["errors"][0]["index"] == 1 and out["errors"][0]["name"] == "BOOM"
