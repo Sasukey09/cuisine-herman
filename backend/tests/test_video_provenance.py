@@ -43,3 +43,7 @@ def test_fetch_oembed_maps_fields():
     assert P.fetch_oembed("https://youtube.com/watch?v=x", fetcher=ok) == {
         "title": "Ma vidéo", "creator": "Chef Gad", "thumbnail": "https://img/x.jpg",
     }
+
+
+def test_fetch_oembed_returns_empty_on_a_bad_url_type():
+    assert P.fetch_oembed(None, fetcher=lambda u: {}) == {}

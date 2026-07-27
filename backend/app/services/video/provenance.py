@@ -52,8 +52,8 @@ def _default_fetcher(url: str) -> Dict[str, Any]:  # pragma: no cover - network
 def fetch_oembed(url: str, fetcher: Optional[Callable[[str], Dict[str, Any]]] = None) -> Dict[str, Any]:
     """Titre/créateur/miniature via oEmbed. Best-effort : {} si échec."""
     fetcher = fetcher or _default_fetcher
-    endpoint = "https://www.youtube.com/oembed?format=json&url=" + quote(url, safe="")
     try:
+        endpoint = "https://www.youtube.com/oembed?format=json&url=" + quote(url, safe="")
         data = fetcher(endpoint)
     except Exception:
         return {}
