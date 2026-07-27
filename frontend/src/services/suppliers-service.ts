@@ -65,6 +65,14 @@ export interface SupplierOverview {
   score_basis: { conformity?: number | null; punctuality?: number | null; receipts_judged: number };
   price_trend_pct?: number | null;
   orders_by_status: Record<string, number>;
+  savings: {
+    realized: number;
+    missed: number;
+    possible: number;
+    best_choice_rate: number | null;
+    compared_lines: number;
+    labels: { realized: string; missed: string; possible: string; best_choice_rate: string };
+  };
 }
 
 export async function getSupplierOverview(id: string) {
