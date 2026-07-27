@@ -17,7 +17,19 @@ lisent les devis et les commandes sont plus bas.
 """
 from __future__ import annotations
 
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
+
+from sqlalchemy.orm import Session
+
+from app.crud import crud_supplier_product
+from app.models.models import (
+    PurchaseOrder,
+    PurchaseOrderLine,
+    Quote,
+    QuoteLine,
+)
+from app.services.purchasing import order_service
 
 #: Libellés servis par l'API — source unique, web et mobile ne les redupliquent pas.
 SAVINGS_LABELS = {
@@ -84,4 +96,145 @@ def compute_savings(lines: List[Dict[str, Any]]) -> Dict[str, Any]:
         "best_choice_rate": round(best_choices / compared, 3) if compared else None,
         "compared_lines": compared,
         "lines": detail,
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Enveloppes base de données
+# --------------------------------------------------------------------------- #
+def _order_date(o: PurchaseOrder) -> Optional[date]:
+    """La date qui fait foi pour juger quelles offres étaient sur la table :
+    la date de commande si elle existe, sinon la création."""
+    dt = o.ordered_at or o.created_at
+    if dt is None:
+        return None
+    return dt.date() if isinstance(dt, datetime) else dt
+
+
+def _savings_for_order_lines(
+    db: Session,
+    tenant_id: str,
+    *,
+    supplier_id: Optional[str] = None,
+    product_id: Optional[str] = None,
+    since: Optional[date] = None,
+    today: Optional[date] = None,
+) -> Dict[str, Any]:
+    """Assemble les lignes commandées mises en concurrence et délègue au cœur pur.
+
+    Les concurrents d'une ligne = les lignes de devis du même produit, d'un AUTRE
+    fournisseur, valides à la date de la commande (l'offre existait et n'était pas
+    périmée) et disponibles. Rien n'est stocké : tout est recalculé ici.
+    """
+    today = today or date.today()
+
+    q = db.query(PurchaseOrder).filter(
+        PurchaseOrder.tenant_id == tenant_id,
+        PurchaseOrder.status != order_service.CANCELLED,
+    )
+    if supplier_id:
+        q = q.filter(PurchaseOrder.supplier_id == str(supplier_id))
+    orders = q.all()
+    if not orders:
+        return compute_savings([])
+
+    odate = {o.id: _order_date(o) for o in orders}
+    osupplier = {o.id: (str(o.supplier_id) if o.supplier_id else None) for o in orders}
+
+    line_q = db.query(PurchaseOrderLine).filter(
+        PurchaseOrderLine.tenant_id == tenant_id,
+        PurchaseOrderLine.order_id.in_([o.id for o in orders]),
+        PurchaseOrderLine.source_quote_line_id.isnot(None),
+        PurchaseOrderLine.product_id.isnot(None),
+    )
+    kept = []
+    for l in line_q.all():
+        if product_id and str(l.product_id) != str(product_id):
+            continue
+        d = odate.get(l.order_id)
+        if d is None or (since and d < since):
+            continue
+        kept.append(l)
+    if not kept:
+        return compute_savings([])
+
+    pids = {str(l.product_id) for l in kept}
+
+    # Toutes les offres (lignes de devis) de ces produits, avec la date/validité du devis.
+    offers_by_product: Dict[str, List[Dict[str, Any]]] = {}
+    for ql, quote in (
+        db.query(QuoteLine, Quote)
+        .join(Quote, Quote.id == QuoteLine.quote_id)
+        .filter(
+            QuoteLine.tenant_id == tenant_id,
+            QuoteLine.product_id.in_(list(pids)),
+            QuoteLine.unit_price.isnot(None),
+        )
+        .all()
+    ):
+        sid = ql.supplier_id or quote.supplier_id
+        qdate = quote.date or (quote.created_at.date() if quote.created_at else None)
+        offers_by_product.setdefault(str(ql.product_id), []).append(
+            {
+                "supplier_id": str(sid) if sid else None,
+                "unit_price": _f(ql.unit_price),
+                "quote_date": qdate,
+                "valid_until": quote.valid_until,
+            }
+        )
+
+    # Disponibilité par (produit, fournisseur) — défaut : disponible.
+    avail: Dict[str, Dict[str, bool]] = {}
+    for pid in pids:
+        avail[pid] = {
+            str(link.supplier_id): (bool(link.available) if link.available is not None else True)
+            for link in crud_supplier_product.list_links(db, tenant_id, pid)
+        }
+
+    def competing(pid: str, chosen_sid: Optional[str], order_d: date) -> List[float]:
+        out: List[float] = []
+        for off in offers_by_product.get(pid, []):
+            if off["unit_price"] is None or off["supplier_id"] == chosen_sid:
+                continue
+            if off["quote_date"] is None or off["quote_date"] > order_d:
+                continue  # l'offre n'existait pas encore à la commande
+            vu = off["valid_until"]
+            if vu is not None and vu < order_d:
+                continue  # offre périmée
+            if avail.get(pid, {}).get(off["supplier_id"], True) is False:
+                continue  # indisponible
+            out.append(off["unit_price"])
+        return out
+
+    inputs = [
+        {
+            "product_id": str(l.product_id),
+            "supplier_id": osupplier.get(l.order_id),
+            "qty": _f(l.qty_ordered),
+            "chosen_unit_price": _f(l.unit_price),
+            "competing_prices": competing(
+                str(l.product_id), osupplier.get(l.order_id), odate[l.order_id]
+            ),
+        }
+        for l in kept
+    ]
+    return compute_savings(inputs)
+
+
+def for_supplier(
+    db: Session, tenant_id: str, supplier_id: str, today: date
+) -> Dict[str, Any]:
+    """Le bloc économies d'un fournisseur, sur 12 mois glissants. Sans détail par
+    ligne (la fiche n'a besoin que des totaux) et avec les libellés."""
+    since = today - timedelta(days=365)
+    res = _savings_for_order_lines(
+        db, tenant_id, supplier_id=str(supplier_id), since=since, today=today
+    )
+    return {
+        "realized": res["realized"],
+        "missed": res["missed"],
+        "possible": res["possible"],
+        "best_choice_rate": res["best_choice_rate"],
+        "compared_lines": res["compared_lines"],
+        "labels": SAVINGS_LABELS,
     }
