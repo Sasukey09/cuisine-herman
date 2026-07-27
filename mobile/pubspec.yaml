@@ -37,6 +37,14 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^4.0.0
 
+# path_provider_android >= 2.3 tire jni/jni_flutter, dont le build.gradle Android
+# appelle kotlin() — méthode absente de l'environnement Gradle frais de la CI
+# (image runner GitHub mise à jour), d'où un échec de build reproductible en CI
+# mais pas en local (cache Gradle chaud). On fige la dernière version d'avant
+# cette dépendance : elle supprime toute la chaîne jni.
+dependency_overrides:
+  path_provider_android: 2.2.17
+
 flutter:
   uses-material-design: true
 
