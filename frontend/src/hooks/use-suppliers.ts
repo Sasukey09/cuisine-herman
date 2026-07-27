@@ -7,6 +7,7 @@ import {
   listSuppliers,
   getEnrichedSuppliers,
   getSupplier,
+  getSupplierOverview,
   getSupplierPrices,
   createSupplier,
   updateSupplier,
@@ -28,6 +29,14 @@ export function useEnrichedSuppliers(q?: string) {
   return useQuery({
     queryKey: [...KEY, "enriched", { q: q ?? "" }],
     queryFn: () => getEnrichedSuppliers(q || undefined),
+  });
+}
+
+export function useSupplierOverview(id?: string) {
+  return useQuery({
+    queryKey: ["suppliers", id, "overview"],
+    queryFn: () => getSupplierOverview(id as string),
+    enabled: Boolean(id),
   });
 }
 

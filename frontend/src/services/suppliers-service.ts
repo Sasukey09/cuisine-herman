@@ -42,3 +42,32 @@ export async function updateSupplier(id: string, payload: SupplierUpdatePayload)
 export async function deleteSupplier(id: string) {
   await api.delete(`/suppliers/${id}`);
 }
+
+export interface SupplierOverview {
+  supplier_id: string;
+  supplier_name: string;
+  rating?: number | null;
+  order_count: number;
+  quote_count: number;
+  invoice_count: number;
+  receipt_count: number;
+  ordered_total: number;
+  billed_total: number;
+  annual_amount: number;
+  monthly: Array<{ month: string; amount: number }>;
+  top_products: Array<{ product_id: string; product_name?: string | null; amount: number; count: number }>;
+  distinct_products: number;
+  conformity_rate?: number | null;
+  on_time_rate?: number | null;
+  late_count: number;
+  /** null tant qu'aucune réception ne permet de juger — jamais inventé. */
+  score?: number | null;
+  score_basis: { conformity?: number | null; punctuality?: number | null; receipts_judged: number };
+  price_trend_pct?: number | null;
+  orders_by_status: Record<string, number>;
+}
+
+export async function getSupplierOverview(id: string) {
+  const { data } = await api.get<SupplierOverview>(`/suppliers/${id}/overview`);
+  return data;
+}
