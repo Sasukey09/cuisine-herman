@@ -503,12 +503,29 @@ class VideoIngredientDraft(BaseModel):
     unit: Optional[str] = None
 
 
-class VideoRecipeDraft(BaseModel):
+class VideoRecipeCandidate(BaseModel):
     name: str = ""
+    description: Optional[str] = None
+    summary: Optional[str] = None
     yield_qty: Optional[float] = None
     ingredients: List[VideoIngredientDraft] = []
     steps: List[str] = []
-    summary: Optional[str] = None
+    prep_time_min: Optional[float] = None
+    cook_time_min: Optional[float] = None
+    tips: List[str] = []
+    variants: List[str] = []
+    allergens: List[str] = []
+    start_sec: Optional[float] = None
+    end_sec: Optional[float] = None
+
+
+class VideoSourceInfo(BaseModel):
+    platform: Optional[str] = None
+    url: Optional[str] = None
+    video_id: Optional[str] = None
+    title: Optional[str] = None
+    creator: Optional[str] = None
+    thumbnail: Optional[str] = None
 
 
 class VideoExtractResult(BaseModel):
@@ -516,15 +533,14 @@ class VideoExtractResult(BaseModel):
     platform: str
     transcript_source: str
     transcript_excerpt: str
-    draft: VideoRecipeDraft
+    candidates: List[VideoRecipeCandidate] = []
+    source: VideoSourceInfo = VideoSourceInfo()
     note: str
 
 
 class VideoSaveRequest(BaseModel):
-    name: str
-    yield_qty: Optional[float] = None
-    ingredients: List[VideoIngredientDraft] = []
-    steps: List[str] = []
+    recipes: List[VideoRecipeCandidate] = []
+    source: VideoSourceInfo = VideoSourceInfo()
 
 
 # --------------------------------------------------------------------------- #

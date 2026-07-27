@@ -162,10 +162,17 @@ def get_status(db: Session, tenant_id: str, job_id: str) -> Optional[Dict[str, A
 def save_import(db: Session, tenant_id: str, name: str, servings: Optional[float],
                 instructions: List[str], ingredients: List[Dict[str, Any]],
                 selling_price: Optional[float] = None,
-                job_id: Optional[str] = None) -> Dict[str, Any]:
+                job_id: Optional[str] = None,
+                imported_from: str = "pdf",
+                recipe_meta: Optional[Dict[str, Any]] = None,
+                version_meta_extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Persist the (validated) preview as a recipe + version + ingredients, store
     the steps, then compute and persist the cost. Honors an explicit product_id
-    per ingredient (user correction); otherwise re-matches by name."""
+    per ingredient (user correction); otherwise re-matches by name.
+
+    ``imported_from``/``recipe_meta``/``version_meta_extra`` let other import
+    paths (video) record their provenance and richer fields without changing
+    the PDF path, which calls this with the defaults."""
     # The corrected product ids come from the client: refuse any that belong to
     # another organization.
     assert_products_in_tenant(
@@ -174,7 +181,8 @@ def save_import(db: Session, tenant_id: str, name: str, servings: Optional[float
     units_by_code = crud_price.get_units_by_code(db)
 
     recipe = Recipe(
-        id=str(uuid.uuid4()), tenant_id=tenant_id, name=name, yield_qty=servings or 1
+        id=str(uuid.uuid4()), tenant_id=tenant_id, name=name, yield_qty=servings or 1,
+        meta=recipe_meta or None,
     )
     db.add(recipe)
     db.flush()
@@ -186,7 +194,7 @@ def save_import(db: Session, tenant_id: str, name: str, servings: Optional[float
         version_number=1,
         is_published=False,
         notes="\n".join(steps) or None,
-        meta={"steps": steps, "imported_from": "pdf"},
+        meta={"steps": steps, "imported_from": imported_from, **(version_meta_extra or {})},
     )
     db.add(version)
     db.flush()

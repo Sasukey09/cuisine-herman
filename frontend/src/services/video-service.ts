@@ -1,8 +1,9 @@
 import { api } from "@/lib/api";
 import type {
   VideoExtractResult,
-  VideoIngredientDraft,
-  VideoSaveResult,
+  VideoRecipeCandidate,
+  VideoSaveResponse,
+  VideoSourceInfo,
 } from "./types";
 
 export async function extractVideo(url: string): Promise<VideoExtractResult> {
@@ -19,12 +20,10 @@ export async function extractVideoFile(file: File): Promise<VideoExtractResult> 
   return data;
 }
 
-export async function saveVideoRecipe(payload: {
-  name: string;
-  yield_qty: number | null;
-  ingredients: VideoIngredientDraft[];
-  steps: string[];
-}): Promise<VideoSaveResult> {
-  const { data } = await api.post<VideoSaveResult>("/video/save", payload);
+export async function saveVideoRecipes(payload: {
+  recipes: VideoRecipeCandidate[];
+  source: VideoSourceInfo;
+}): Promise<VideoSaveResponse> {
+  const { data } = await api.post<VideoSaveResponse>("/video/save", payload);
   return data;
 }

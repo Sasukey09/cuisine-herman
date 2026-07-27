@@ -458,12 +458,29 @@ export interface VideoIngredientDraft {
   unit: string | null;
 }
 
-export interface VideoRecipeDraft {
+export interface VideoRecipeCandidate {
   name: string;
+  description: string | null;
+  summary: string | null;
   yield_qty: number | null;
   ingredients: VideoIngredientDraft[];
   steps: string[];
-  summary: string | null;
+  prep_time_min: number | null;
+  cook_time_min: number | null;
+  tips: string[];
+  variants: string[];
+  allergens: string[];
+  start_sec: number | null;
+  end_sec: number | null;
+}
+
+export interface VideoSourceInfo {
+  platform: string | null;
+  url: string | null;
+  video_id: string | null;
+  title: string | null;
+  creator: string | null;
+  thumbnail: string | null;
 }
 
 export interface VideoExtractResult {
@@ -471,11 +488,15 @@ export interface VideoExtractResult {
   platform: string;
   transcript_source: string;
   transcript_excerpt: string;
-  draft: VideoRecipeDraft;
+  candidates: VideoRecipeCandidate[];
+  source: VideoSourceInfo;
   note: string;
 }
 
 export interface VideoSaveResult {
+  /** Position of this recipe in the submitted `recipes` array — lets the client
+   *  map a saved result back to the exact card it sent (and drop only that one). */
+  index: number;
   recipe_id: string;
   version_id: string;
   name: string;
@@ -488,6 +509,21 @@ export interface VideoSaveResult {
     has_missing_prices: boolean;
   };
   note: string;
+}
+
+export interface VideoSaveError {
+  index: number;
+  name: string;
+  error: string;
+}
+
+/** Partial-success response of POST /video/save: recipes commit one by one, so
+ *  some can succeed while others fail. The client removes only the saved cards
+ *  (via each result's `index`) and keeps/reports the failed ones. */
+export interface VideoSaveResponse {
+  count: number;
+  recipes: VideoSaveResult[];
+  errors: VideoSaveError[];
 }
 
 // --- Recipe import from PDF ------------------------------------------------

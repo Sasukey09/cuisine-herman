@@ -144,12 +144,17 @@ def test_base_opts_no_cookiefile_when_absent(monkeypatch):
 # phone's residential IP (not blocked) and posts the text; the server runs only
 # the AI extraction, never a YouTube fetch (no datacenter-IP block, no SSRF).
 # --------------------------------------------------------------------------- #
-def test_extract_from_transcript_runs_ai_without_any_fetch():
+def test_extract_from_transcript_runs_ai_without_any_fetch(monkeypatch):
     from app.services.video import service as svc
 
+    # extract_recipe_from_transcript still calls provenance.fetch_oembed(url) to
+    # build the source (best-effort provenance) even though the transcript was
+    # never fetched server-side; fake it out so this test stays fully offline.
+    monkeypatch.setattr(svc.provenance, "fetch_oembed", lambda url, fetcher=None: {})
+
     class FakeExtractor:
-        def extract(self, text, hint_title=None):
-            return {"name": "Tarte", "hint": hint_title, "seen": text[:15]}
+        def extract(self, text, hints=None):
+            return [{"name": "Tarte", "hint": (hints or {}).get("title"), "seen": text[:15]}]
 
     class FakeDB:
         def add(self, *a):
@@ -164,8 +169,10 @@ def test_extract_from_transcript_runs_ai_without_any_fetch():
     )
     assert out["platform"] == "youtube_client"
     assert out["transcript_source"] == "client_captions"
-    assert out["draft"]["name"] == "Tarte"
-    assert out["draft"]["hint"] == "Ma tarte"
+    assert out["source"]["video_id"] == "abc"
+    assert len(out["candidates"]) == 1
+    assert out["candidates"][0]["name"] == "Tarte"
+    assert out["candidates"][0]["hint"] == "Ma tarte"
 
 
 def test_extract_from_transcript_rejects_empty():

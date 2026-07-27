@@ -132,11 +132,12 @@ def api_video_save(
     tenant_id: str = Depends(get_current_tenant_id),
     _: list = Depends(require_writer),
 ):
-    """Persist a (reviewed/edited) draft as a recipe and compute its cost."""
-    if not payload.name.strip():
-        raise HTTPException(status_code=400, detail="Nom de recette requis")
-    ingredients = [i.model_dump() for i in payload.ingredients]
-    return video_service.save_draft(
-        db, tenant_id, payload.name.strip(), payload.yield_qty, ingredients,
-        instructions=payload.steps,
-    )
+    """Persist (reviewed/edited) selected candidates as recipes and cost them."""
+    recipes = [r.model_dump() for r in payload.recipes if (r.name or "").strip()]
+    if not recipes:
+        raise HTTPException(status_code=400, detail="Aucune recette à enregistrer")
+    # Partial success: save_candidates commits each recipe independently and
+    # returns {count, recipes, errors}. Returned as-is (200 even if some failed)
+    # so the client removes only the actually-saved cards and can retry the rest
+    # — instead of a 500 that would duplicate the already-committed recipes.
+    return video_service.save_candidates(db, tenant_id, recipes, payload.source.model_dump())

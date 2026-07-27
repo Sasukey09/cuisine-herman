@@ -55,34 +55,58 @@ def test_audio_disabled_raises(monkeypatch):
         transcript_mod.get_transcript("https://youtu.be/dQw4w9WgXcQ")
 
 
-def test_save_draft_delegates_to_the_recipe_import_service(monkeypatch):
-    """save_draft goes through recipe_import.save_import.
+def test_save_candidates_delegates_per_recipe(monkeypatch):
+    """save_candidates calls recipe_import.save_import once per selected recipe.
 
     It used to call the AI tool ``create_recipe_draft``, which dropped the
     ingredients and the steps; it was rewritten to reuse the PDF-import path.
-    This test pins the current contract.
+    This test pins the current partial-success contract: {count, recipes, errors}
+    with each saved result carrying its input index.
     """
-    captured = {}
+    calls = []
 
     def fake_save_import(db, tenant_id, name, servings, instructions, ingredients, **kwargs):
-        captured["args"] = dict(
+        calls.append(dict(
             db=db, tenant_id=tenant_id, name=name, servings=servings,
-            instructions=instructions, ingredients=ingredients,
-        )
-        return {"recipe_id": "r1", "cost": {"cost_per_portion": 1.0}}
+            instructions=instructions, ingredients=ingredients, kwargs=kwargs,
+        ))
+        return {"recipe_id": f"r{len(calls)}", "cost": {"cost_per_portion": 1.0}}
 
     monkeypatch.setattr(recipe_import_service, "save_import", fake_save_import)
-    out = video_service.save_draft(
-        db="DB", tenant_id="t1", name="Gâteau", yield_qty=8,
-        ingredients=[{"name": "fraises", "qty": 500, "unit": "g"}],
-        instructions=["Laver les fraises", "Cuire 20 min"],
+    source = {"platform": "youtube_client", "url": "https://youtu.be/abc", "video_id": "abc",
+              "title": "Ma vidéo", "creator": "Chef", "thumbnail": None}
+    out = video_service.save_candidates(
+        db="DB", tenant_id="t1",
+        recipes=[
+            {
+                "name": "Gâteau", "yield_qty": 8,
+                "ingredients": [{"name": "fraises", "qty": 500, "unit": "g"}],
+                "steps": ["Laver les fraises", "Cuire 20 min"],
+            },
+            {
+                "name": "Sauce", "yield_qty": 4,
+                "ingredients": [{"name": "tomates", "qty": 300, "unit": "g"}],
+                "steps": ["Mijoter 30 min"],
+            },
+        ],
+        source=source,
     )
 
-    assert out["recipe_id"] == "r1"
-    args = captured["args"]
-    assert args["tenant_id"] == "t1"
-    assert args["name"] == "Gâteau"
-    assert args["servings"] == 8
-    assert args["ingredients"][0]["name"] == "fraises"
+    assert out["count"] == 2
+    assert out["errors"] == []
+    assert out["recipes"][0]["recipe_id"] == "r1" and out["recipes"][1]["recipe_id"] == "r2"
+    assert out["recipes"][0]["index"] == 0 and out["recipes"][1]["index"] == 1
+    assert len(calls) == 2
+
+    first = calls[0]
+    assert first["tenant_id"] == "t1"
+    assert first["name"] == "Gâteau"
+    assert first["servings"] == 8
+    assert first["ingredients"][0]["name"] == "fraises"
     # The regression this path was written for: steps must survive.
-    assert args["instructions"] == ["Laver les fraises", "Cuire 20 min"]
+    assert first["instructions"] == ["Laver les fraises", "Cuire 20 min"]
+    assert first["kwargs"]["imported_from"] == "video"
+
+    second = calls[1]
+    assert second["name"] == "Sauce"
+    assert second["instructions"] == ["Mijoter 30 min"]

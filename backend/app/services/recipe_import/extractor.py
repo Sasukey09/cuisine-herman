@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional
 
 from app.services.ai.config import get_ai_config
 # Reuse the robust JSON extraction + draft normalisation from the video importer.
-from app.services.video.extractor import _parse_json, _normalize
+from app.services.video.extractor import _parse_json, _normalize_one
 from .errors import RecipeExtractionError
 
 # Documents (unlike a spoken transcript) usually have explicit quantities, so the
@@ -76,7 +76,7 @@ class RecipeDocumentExtractor:
         for block in getattr(resp, "content", []) or []:
             if getattr(block, "type", None) == "text":
                 raw += getattr(block, "text", "")
-        draft = _normalize(_parse_json(raw))
+        draft = _normalize_one(_parse_json(raw))
         if not draft["name"] and not draft["ingredients"]:
             raise RecipeExtractionError(
                 "Le document ne semble pas contenir de recette exploitable."
