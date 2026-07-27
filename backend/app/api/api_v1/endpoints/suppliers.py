@@ -20,7 +20,7 @@ from app.crud.crud_supplier import (
     delete_supplier,
     get_supplier_prices,
 )
-from app.services.purchasing import purchase_service
+from app.services.purchasing import purchase_service, supplier_analytics
 
 router = APIRouter()
 
@@ -35,6 +35,23 @@ def api_supplier_purchase_history(
     if not get_supplier(db, supplier_id, tenant_id):
         raise HTTPException(status_code=404, detail="Supplier not found")
     return purchase_service.supplier_purchase_history(db, tenant_id, supplier_id)
+
+
+@router.get("/{supplier_id}/overview")
+def api_supplier_overview(
+    supplier_id: str,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """Fiche fournisseur 360° : volumes, conformité, ponctualité, produits,
+    évolution mensuelle, inflation subie, et un score calculé (jamais inventé —
+    None tant qu'aucune réception ne permet de juger)."""
+    from datetime import date
+
+    supplier = get_supplier(db, supplier_id, tenant_id)
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    return supplier_analytics.overview(db, tenant_id, supplier, date.today())
 
 
 @router.post("/", response_model=SupplierRead, status_code=201)
