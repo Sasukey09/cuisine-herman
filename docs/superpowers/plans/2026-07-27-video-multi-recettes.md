@@ -92,14 +92,11 @@ class _FakeResp:
 
 class _FakeClient:
     """Renvoie un JSON fixe, quel que soit l'appel."""
-    def __init__(self, payload): self._payload = payload
-    class messages:  # placeholder, replaced in __init__
-        pass
     def __init__(self, payload):
-        self._payload = payload
         outer = self
         class _Msgs:
-            def create(self, **kw): return _FakeResp(outer._payload)
+            def create(self, **kw):
+                return _FakeResp(payload)
         self.messages = _Msgs()
 
 
