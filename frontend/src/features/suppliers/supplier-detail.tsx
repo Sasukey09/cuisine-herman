@@ -22,6 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useSupplier, useSupplierPrices } from "@/hooks/use-suppliers";
+import { SupplierScorecard } from "./supplier-scorecard";
 import { useSupplierPurchaseHistory } from "@/hooks/use-purchasing";
 import { formatCurrency, formatDate, formatNumber } from "@/lib/utils";
 
@@ -89,6 +90,8 @@ export function SupplierDetail({ supplierId }: { supplierId: string }) {
           )}
         </CardContent>
       </Card>
+
+      <SupplierScorecard supplierId={supplierId} />
 
       <Card>
         <CardHeader>

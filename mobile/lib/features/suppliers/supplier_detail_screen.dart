@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../common/format.dart';
 import '../../core/api_error.dart';
 import '../../core/providers.dart';
-import '../../main.dart' show kMuted, kWarn;
+import '../../main.dart' show kMuted, kWarn, kGood, kBad, kTerracotta;
 
 /// Supplier detail — the mobile equivalent of the web `/fournisseurs/[id]` page
 /// (`frontend/src/features/suppliers/supplier-detail.tsx`): contact details,
@@ -13,6 +13,12 @@ import '../../main.dart' show kMuted, kWarn;
 final _supplierProvider =
     FutureProvider.autoDispose.family<Map<String, dynamic>, String>((ref, id) async {
   final resp = await ref.read(apiClientProvider).dio.get('/suppliers/$id');
+  return Map<String, dynamic>.from(resp.data as Map);
+});
+
+final _supplierOverviewProvider =
+    FutureProvider.autoDispose.family<Map<String, dynamic>, String>((ref, id) async {
+  final resp = await ref.read(apiClientProvider).dio.get('/suppliers/$id/overview');
   return Map<String, dynamic>.from(resp.data as Map);
 });
 
@@ -37,6 +43,7 @@ class SupplierDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final supplier = ref.watch(_supplierProvider(supplierId));
+    final overview = ref.watch(_supplierOverviewProvider(supplierId));
     final history = ref.watch(_supplierHistoryProvider(supplierId));
     final prices = ref.watch(_supplierPricesProvider(supplierId));
 
@@ -47,6 +54,7 @@ class SupplierDetailScreen extends ConsumerWidget {
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(_supplierProvider(supplierId));
+          ref.invalidate(_supplierOverviewProvider(supplierId));
           ref.invalidate(_supplierHistoryProvider(supplierId));
           ref.invalidate(_supplierPricesProvider(supplierId));
           await ref.read(_supplierProvider(supplierId).future);
@@ -93,6 +101,12 @@ class SupplierDetailScreen extends ConsumerWidget {
               },
             ),
             const SizedBox(height: 16),
+            // --- Fiche 360° ---
+            overview.maybeWhen(
+              orElse: () => const SizedBox.shrink(),
+              data: (o) => _Scorecard(o),
+            ),
+            const SizedBox(height: 8),
             // --- Historique des achats ---
             const _SectionTitle('Historique des achats'),
             history.when(
@@ -216,4 +230,186 @@ class _Line extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 16),
         child: Center(child: Text(text, style: const TextStyle(color: kMuted))),
       );
+}
+
+/// La fiche fournisseur 360° : volumes, conformité, ponctualité, produits.
+///
+/// Un score ne s'affiche que s'il a été calculé sur des faits. Sinon « pas
+/// encore noté » — jamais un 0 qui accuserait un fournisseur qu'on n'a pas
+/// encore éprouvé.
+class _Scorecard extends StatelessWidget {
+  const _Scorecard(this.o);
+  final Map<String, dynamic> o;
+
+  String _pct(dynamic v) => v == null ? '—' : '${(v * 100).round()} %';
+
+  @override
+  Widget build(BuildContext context) {
+    final score = o['score'] as num?;
+    final trend = o['price_trend_pct'] as num?;
+    final monthly =
+        (o['monthly'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
+    final products =
+        (o['top_products'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
+    final scoreColor = score == null
+        ? kMuted
+        : score >= 80
+            ? kGood
+            : score >= 50
+                ? kWarn
+                : kBad;
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Expanded(child: _tile(eur(o['annual_amount'] as num?), 'Payé sur 12 mois', kTerracotta)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _tile(
+            score == null ? '—' : '$score/100',
+            score == null ? 'Pas encore noté' : 'Score fournisseur',
+            scoreColor,
+          ),
+        ),
+      ]),
+      const SizedBox(height: 8),
+      Row(children: [
+        Expanded(child: _tile(_pct(o['conformity_rate']),
+            'Conformité · ${o['receipt_count']} récept.', kGood)),
+        const SizedBox(width: 8),
+        Expanded(child: _tile(
+            o['on_time_rate'] == null ? '—' : _pct(o['on_time_rate']),
+            'Ponctualité${(o['late_count'] as int? ?? 0) > 0 ? ' · ${o['late_count']} retard' : ''}',
+            kWarn)),
+      ]),
+      const SizedBox(height: 8),
+      Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Wrap(spacing: 14, runSpacing: 4, children: [
+            _count('${o['quote_count']}', 'devis'),
+            _count('${o['order_count']}', 'commandes'),
+            _count('${o['receipt_count']}', 'réceptions'),
+            _count('${o['invoice_count']}', 'factures'),
+            _count('${o['distinct_products']}', 'produits'),
+            if (trend != null)
+              Text(
+                '${trend > 0 ? '+' : ''}${trend.toStringAsFixed(1).replaceAll('.', ',')} % prix/an',
+                style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: trend > 0 ? kBad : kGood),
+              ),
+          ]),
+        ),
+      ),
+      if (monthly.length > 1) ...[
+        const SizedBox(height: 8),
+        _MonthlyBars(monthly),
+      ],
+      if (products.isNotEmpty) ...[
+        const SizedBox(height: 8),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Produits les plus achetés',
+                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: kMuted)),
+              const SizedBox(height: 6),
+              for (final p in products.take(6))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 3),
+                  child: Row(children: [
+                    Expanded(
+                      child: Text('${p['product_name'] ?? 'Produit'}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 13)),
+                    ),
+                    Text(eur(p['amount'] as num?),
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                  ]),
+                ),
+            ]),
+          ),
+        ),
+      ],
+    ]);
+  }
+
+  Widget _tile(String value, String label, Color color) => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: color)),
+            const SizedBox(height: 2),
+            Text(label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 11, color: kMuted)),
+          ]),
+        ),
+      );
+
+  Widget _count(String n, String label) => RichText(
+        text: TextSpan(children: [
+          TextSpan(
+              text: '$n ',
+              style: const TextStyle(
+                  fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF2B2B2B))),
+          TextSpan(text: label, style: const TextStyle(fontSize: 13, color: kMuted)),
+        ]),
+      );
+}
+
+class _MonthlyBars extends StatelessWidget {
+  const _MonthlyBars(this.monthly);
+  final List<Map<String, dynamic>> monthly;
+
+  @override
+  Widget build(BuildContext context) {
+    final max = monthly
+        .map((m) => (m['amount'] as num?)?.toDouble() ?? 0)
+        .fold<double>(1, (a, b) => b > a ? b : a);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Dépense mensuelle',
+              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: kMuted)),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 76,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                for (final m in monthly)
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                      child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+                        Container(
+                          height:
+                              (((m['amount'] as num?)?.toDouble() ?? 0) / max * 58).clamp(2, 58),
+                          decoration: BoxDecoration(
+                            color: kTerracotta.withValues(alpha: 0.7),
+                            borderRadius:
+                                const BorderRadius.vertical(top: Radius.circular(3)),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text('${m['month']}'.substring(5),
+                            style: const TextStyle(fontSize: 8, color: kMuted)),
+                      ]),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
 }
