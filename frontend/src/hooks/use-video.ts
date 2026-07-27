@@ -25,9 +25,14 @@ export function useSaveVideoRecipes() {
     // and imported it again. (The PDF-import flow already did this.)
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ["recipes"] });
-      toast.success(
-        res.count > 1 ? `${res.count} recettes enregistrées.` : `${res.count} recette enregistrée.`,
-      );
+      // Partial success: `count` can be 0 when every recipe failed — the view's
+      // onSuccess reports those errors, so don't also claim "0 recette
+      // enregistrée" here. Only celebrate what was actually saved.
+      if (res.count > 0) {
+        toast.success(
+          res.count > 1 ? `${res.count} recettes enregistrées.` : `${res.count} recette enregistrée.`,
+        );
+      }
     },
   });
 }

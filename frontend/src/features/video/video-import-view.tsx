@@ -28,7 +28,7 @@ import {
 import { getApiErrorMessage } from "@/lib/api-error";
 import { formatCurrency, formatPercent } from "@/lib/utils";
 import { useExtractVideo, useExtractVideoFile, useSaveVideoRecipes } from "@/hooks/use-video";
-import type { VideoExtractResult, VideoRecipeCandidate, VideoSaveResult, VideoSourceInfo } from "@/services/types";
+import type { VideoExtractResult, VideoRecipeCandidate, VideoSaveResponse, VideoSourceInfo } from "@/services/types";
 import { CandidateCard, type CandidateState } from "./candidate-card";
 
 const EMPTY_SOURCE: VideoSourceInfo = {
@@ -88,7 +88,7 @@ export function VideoImportView() {
   const [candidates, setCandidates] = useState<CandidateState[]>([]);
   const [source, setSource] = useState<VideoSourceInfo | null>(null);
   const [mergeFrom, setMergeFrom] = useState<number | null>(null);
-  const [saved, setSaved] = useState<{ count: number; recipes: VideoSaveResult[] } | null>(null);
+  const [saved, setSaved] = useState<VideoSaveResponse | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const extract = useExtractVideo();
@@ -210,20 +210,28 @@ export function VideoImportView() {
       toast.error("Donnez un nom à chaque recette sélectionnée.");
       return;
     }
-    // Snapshot exactly which ids are being submitted: the user can keep toggling
-    // checkboxes while the request is in flight, so `.selected` on `prev` at
-    // onSuccess time may no longer match what was actually sent. Removing by id
-    // (not by re-reading `.selected`) avoids silently dropping a card the user
-    // selected mid-request (never sent, yet removed) or leaving behind one they
-    // deselected mid-request (sent, yet kept — inviting a duplicate save).
-    const submittedIds = new Set(selected.map((c) => c.id));
+    // Snapshot the ORDER of the ids being submitted: the backend saves recipe by
+    // recipe and returns a partial success ({recipes, errors}), each result
+    // carrying the `index` of the recipe it saved. We map that index back to the
+    // card id captured here so we remove ONLY the cards that were actually
+    // persisted — failed ones stay in the list for a retry, and a card the user
+    // toggled mid-request is neither wrongly dropped (never sent) nor wrongly
+    // kept (sent) because we key off what was submitted, not `.selected`.
+    const submittedIds = selected.map((c) => c.id); // ordered = ordre d'envoi
     save.mutate(
       { recipes: selected.map(toPayload), source: source ?? EMPTY_SOURCE },
       {
         onSuccess: (res) => {
           setSaved(res);
-          setCandidates((prev) => prev.filter((c) => !submittedIds.has(c.id)));
+          const savedIds = new Set(res.recipes.map((r) => submittedIds[r.index]));
+          setCandidates((prev) => prev.filter((c) => !savedIds.has(c.id)));
           setMergeFrom(null);
+          if (res.errors.length) {
+            toast.error(
+              `${res.errors.length} recette(s) non enregistrée(s) : ` +
+                res.errors.map((e) => e.name).join(", "),
+            );
+          }
         },
         onError: (err) => toast.error(getApiErrorMessage(err)),
       },

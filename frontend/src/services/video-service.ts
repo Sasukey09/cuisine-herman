@@ -2,7 +2,7 @@ import { api } from "@/lib/api";
 import type {
   VideoExtractResult,
   VideoRecipeCandidate,
-  VideoSaveResult,
+  VideoSaveResponse,
   VideoSourceInfo,
 } from "./types";
 
@@ -23,7 +23,7 @@ export async function extractVideoFile(file: File): Promise<VideoExtractResult> 
 export async function saveVideoRecipes(payload: {
   recipes: VideoRecipeCandidate[];
   source: VideoSourceInfo;
-}): Promise<{ count: number; recipes: VideoSaveResult[] }> {
-  const { data } = await api.post("/video/save", payload);
+}): Promise<VideoSaveResponse> {
+  const { data } = await api.post<VideoSaveResponse>("/video/save", payload);
   return data;
 }

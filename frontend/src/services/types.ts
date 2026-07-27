@@ -494,6 +494,9 @@ export interface VideoExtractResult {
 }
 
 export interface VideoSaveResult {
+  /** Position of this recipe in the submitted `recipes` array — lets the client
+   *  map a saved result back to the exact card it sent (and drop only that one). */
+  index: number;
   recipe_id: string;
   version_id: string;
   name: string;
@@ -506,6 +509,21 @@ export interface VideoSaveResult {
     has_missing_prices: boolean;
   };
   note: string;
+}
+
+export interface VideoSaveError {
+  index: number;
+  name: string;
+  error: string;
+}
+
+/** Partial-success response of POST /video/save: recipes commit one by one, so
+ *  some can succeed while others fail. The client removes only the saved cards
+ *  (via each result's `index`) and keeps/reports the failed ones. */
+export interface VideoSaveResponse {
+  count: number;
+  recipes: VideoSaveResult[];
+  errors: VideoSaveError[];
 }
 
 // --- Recipe import from PDF ------------------------------------------------
