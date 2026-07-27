@@ -167,11 +167,19 @@ from app.services.rgpd import service as rgpd  # noqa: E402
 
 @pytest.fixture
 def tenant(db):
+    # The unit-conversion ratios are process-cached (cost_engine._UNIT_SERVICE),
+    # bound to whatever session first built them. Without a reset, a later
+    # real_db test inherits Units detached from a closed session and save_import's
+    # costing step raises "Instance <Unit> is not bound to a Session". Every other
+    # real_db cost test does the same (see test_costing_real_db.py).
+    from app.services.costing import cost_engine
+    cost_engine.reset_unit_cache()
     tenant_id = str(uuid.uuid4())
     db.add(Organization(id=tenant_id, name="Cuisine Vidéo"))
     db.commit()
     yield tenant_id
     rgpd.delete_organization(db, tenant_id)
+    cost_engine.reset_unit_cache()
 
 
 def test_save_import_stores_imported_from_and_recipe_meta(db, tenant):
