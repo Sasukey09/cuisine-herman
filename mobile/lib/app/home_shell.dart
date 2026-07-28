@@ -14,6 +14,7 @@ import '../features/metrics/metrics_screen.dart';
 import '../features/prix/price_screen.dart';
 import '../features/products/products_screen.dart';
 import '../features/orders/orders_screen.dart';
+import '../features/pilotage/pilotage_screen.dart';
 import '../features/receipts/receipts_screen.dart';
 import '../features/quotes/quotes_screen.dart';
 import '../features/recipes/recipes_screen.dart';
@@ -54,6 +55,10 @@ const _modules = <_Mod>[
       Icons.local_shipping_outlined, SuppliersScreen()),
   _Mod('prix', 'Variations de prix', 'Évolution des coûts', Icons.trending_up,
       PriceScreen()),
+  // Juste apres Variations de prix, comme dans le menu web (nav-config.ts) :
+  // la synthèse du cycle achats suit le détail des prix.
+  _Mod('pilotage', 'Pilotage', 'Vue d’ensemble des achats',
+      Icons.query_stats_outlined, PilotageScreen()),
   _Mod('import', 'Import vidéo', 'Extraire une recette', Icons.movie_outlined,
       VideoImportScreen()),
   _Mod('assistant', 'Assistant IA', 'Posez vos questions',

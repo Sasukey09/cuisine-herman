@@ -683,6 +683,42 @@ export interface PriceDashboard {
   recipe_impact: RecipeImpact[];
 }
 
+export interface PurchasingKpi {
+  window_months: number;
+  savings: {
+    realized: number;
+    missed: number;
+    possible: number;
+    best_choice_rate: number | null;
+    compared_lines: number;
+    labels: { realized: string; missed: string; possible: string; best_choice_rate: string };
+  };
+  possible_open: number;
+  cycle: {
+    ordered_total: number;
+    received_value: number;
+    billed_total: number;
+    gap_ordered_received: number;
+    gap_billed_received: number;
+    missing_value: number;
+    ordered_by_status: Record<string, number>;
+  };
+  price: {
+    n_hausse: number;
+    n_baisse: number;
+    top_inflation_pct: number | null;
+    n_critiques: number;
+    switch_savings_total: number;
+  };
+  top_products: Array<{ product_id: string; name: string; total_spend: number }>;
+  suppliers: {
+    most_competitive: Array<{ supplier_id: string; name: string; realized: number }>;
+    most_late: Array<{ supplier_id: string; name: string; late_count: number }>;
+    best_conformity: Array<{ supplier_id: string; name: string; conformity_rate: number | null }>;
+  };
+  labels: Record<string, string>;
+}
+
 export interface CustomMetric {
   id: string;
   name: string;
