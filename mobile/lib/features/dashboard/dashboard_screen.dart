@@ -5,7 +5,8 @@ import '../../common/async_list.dart';
 import '../../common/format.dart';
 import '../../core/providers.dart';
 import '../../main.dart'
-    show kMuted, kBad, kGood, kWarn, kSerif, kGradTeal, kGradAmber, kGradDanger, kGradTerracotta;
+    show kMuted, kBad, kGood, kWarn, kGradTeal, kGradAmber, kGradDanger, kGradTerracotta;
+import '../common/kpi_widgets.dart';
 
 final _dashProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final api = ref.read(apiClientProvider);
@@ -106,7 +107,7 @@ class DashboardScreen extends ConsumerWidget {
                 children: [
                   // En premier, et pas au milieu : « vous perdez de l'argent en ce
                   // moment » passe avant tout le reste.
-                  _Stat(
+                  KpiStat(
                     label: 'Plats à perte',
                     value: '${losing.length}',
                     sub: losing.isEmpty ? 'aucun' : '${eur(lost)} / assiette',
@@ -114,14 +115,14 @@ class DashboardScreen extends ConsumerWidget {
                   ),
                   // La sous-légende disait « prix & marges ». C'était faux : ce
                   // compteur ne voit que les alertes de prix venues des factures.
-                  _Stat(
+                  KpiStat(
                     label: 'Alertes de prix',
                     value: '$alertCount',
                     sub: 'sur les achats',
                     gradient: alertCount > 0 ? kGradAmber : kGradTeal,
                   ),
-                  _Stat(label: 'Produits en hausse', value: '${up.length}', sub: 'ce mois', subColor: kBad),
-                  _Stat(label: 'Produits en baisse', value: '${down.length}', sub: 'ce mois', subColor: kGood),
+                  KpiStat(label: 'Produits en hausse', value: '${up.length}', sub: 'ce mois', subColor: kBad),
+                  KpiStat(label: 'Produits en baisse', value: '${down.length}', sub: 'ce mois', subColor: kGood),
                 ],
               );
             },
@@ -150,15 +151,15 @@ class DashboardScreen extends ConsumerWidget {
                 crossAxisSpacing: 10,
                 childAspectRatio: 1.0,
                 children: [
-                  _MiniStat(
+                  KpiMiniStat(
                       label: 'Coût matière / portion',
                       value: eur(avgCost),
                       gradient: kGradTerracotta),
-                  _MiniStat(
+                  KpiMiniStat(
                       label: 'Food cost moyen',
                       value: pctRound(avgFc),
                       gradient: kGradAmber),
-                  _MiniStat(
+                  KpiMiniStat(
                       label: 'Dépense cumulée',
                       value: totalSpend == null ? '…' : eur(totalSpend),
                       gradient: kGradTeal),
@@ -174,7 +175,7 @@ class DashboardScreen extends ConsumerWidget {
               final losing = (l['losing_money'] as List?) ?? const [];
               final unknown = ((l['no_selling_price'] as List?) ?? const []).length +
                   ((l['not_costable'] as List?) ?? const []).length;
-              return _SectionCard(
+              return KpiSectionCard(
                 icon: losing.isEmpty ? '\u2713' : '\u2198',
                 iconColor: losing.isEmpty ? kGood : kBad,
                 title: 'Plats vendus à perte',
@@ -207,7 +208,7 @@ class DashboardScreen extends ConsumerWidget {
           costTrends.when(
             loading: () => const SizedBox.shrink(),
             error: (e, _) => const SizedBox.shrink(),
-            data: (points) => _SectionCard(
+            data: (points) => KpiSectionCard(
               icon: '↗',
               iconColor: kMuted,
               title: 'Évolution du coût matière',
@@ -228,7 +229,7 @@ class DashboardScreen extends ConsumerWidget {
             error: (e, _) => const SizedBox.shrink(),
             data: (d) {
               final up = (d['most_increased'] as List?) ?? const [];
-              return _SectionCard(
+              return KpiSectionCard(
                 icon: '▲',
                 iconColor: kBad,
                 title: 'Plus fortes hausses',
@@ -243,7 +244,7 @@ class DashboardScreen extends ConsumerWidget {
           marginAlerts.when(
             loading: () => const _Loading(),
             error: (e, _) => ErrorState(onRetry: () => ref.invalidate(_marginAlertsProvider)),
-            data: (rows) => _SectionCard(
+            data: (rows) => KpiSectionCard(
               icon: rows.isEmpty ? '✓' : '⚠',
               iconColor: rows.isEmpty ? kGood : kWarn,
               title: 'Alertes de marge',
@@ -273,7 +274,7 @@ class DashboardScreen extends ConsumerWidget {
                 final s = ((p as Map)['total_spend'] as num?)?.toDouble() ?? 0;
                 if (s > maxSpend) maxSpend = s;
               }
-              return _SectionCard(
+              return KpiSectionCard(
                 icon: '■',
                 iconColor: kGood,
                 title: 'Top produits (dépense)',
@@ -287,7 +288,7 @@ class DashboardScreen extends ConsumerWidget {
           alerts.when(
             loading: () => const _Loading(),
             error: (e, _) => ErrorState(onRetry: () => ref.invalidate(_alertsProvider)),
-            data: (rows) => _SectionCard(
+            data: (rows) => KpiSectionCard(
               icon: '⚠',
               iconColor: kWarn,
               title: 'Alertes de prix',
@@ -462,104 +463,6 @@ class DashboardScreen extends ConsumerWidget {
   }
 }
 
-/// Tuile de statistique. Deux traitements fidèles au design :
-///  • dégradé (métriques « argent à risque ») — grand chiffre serif blanc, la
-///    couleur du dégradé porte le signal (teal calme / rouge / ambre) ;
-///  • carte crème (métriques de mouvement) — chiffre serif encre + sous-légende
-///    à couleur sémantique (vert/rouge).
-class _Stat extends StatelessWidget {
-  const _Stat({
-    required this.label,
-    required this.value,
-    required this.sub,
-    this.subColor,
-    this.gradient,
-  });
-  final String label, value, sub;
-  final Color? subColor;
-  final Gradient? gradient;
-
-  @override
-  Widget build(BuildContext context) {
-    final onGrad = gradient != null;
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        gradient: gradient,
-        color: onGrad ? null : theme.cardColor,
-        border: onGrad ? null : Border.all(color: theme.dividerColor),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11.5,
-              color: onGrad ? Colors.white.withValues(alpha: .85) : kMuted,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: kSerif.copyWith(
-              fontSize: 25,
-              fontWeight: FontWeight.w700,
-              color: onGrad ? Colors.white : theme.colorScheme.onSurface,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            sub,
-            style: TextStyle(
-              fontSize: 11,
-              color: onGrad ? Colors.white.withValues(alpha: .9) : (subColor ?? kMuted),
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SectionCard extends StatelessWidget {
-  const _SectionCard({required this.icon, required this.iconColor, required this.title, required this.child});
-  final String icon, title;
-  final Color iconColor;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        border: Border.all(color: theme.dividerColor),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            Text(icon, style: TextStyle(color: iconColor, fontSize: 13)),
-            const SizedBox(width: 7),
-            Text(title, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
-          ]),
-          const SizedBox(height: 8),
-          child,
-        ],
-      ),
-    );
-  }
-}
-
 class _Loading extends StatelessWidget {
   const _Loading();
   @override
@@ -633,44 +536,6 @@ class _DailyCost {
   const _DailyCost(this.date, this.avgCost);
   final String date;
   final double avgCost;
-}
-
-/// Tuile de synthèse compacte (3 par ligne). Grand chiffre serif blanc sur
-/// dégradé ; [FittedBox] pour ne jamais déborder sur les gros montants.
-class _MiniStat extends StatelessWidget {
-  const _MiniStat({required this.label, required this.value, required this.gradient});
-  final String label, value;
-  final Gradient gradient;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(11),
-      decoration: BoxDecoration(gradient: gradient, borderRadius: BorderRadius.circular(14)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(value,
-                style: kSerif.copyWith(
-                    fontSize: 21, fontWeight: FontWeight.w700, color: Colors.white)),
-          ),
-          const SizedBox(height: 4),
-          Text(label,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                  fontSize: 10.5,
-                  height: 1.15,
-                  color: Colors.white.withValues(alpha: .9),
-                  fontWeight: FontWeight.w500)),
-        ],
-      ),
-    );
-  }
 }
 
 /// Mini bar-chart maison : une barre par jour, hauteur proportionnelle au coût
