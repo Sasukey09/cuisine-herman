@@ -14,7 +14,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.models import (
-    PurchaseOrder, PurchaseOrderLine, Invoice, Receipt, ReceiptLine,
+    PurchaseOrder, Invoice, Receipt, ReceiptLine,
     ReceiptLineIssue, PurchaseHistory,
 )
 from app.services.purchasing import order_service, reception_service, savings_service
@@ -124,7 +124,7 @@ def purchasing_kpi(db: Session, tenant_id: str, today: date) -> Dict[str, Any]:
         .group_by(PurchaseOrder.status)
         .all()
     )
-    ordered_by_status = {s: float(t or 0) for s, t in order_rows}
+    ordered_by_status = {s: round(float(t or 0), 2) for s, t in order_rows}
     ordered_total = sum(ordered_by_status.values())
     billed_total = float(
         db.query(func.coalesce(func.sum(Invoice.total_amount), 0))
@@ -147,7 +147,7 @@ def purchasing_kpi(db: Session, tenant_id: str, today: date) -> Dict[str, Any]:
         missing_value += prog.get("missing_value") or 0.0
 
     # --- fournisseurs : agrégat léger (dépense + retards/conformité SQL, éco depuis les lignes) ---
-    suppliers = _supplier_rows(db, tenant_id, since, today, realized_by_supplier)
+    suppliers = _supplier_rows(db, tenant_id, since, realized_by_supplier)
 
     parts = {
         "savings": {k: sav[k] for k in ("realized", "missed", "possible", "best_choice_rate", "compared_lines")},
@@ -162,7 +162,7 @@ def purchasing_kpi(db: Session, tenant_id: str, today: date) -> Dict[str, Any]:
     return assemble(parts)
 
 
-def _supplier_rows(db, tenant_id, since, today, realized_by_supplier):
+def _supplier_rows(db, tenant_id, since, realized_by_supplier):
     """Agrégat léger par fournisseur : dépense (payé), retards & conformité
     (mêmes définitions que supplier_analytics : issue-free = conforme ; reçu après
     la date promise = retard), et économies réalisées (depuis les lignes)."""
@@ -187,7 +187,10 @@ def _supplier_rows(db, tenant_id, since, today, realized_by_supplier):
         .filter(Receipt.tenant_id == tenant_id).all()
     )
     agg: Dict[str, Dict[str, float]] = {}
-    for r in db.query(Receipt).filter(Receipt.tenant_id == tenant_id, Receipt.status == "checked"):
+    for r in db.query(Receipt).filter(
+        Receipt.tenant_id == tenant_id, Receipt.status == "checked",
+        Receipt.received_at >= since,
+    ):
         sid = str(r.supplier_id) if r.supplier_id else None
         if not sid:
             continue

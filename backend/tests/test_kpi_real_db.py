@@ -7,7 +7,7 @@ import pytest
 
 from app.models.models import (
     Organization, Product, Supplier, PurchaseOrder, PurchaseOrderLine,
-    Invoice, Quote, QuoteLine,
+    Invoice, Quote, QuoteLine, Receipt, ReceiptLine,
 )
 
 
@@ -60,3 +60,39 @@ def test_kpi_assembles_cycle_and_savings(db, client_ctx):
     assert set(k["price"].keys()) >= {"n_hausse", "n_baisse", "n_critiques", "switch_savings_total"}
     assert "labels" in k and "most_competitive" in k["suppliers"]
     assert k["savings"]["labels"]["realized"] == "Économisé"
+
+
+def test_supplier_late_count_is_windowed(db, client_ctx):
+    """Le fenêtrage 12 mois s'applique AUSSI à la qualité fournisseur.
+
+    Une réception validée EN RETARD mais hors de la fenêtre de 12 mois ne doit
+    pas gonfler « En retard » — sinon le dashboard affiche des retards all-time
+    sous une étiquette « 12 mois ». Seule la réception en retard DANS la fenêtre
+    doit compter."""
+    client, c = client_ctx
+    tid, metro, transg, pid = c["tenant_id"], c["metro"], c["transg"], c["product"]
+    today = date.today()
+
+    # METRO : réception EN RETARD mais HORS fenêtre (reçu il y a 400 j).
+    old_order = str(uuid.uuid4())
+    db.add(PurchaseOrder(id=old_order, tenant_id=tid, reference="CMD-OLD", supplier_id=metro,
+                         status="received", expected_date=today - timedelta(days=405)))
+    old_rec = str(uuid.uuid4())
+    db.add(Receipt(id=old_rec, tenant_id=tid, reference="REC-OLD", supplier_id=metro,
+                   order_id=old_order, status="checked", received_at=today - timedelta(days=400)))
+    db.add(ReceiptLine(tenant_id=tid, receipt_id=old_rec, product_id=pid, qty_delivered=10))
+
+    # TRANSGOURMET : réception EN RETARD et DANS la fenêtre (reçu il y a 10 j).
+    new_order = str(uuid.uuid4())
+    db.add(PurchaseOrder(id=new_order, tenant_id=tid, reference="CMD-NEW", supplier_id=transg,
+                         status="received", expected_date=today - timedelta(days=15)))
+    new_rec = str(uuid.uuid4())
+    db.add(Receipt(id=new_rec, tenant_id=tid, reference="REC-NEW", supplier_id=transg,
+                   order_id=new_order, status="checked", received_at=today - timedelta(days=10)))
+    db.add(ReceiptLine(tenant_id=tid, receipt_id=new_rec, product_id=pid, qty_delivered=10))
+    db.commit()
+
+    k = client.get("/api/v1/purchasing/kpi").json()
+    late = {s["name"]: s for s in k["suppliers"]["most_late"]}
+    assert late.get("TRANSGOURMET", {}).get("late_count") == 1
+    assert "METRO" not in late, "la réception en retard hors des 12 mois ne doit pas compter"
