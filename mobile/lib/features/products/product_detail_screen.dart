@@ -7,7 +7,7 @@ import '../../common/format.dart';
 import '../../core/api_error.dart';
 import '../../core/providers.dart';
 import 'product_quote_history.dart';
-import '../../main.dart' show kMuted, kGood, kTerracotta, kProductCategories;
+import '../../main.dart' show kMuted, kGood, kBad, kTerracotta, kProductCategories;
 import '../auth/auth_controller.dart';
 import '../invoices/invoice_detail_screen.dart';
 import '../recipes/recipe_detail_screen.dart';
@@ -45,6 +45,14 @@ final productRecipesProvider =
   return (resp.data as Map)['recipes'] as List? ?? const [];
 });
 
+/// La fiche 360° du produit (§ Achats) — miroir de `_supplierOverviewProvider`
+/// dans `supplier_detail_screen.dart`.
+final _productOverviewProvider =
+    FutureProvider.autoDispose.family<Map<String, dynamic>, String>((ref, id) async {
+  final resp = await ref.read(apiClientProvider).dio.get('/products/$id/overview');
+  return Map<String, dynamic>.from(resp.data as Map);
+});
+
 final _allSuppliersProvider = FutureProvider.autoDispose<List<dynamic>>((ref) async {
   final resp = await ref.read(apiClientProvider).dio.get('/suppliers/', queryParameters: {'limit': 200});
   return resp.data as List? ?? const [];
@@ -61,6 +69,7 @@ class ProductDetailScreen extends ConsumerWidget {
     ref.invalidate(productHistoryProvider(productId));
     ref.invalidate(productInvoicesProvider(productId));
     ref.invalidate(productRecipesProvider(productId));
+    ref.invalidate(_productOverviewProvider(productId));
   }
 
   @override
@@ -79,7 +88,7 @@ class ProductDetailScreen extends ConsumerWidget {
               Tab(text: 'Prix'),
               Tab(text: 'Factures'),
               Tab(text: 'Recettes'),
-              Tab(text: 'Stats'),
+              Tab(text: "Vue d'ensemble"),
             ],
           ),
         ),
@@ -90,7 +99,7 @@ class ProductDetailScreen extends ConsumerWidget {
             _PricesTab(productId: productId),
             _InvoicesTab(productId: productId),
             _RecipesTab(productId: productId),
-            _StatsTab(productId: productId),
+            _OverviewTab(productId: productId),
           ],
         ),
       ),
@@ -690,62 +699,289 @@ class _RecipesTab extends ConsumerWidget {
 }
 
 // --------------------------------------------------------------------------- //
-// Statistiques
+// Vue d'ensemble (fiche 360°, server-fed — miroir de `_Scorecard` fournisseur)
 // --------------------------------------------------------------------------- //
-class _StatsTab extends ConsumerWidget {
-  const _StatsTab({required this.productId});
+class _OverviewTab extends ConsumerWidget {
+  const _OverviewTab({required this.productId});
   final String productId;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final history = ref.watch(productHistoryProvider(productId));
-    final suppliers = ref.watch(productSuppliersProvider(productId));
-    final invoices = ref.watch(productInvoicesProvider(productId));
-    final recipes = ref.watch(productRecipesProvider(productId));
-    return history.when(
-      loading: () => const _Loading(),
-      error: (e, _) => _ErrorLine(apiErrorMessage(e)),
-      data: (data) {
-        final purchases = (data['purchases'] as List? ?? const []);
-        final costs = purchases
-            .map((p) => ((p as Map)['unit_cost_standard'] as num?)?.toDouble())
-            .whereType<double>()
-            .toList();
-        final supCount = (suppliers.valueOrNull?['suppliers'] as List?)?.length ?? 0;
-        final invCount = invoices.valueOrNull?.length ?? 0;
-        final recCount = recipes.valueOrNull?.length ?? 0;
-        if (costs.isEmpty && supCount == 0 && invCount == 0 && recCount == 0) {
-          return const _EmptyLine('Pas encore de données pour ce produit.');
-        }
-        final tiles = <Widget>[
-          _tile('Achats', '${costs.length}'),
-          _tile('Fournisseurs', '$supCount'),
-          _tile('Recettes', '$recCount'),
-          _tile('Factures', '$invCount'),
-          if (costs.isNotEmpty) _tile('Prix moyen', eur(costs.reduce((a, b) => a + b) / costs.length)),
-          if (costs.isNotEmpty) _tile('Minimum', eur(costs.reduce((a, b) => a < b ? a : b))),
-          if (costs.isNotEmpty) _tile('Maximum', eur(costs.reduce((a, b) => a > b ? a : b))),
-          if (costs.length > 1 && costs.first > 0)
-            _tile('Variation', '${((costs.last - costs.first) / costs.first * 100).toStringAsFixed(1)} %'),
-        ];
-        return Padding(
+    final overview = ref.watch(_productOverviewProvider(productId));
+    return ListView(
+      padding: const EdgeInsets.all(12),
+      children: [
+        overview.maybeWhen(orElse: () => const SizedBox.shrink(), data: (o) => _Scorecard(o)),
+      ],
+    );
+  }
+}
+
+/// La fiche produit 360° : ce que ce produit coûte, chez qui, et ce que la
+/// mise en concurrence a fait gagner. Miroir de `_Scorecard` (fournisseur)
+/// dans `supplier_detail_screen.dart` — mêmes tuiles/barres/listes, mais
+/// centré sur le produit plutôt que sur le fournisseur. Les champs nullable
+/// (pas encore de fournisseur le moins cher, pas d'offre récente…) s'affichent
+/// « — », jamais une valeur inventée.
+class _Scorecard extends StatelessWidget {
+  const _Scorecard(this.o);
+  final Map<String, dynamic> o;
+
+  @override
+  Widget build(BuildContext context) {
+    final trend = o['price_trend_pct'] as num?;
+    final monthly = (o['monthly'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
+    final topSuppliers = (o['top_suppliers'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
+    final savings = o['savings'] as Map?;
+    final cheapest = o['cheapest_supplier'] as Map?;
+    final offers = o['offers'] as Map?;
+    final trendColor = trend == null ? kMuted : (trend > 0 ? kBad : kGood);
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Expanded(child: _tile(eur(o['annual_amount'] as num?), 'Payé sur 12 mois', kTerracotta)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _tile(
+            trend == null
+                ? '—'
+                : '${trend > 0 ? '+' : ''}${trend.toStringAsFixed(1).replaceAll('.', ',')} %',
+            'Inflation produit',
+            trendColor,
+          ),
+        ),
+      ]),
+      if (savings != null) ...[
+        const SizedBox(height: 8),
+        _savingsTile(Map<String, dynamic>.from(savings)),
+      ],
+      const SizedBox(height: 8),
+      Card(
+        child: Padding(
           padding: const EdgeInsets.all(12),
-          child: Wrap(spacing: 8, runSpacing: 8, children: tiles),
-        );
-      },
+          child: Wrap(spacing: 14, runSpacing: 4, children: [
+            _count('${o['purchase_count'] ?? 0}', 'achats'),
+            _count('${o['supplier_count'] ?? 0}', 'fournisseurs'),
+            _count('${o['recipe_count'] ?? 0}', 'recettes'),
+            _count('${o['offer_count'] ?? 0}', 'offres'),
+          ]),
+        ),
+      ),
+      if (monthly.length > 1) ...[
+        const SizedBox(height: 8),
+        _MonthlyBars(monthly),
+      ],
+      const SizedBox(height: 8),
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(child: _cheapestCard(cheapest)),
+        const SizedBox(width: 8),
+        Expanded(child: _offersCard(offers)),
+      ]),
+      if (topSuppliers.isNotEmpty) ...[
+        const SizedBox(height: 8),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Fournisseurs',
+                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: kMuted)),
+              const SizedBox(height: 6),
+              for (final s in topSuppliers.take(6))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 3),
+                  child: Row(children: [
+                    Expanded(
+                      child: Row(children: [
+                        Flexible(
+                          child: Text('${s['supplier_name'] ?? 'Fournisseur'}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 13)),
+                        ),
+                        if (s['is_cheapest'] == true) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                            decoration: BoxDecoration(
+                                color: const Color(0xFFCFE3C4), borderRadius: BorderRadius.circular(999)),
+                            child: const Text('Moins cher',
+                                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: kGood)),
+                          ),
+                        ],
+                      ]),
+                    ),
+                    Text(eur(s['amount'] as num?),
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                  ]),
+                ),
+            ]),
+          ),
+        ),
+      ],
+    ]);
+  }
+
+  Widget _tile(String value, String label, Color color) => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: color)),
+            const SizedBox(height: 2),
+            Text(label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 11, color: kMuted)),
+          ]),
+        ),
+      );
+
+  Widget _savingsTile(Map<String, dynamic> s) {
+    final labels = Map<String, dynamic>.from(s['labels'] as Map? ?? const {});
+    final rate = s['best_choice_rate'] as num?;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(eur(s['realized'] as num?),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: kGood)),
+          const SizedBox(height: 2),
+          Text('${labels['realized'] ?? 'Économisé'}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11, color: kMuted)),
+          if (rate != null) ...[
+            const SizedBox(height: 2),
+            Text(
+                '${labels['best_choice_rate'] ?? 'Taux de meilleur choix'} · ${(rate * 100).round()} %',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 10.5, color: kMuted)),
+          ],
+        ]),
+      ),
     );
   }
 
-  Widget _tile(String k, String v) => Container(
-        width: 108,
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-            border: Border.all(color: const Color(0xFFECE4D4)), borderRadius: BorderRadius.circular(12)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(k, style: const TextStyle(fontSize: 11.5, color: kMuted)),
-          const SizedBox(height: 4),
-          Text(v, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+  Widget _count(String n, String label) => RichText(
+        text: TextSpan(children: [
+          TextSpan(
+              text: '$n ',
+              style: const TextStyle(
+                  fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF2B2B2B))),
+          TextSpan(text: label, style: const TextStyle(fontSize: 13, color: kMuted)),
         ]),
       );
+
+  Widget _cheapestCard(Map? cheapest) => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Moins cher',
+                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: kMuted)),
+            const SizedBox(height: 6),
+            if (cheapest == null)
+              const Text('—', style: TextStyle(fontSize: 13, color: kMuted))
+            else
+              Row(children: [
+                Expanded(
+                  child: Text('${cheapest['supplier_name'] ?? 'Fournisseur'}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 13)),
+                ),
+                Text(eur(cheapest['cost'] as num?),
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              ]),
+          ]),
+        ),
+      );
+
+  Widget _offersCard(Map? offers) => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Offres',
+                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: kMuted)),
+            const SizedBox(height: 6),
+            if (offers == null)
+              const Text('—', style: TextStyle(fontSize: 13, color: kMuted))
+            else ...[
+              _offerLine(
+                  'Meilleure${offers['best_supplier_name'] != null ? ' · ${offers['best_supplier_name']}' : ''}',
+                  eur(offers['best_price'] as num?)),
+              _offerLine('Dernière', eur(offers['latest_price'] as num?)),
+              _offerLine(
+                  'Moyenne · ${offers['supplier_count'] ?? 0} fourn.', eur(offers['avg_price'] as num?)),
+            ],
+          ]),
+        ),
+      );
+
+  Widget _offerLine(String label, String value) => Padding(
+        padding: const EdgeInsets.only(bottom: 3),
+        child: Row(children: [
+          Expanded(
+            child: Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12, color: kMuted)),
+          ),
+          Text(value, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+        ]),
+      );
+}
+
+class _MonthlyBars extends StatelessWidget {
+  const _MonthlyBars(this.monthly);
+  final List<Map<String, dynamic>> monthly;
+
+  @override
+  Widget build(BuildContext context) {
+    final max = monthly
+        .map((m) => (m['amount'] as num?)?.toDouble() ?? 0)
+        .fold<double>(1, (a, b) => b > a ? b : a);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Dépense mensuelle',
+              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: kMuted)),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 76,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                for (final m in monthly)
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                      child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+                        Container(
+                          height:
+                              (((m['amount'] as num?)?.toDouble() ?? 0) / max * 58).clamp(2, 58),
+                          decoration: BoxDecoration(
+                            color: kTerracotta.withValues(alpha: 0.7),
+                            borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text('${m['month']}'.substring(5),
+                            style: const TextStyle(fontSize: 8, color: kMuted)),
+                      ]),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
 }
 
 // --------------------------------------------------------------------------- //
