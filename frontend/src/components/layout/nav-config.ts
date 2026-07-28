@@ -14,6 +14,7 @@ import {
   ClipboardList,
   ShoppingCart,
   PackageCheck,
+  Gauge,
   type LucideIcon,
 } from "lucide-react";
 
@@ -35,6 +36,7 @@ export const navItems: NavItem[] = [
   { title: "Commandes", href: "/commandes", icon: ShoppingCart },
   { title: "Réceptions", href: "/receptions", icon: PackageCheck },
   { title: "Variations prix", href: "/prix", icon: TrendingUp },
+  { title: "Pilotage", href: "/pilotage", icon: Gauge },
   { title: "Recettes", href: "/recettes", icon: ChefHat },
   { title: "Import vidéo", href: "/import-video", icon: Video },
   { title: "Assistant IA", href: "/assistant", icon: Bot },
