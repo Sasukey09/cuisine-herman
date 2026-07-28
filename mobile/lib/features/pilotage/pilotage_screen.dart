@@ -79,17 +79,12 @@ class _PilotageBody extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 4, 18, 24),
       children: [
-        Text('Pilotage Achats · ${data['window_months']} mois',
-            style: kSerif.copyWith(fontSize: 21, fontWeight: FontWeight.w700)),
-        const SizedBox(height: 3),
-        const Text(
-          "Vue d'ensemble du cycle achats : économies, commande-réception-facture, "
-          'prix et fournisseurs.',
-          style: TextStyle(fontSize: 12, color: kMuted),
-        ),
-        const SizedBox(height: 16),
-
-        const _Section('Économies'),
+        // Pas de titre/paragraphe ici : le shell (`HomeShell`) affiche déjà
+        // « Pilotage / Vue d'ensemble des achats » au-dessus de l'écran — même
+        // convention que `PriceScreen`/`VideoImportScreen`, qui n'ont pas non
+        // plus de titre interne. Le seul signal propre à cet écran (la fenêtre
+        // glissante) est replié dans la légende de la section Économies.
+        _Section('Économies', caption: '${data['window_months']} mois'),
         GridView.count(
           crossAxisCount: 2,
           shrinkWrap: true,
@@ -287,12 +282,23 @@ class _PilotageBody extends StatelessWidget {
 }
 
 class _Section extends StatelessWidget {
-  const _Section(this.title);
+  const _Section(this.title, {this.caption});
   final String title;
+  final String? caption;
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.only(bottom: 8),
-        child: Text(title, style: kSerif.copyWith(fontSize: 16, fontWeight: FontWeight.w700)),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Text(title, style: kSerif.copyWith(fontSize: 16, fontWeight: FontWeight.w700)),
+            if (caption != null) ...[
+              const SizedBox(width: 6),
+              Text('· $caption', style: const TextStyle(fontSize: 12, color: kMuted)),
+            ],
+          ],
+        ),
       );
 }
 

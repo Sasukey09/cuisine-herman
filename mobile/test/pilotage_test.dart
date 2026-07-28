@@ -125,12 +125,13 @@ void main() {
   }
 
   testWidgets(
-      'Pilotage Achats renders the header plus the Économisé and Commandé tiles',
-      (tester) async {
+      'Pilotage Achats renders the Économies section plus the Économisé and '
+      'Commandé tiles (no in-screen page title — the shell owns that, like '
+      'PriceScreen/VideoImportScreen)', (tester) async {
     final c = makeContainer();
     await pumpScreen(tester, c);
 
-    expect(find.textContaining('Pilotage'), findsWidgets);
+    expect(find.text('Cycle achats'), findsOneWidget);
     expect(find.textContaining('Économisé'), findsOneWidget);
     expect(find.textContaining('Commandé'), findsOneWidget);
   });
