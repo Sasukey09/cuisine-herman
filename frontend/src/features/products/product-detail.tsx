@@ -121,12 +121,10 @@ export function ProductDetail({ productId }: { productId: string }) {
     if (costs.length === 0) return null;
     const sum = costs.reduce((a, b) => a + b, 0);
     return {
-      count: costs.length,
       last: costs[costs.length - 1],
       avg: sum / costs.length,
       min: Math.min(...costs),
       max: Math.max(...costs),
-      variation: costs.length > 1 && costs[0] > 0 ? ((costs[costs.length - 1] - costs[0]) / costs[0]) * 100 : null,
       currency: chrono[chrono.length - 1]?.currency ?? "EUR",
       unit: chrono[chrono.length - 1]?.unit_code ?? "u",
     };
