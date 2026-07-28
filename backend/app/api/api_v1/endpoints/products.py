@@ -87,6 +87,23 @@ def api_product_supplier_comparison(
     return purchase_service.supplier_comparison(db, tenant_id, product_id)
 
 
+@router.get("/{product_id}/overview")
+def api_product_overview(
+    product_id: str,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """Fiche produit 360° : dépense, prix, inflation, offres, économies, top
+    fournisseurs, recettes — assemblé depuis les read models Achats."""
+    from datetime import date
+    from app.services.purchasing import product_analytics
+
+    product = get_product(db, product_id, tenant_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return product_analytics.overview(db, tenant_id, product, date.today())
+
+
 @router.get("/{product_id}/suppliers")
 def api_product_suppliers(
     product_id: str,

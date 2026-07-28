@@ -311,6 +311,17 @@ def for_supplier(
     }
 
 
+def for_product(db: Session, tenant_id: str, product_id: str, today: date) -> Dict[str, Any]:
+    """Économies réalisées sur CE produit, 12 mois glissants (miroir de for_supplier)."""
+    since = today - timedelta(days=365)
+    res = _savings_for_order_lines(db, tenant_id, product_id=str(product_id), since=since, today=today)
+    return {
+        "realized": res["realized"], "missed": res["missed"], "possible": res["possible"],
+        "best_choice_rate": res["best_choice_rate"], "compared_lines": res["compared_lines"],
+        "labels": SAVINGS_LABELS,
+    }
+
+
 def for_tenant(db: Session, tenant_id: str, today: date) -> Dict[str, Any]:
     """Économies réalisées sur TOUT le tenant, 12 mois glissants. Renvoie en plus
     le détail par ligne (``lines``) — nécessaire pour agréger par fournisseur dans
