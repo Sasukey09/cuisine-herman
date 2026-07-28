@@ -17,6 +17,7 @@ from app.api.api_v1.endpoints import (
     orders,
     receipts,
     quotes,
+    purchasing,
 )
 
 api_router = APIRouter()
@@ -37,3 +38,4 @@ api_router.include_router(alerts.router, prefix="/alerts", tags=["alerts"])
 api_router.include_router(quotes.router, prefix="/quotes", tags=["quotes"])
 api_router.include_router(orders.router, prefix="/orders", tags=["orders"])
 api_router.include_router(receipts.router, prefix="/receipts", tags=["receipts"])
+api_router.include_router(purchasing.router, prefix="/purchasing", tags=["purchasing"])
