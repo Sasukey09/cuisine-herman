@@ -18,6 +18,13 @@ import 'package:foodgad_mobile/features/products/product_detail_screen.dart';
 /// avec un corps vide mais bien formé (`{}`/`[]`) pour ne pas faire planter
 /// les onglets qui ne sont pas sous test ici.
 class _ProductApi implements HttpClientAdapter {
+  _ProductApi({this.comparedLines = 1});
+
+  /// `savings.compared_lines` returned by the fake `/overview` endpoint.
+  /// Lets tests exercise both the "some lines compared" case (tile visible)
+  /// and the common "nothing compared yet" case (tile must stay hidden).
+  final int comparedLines;
+
   @override
   Future<ResponseBody> fetch(RequestOptions options, Stream<Uint8List>? _,
       Future<void>? __) async {
@@ -48,11 +55,11 @@ class _ProductApi implements HttpClientAdapter {
           'supplier_count': 1,
         },
         'savings': {
-          'realized': 20.0,
+          'realized': comparedLines > 0 ? 20.0 : 0.0,
           'missed': 0.0,
           'possible': 20.0,
-          'best_choice_rate': 1.0,
-          'compared_lines': 1,
+          'best_choice_rate': comparedLines > 0 ? 1.0 : null,
+          'compared_lines': comparedLines,
           'labels': {
             'realized': 'Économisé',
             'missed': 'Laissé sur la table',
@@ -118,5 +125,31 @@ void main() {
 
     expect(find.textContaining('Payé sur 12 mois'), findsOneWidget);
     expect(find.text('Économisé'), findsOneWidget);
+  });
+
+  testWidgets(
+      "the Vue d'ensemble scorecard hides the Économisé tile when nothing was compared",
+      (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final client = ApiClient(TokenStore());
+    client.dio.httpClientAdapter = _ProductApi(comparedLines: 0);
+
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(client)],
+      child: const MaterialApp(
+        home: ProductDetailScreen(productId: 'p1', productName: 'Beurre'),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text("Vue d'ensemble"));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Payé sur 12 mois'), findsOneWidget);
+    expect(find.text('Économisé'), findsNothing);
   });
 }

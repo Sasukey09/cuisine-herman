@@ -23,7 +23,8 @@ export function ProductScorecard({ productId }: { productId: string }) {
   return (
     <div className="space-y-4">
       {/* Ligne de KPI : la dépense réelle, l'inflation et les économies, ce
-          qu'on regarde d'abord. */}
+          qu'on regarde d'abord. Pas d'« Économisé » sans ligne comparée —
+          on n'annonce pas une économie qu'on n'a pas (cf. SupplierScorecard). */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Kpi
           icon={<TrendingUp className="h-5 w-5 text-primary" />}
@@ -31,11 +32,13 @@ export function ProductScorecard({ productId }: { productId: string }) {
           label="Payé sur 12 mois"
         />
         <TrendKpi pct={data.price_trend_pct} />
-        <SavingsKpi
-          realized={data.savings.realized}
-          bestChoiceRate={data.savings.best_choice_rate}
-          labels={data.savings.labels}
-        />
+        {data.savings.compared_lines > 0 ? (
+          <SavingsKpi
+            realized={data.savings.realized}
+            bestChoiceRate={data.savings.best_choice_rate}
+            labels={data.savings.labels}
+          />
+        ) : null}
       </div>
 
       {/* Volumes : achats, fournisseurs, recettes, offres. */}

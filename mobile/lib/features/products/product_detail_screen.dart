@@ -750,7 +750,7 @@ class _Scorecard extends StatelessWidget {
           ),
         ),
       ]),
-      if (savings != null) ...[
+      if (savings != null && ((savings['compared_lines'] as num?) ?? 0) > 0) ...[
         const SizedBox(height: 8),
         _savingsTile(Map<String, dynamic>.from(savings)),
       ],
