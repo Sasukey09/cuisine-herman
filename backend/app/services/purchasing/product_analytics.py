@@ -11,6 +11,8 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy.orm import Session
+
 from app.services.purchasing.supplier_analytics import _price_trend
 
 
@@ -95,3 +97,48 @@ def scorecard(
         "savings": savings,
         "top_suppliers": top_suppliers,
     }
+
+
+# --------------------------------------------------------------------------- #
+# Enveloppe base de données
+# --------------------------------------------------------------------------- #
+def overview(db: Session, tenant_id: str, product, today: date) -> Dict[str, Any]:
+    """Le 360° d'un produit, assemblé depuis les read models du domaine Achats."""
+    from app.crud import crud_product, crud_purchase
+    from app.models.models import Supplier
+    from app.services.purchasing import purchase_service, savings_service
+    from app.services.quotes import quote_history as qh
+
+    pid = str(product.id)
+    header = crud_product.get_product_detail(db, pid, tenant_id) or {}
+    names = dict(db.query(Supplier.id, Supplier.name).filter(Supplier.tenant_id == tenant_id).all())
+
+    purchases = [
+        {"purchase_date": p.purchase_date,
+         "supplier_id": str(p.supplier_id) if p.supplier_id else None,
+         "supplier_name": names.get(p.supplier_id),
+         "total_price": _f(p.total_price), "unit_cost_standard": _f(p.unit_cost_standard)}
+        for p in crud_purchase.product_purchases(db, tenant_id, pid)
+    ]
+    quote_h = qh.product_quote_history(db, tenant_id, pid)
+    savings = savings_service.for_product(db, tenant_id, pid, today)
+
+    ps = purchase_service.product_suppliers(db, tenant_id, pid)
+    cheapest = None
+    csid = ps.get("cheapest_supplier_id")
+    if csid:
+        row = next((s for s in ps.get("suppliers", []) if str(s.get("supplier_id")) == str(csid)), None)
+        if row:
+            cheapest = {"supplier_id": str(csid), "supplier_name": row.get("supplier_name"),
+                        "cost": row.get("best_cost") if row.get("best_cost") is not None else row.get("last_cost")}
+
+    recipe_count = len(crud_product.product_recipes(db, tenant_id, pid))
+
+    card = scorecard(purchases, quote_h, savings, cheapest, recipe_count, today)
+    card.update({
+        "product_id": pid,
+        "product_name": header.get("name") or product.name,
+        "category": header.get("category"),
+        "unit_code": header.get("unit"),
+    })
+    return card
