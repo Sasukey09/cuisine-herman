@@ -65,6 +65,7 @@ import {
 } from "@/hooks/use-products";
 import { useProductPriceHistory } from "@/hooks/use-purchasing";
 import { ProductQuoteHistory } from "./product-quote-history";
+import { ProductScorecard } from "./product-scorecard";
 import { useAuthStore } from "@/stores/auth-store";
 import { formatCurrency, formatDate, formatNumber } from "@/lib/utils";
 import type { ProductSupplierRow } from "@/services/types";
@@ -195,7 +196,7 @@ export function ProductDetail({ productId }: { productId: string }) {
           <TabsTrigger value="prices">Historique des prix</TabsTrigger>
           <TabsTrigger value="invoices">Factures</TabsTrigger>
           <TabsTrigger value="recipes">Recettes</TabsTrigger>
-          <TabsTrigger value="stats">Statistiques</TabsTrigger>
+          <TabsTrigger value="stats">Vue d&apos;ensemble</TabsTrigger>
         </TabsList>
 
         {/* ---------- Informations ---------- */}
@@ -472,27 +473,9 @@ export function ProductDetail({ productId }: { productId: string }) {
           </Card>
         </TabsContent>
 
-        {/* ---------- Statistiques ---------- */}
+        {/* ---------- Vue d'ensemble ---------- */}
         <TabsContent value="stats">
-          {!stats ? (
-            <Card>
-              <CardContent className="py-8 text-center text-sm text-muted-foreground">
-                Pas encore de données d&apos;achat pour ce produit.
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <Stat label="Achats enregistrés" value={String(stats.count)} />
-              <Stat label="Fournisseurs" value={String(suppliers.length)} />
-              <Stat label="Recettes utilisatrices" value={String(recipes?.length ?? 0)} />
-              <Stat label="Prix moyen" value={formatCurrency(stats.avg, stats.currency)} />
-              <Stat label="Prix minimum" value={formatCurrency(stats.min, stats.currency)} />
-              <Stat label="Prix maximum" value={formatCurrency(stats.max, stats.currency)} />
-              <Stat label="Dernier prix" value={`${formatCurrency(stats.last, stats.currency)}/${stats.unit}`} />
-              <Stat label="Variation globale" value={stats.variation != null ? `${stats.variation > 0 ? "+" : ""}${stats.variation.toFixed(1)} %` : "—"} />
-              <Stat label="Factures" value={String(invoices?.length ?? 0)} />
-            </div>
-          )}
+          <ProductScorecard productId={productId} />
         </TabsContent>
       </Tabs>
 

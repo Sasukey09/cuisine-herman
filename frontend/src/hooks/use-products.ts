@@ -17,6 +17,7 @@ import {
   deleteProductSupplier,
   getProductInvoices,
   getProductRecipes,
+  getProductOverview,
 } from "@/services/products-service";
 import { getApiErrorMessage } from "@/lib/api-error";
 import type {
@@ -80,6 +81,14 @@ export function useProductRecipes(id?: string) {
   return useQuery({
     queryKey: [...KEY, id, "recipes"],
     queryFn: () => getProductRecipes(id as string),
+    enabled: Boolean(id),
+  });
+}
+
+export function useProductOverview(id?: string) {
+  return useQuery({
+    queryKey: ["products", id, "overview"],
+    queryFn: () => getProductOverview(id as string),
     enabled: Boolean(id),
   });
 }

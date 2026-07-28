@@ -89,3 +89,50 @@ export async function getProductRecipes(id: string) {
   );
   return data.recipes;
 }
+
+// --- Fiche produit 360° (Phase 3) -----------------------------------------
+
+export interface ProductOverview {
+  product_id: string;
+  product_name: string;
+  category: string | null;
+  unit_code: string | null;
+  annual_amount: number;
+  monthly: Array<{ month: string; amount: number }>;
+  purchase_count: number;
+  supplier_count: number;
+  recipe_count: number;
+  offer_count: number;
+  cheapest_supplier: { supplier_id: string; supplier_name: string | null; cost: number | null } | null;
+  last_cost: number | null;
+  avg_cost: number | null;
+  best_cost: number | null;
+  price_trend_pct: number | null;
+  offers: {
+    best_price: number | null;
+    best_supplier_name: string | null;
+    latest_price: number | null;
+    avg_price: number | null;
+    supplier_count: number;
+  } | null;
+  savings: {
+    realized: number;
+    missed: number;
+    possible: number;
+    best_choice_rate: number | null;
+    compared_lines: number;
+    labels: { realized: string; missed: string; possible: string; best_choice_rate: string };
+  };
+  top_suppliers: Array<{
+    supplier_id: string;
+    supplier_name: string | null;
+    amount: number;
+    count: number;
+    is_cheapest: boolean;
+  }>;
+}
+
+export async function getProductOverview(id: string) {
+  const { data } = await api.get<ProductOverview>(`/products/${id}/overview`);
+  return data;
+}
