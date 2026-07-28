@@ -11,6 +11,7 @@ import {
   Sparkles,
   ShoppingCart,
   PackageCheck,
+  Package,
   FileText,
   ArrowRight,
   ArrowUpRight,
@@ -110,6 +111,28 @@ function PriceSummaryCard({ price }: { price: PurchasingKpi["price"] }) {
           <PiggyBank className="h-4 w-4 text-emerald-600" />
           {formatCurrency(price.switch_savings_total)} en changeant de fournisseur
         </span>
+      </CardContent>
+    </Card>
+  );
+}
+
+function TopProductsCard({ items }: { items: PurchasingKpi["top_products"] }) {
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Package className="h-4 w-4 text-primary" /> Top produits (dépense)
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-1">
+        {items.map((p) => (
+          <div key={p.product_id} className="flex items-center justify-between px-2 py-1.5 text-sm">
+            <span className="truncate font-medium">{p.name}</span>
+            <span className="shrink-0 tabular-nums text-muted-foreground">
+              {formatCurrency(p.total_spend)}
+            </span>
+          </div>
+        ))}
       </CardContent>
     </Card>
   );
@@ -244,6 +267,15 @@ export function PilotageView() {
       <SafeBoundary>
         <PriceSummaryCard price={price} />
       </SafeBoundary>
+
+      {data.top_products.length > 0 && (
+        <>
+          <SectionTitle>Top produits</SectionTitle>
+          <SafeBoundary>
+            <TopProductsCard items={data.top_products} />
+          </SafeBoundary>
+        </>
+      )}
 
       <SectionTitle>Fournisseurs</SectionTitle>
       <div className="grid gap-4 lg:grid-cols-3">

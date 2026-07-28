@@ -72,6 +72,7 @@ class _PilotageBody extends StatelessWidget {
     final cycle = _map(data['cycle']);
     final price = _map(data['price']);
     final suppliers = _map(data['suppliers']);
+    final topProducts = _list(data['top_products']);
     final labels = _map(data['labels']);
     final rate = savings['best_choice_rate'] as num?;
     final comparedLines = plainNumber((savings['compared_lines'] as num?) ?? 0);
@@ -221,6 +222,40 @@ class _PilotageBody extends StatelessWidget {
             ],
           ),
         ),
+
+        // Top produits (dépense) — n'apparaît que s'il y a des lignes, comme
+        // sur le web (`pilotage-view.tsx`).
+        if (topProducts.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          const _Section('Top produits'),
+          KpiSectionCard(
+            icon: '📦',
+            iconColor: kTerracotta,
+            title: 'Top produits (dépense)',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final raw in topProducts)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text('${(raw as Map)['name'] ?? '—'}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                        ),
+                        Text(eur(raw['total_spend'] as num?),
+                            style: const TextStyle(
+                                fontSize: 12.5, color: kMuted, fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
 
         const SizedBox(height: 18),
         const _Section('Fournisseurs'),
