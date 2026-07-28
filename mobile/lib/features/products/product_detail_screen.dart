@@ -710,7 +710,11 @@ class _OverviewTab extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
-        overview.maybeWhen(orElse: () => const SizedBox.shrink(), data: (o) => _Scorecard(o)),
+        overview.when(
+          loading: () => const _Loading(),
+          error: (e, _) => _ErrorLine(apiErrorMessage(e)),
+          data: (o) => _Scorecard(o),
+        ),
       ],
     );
   }
